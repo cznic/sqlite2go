@@ -26,10 +26,7 @@ import (
 	"go/scanner"
 	"go/token"
 	"io"
-	"math/bits"
 	"os"
-
-	"github.com/cznic/ir"
 )
 
 type tweaks struct {
@@ -83,19 +80,6 @@ func (c *context) error() error {
 	c.errors.Sort()
 	err := append(scanner.ErrorList(nil), c.errors...)
 	return err
-}
-
-func (c context) newIntConstValue(n Node, v uint64, t ...TypeKind) (r *Value) {
-	r = &Value{Type: Undefined}
-	b := bits.Len64(v)
-	for _, t := range t {
-		if c.model[t].Size*8 >= b {
-			return &Value{t, &ir.Int64Value{Value: int64(v)}}
-		}
-	}
-
-	c.err(n, "invalid integer constant")
-	return &Value{Type: Undefined}
 }
 
 func (c context) position(n Node) token.Position { return c.fset.PositionFor(n.Pos(), true) }

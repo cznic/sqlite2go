@@ -843,19 +843,21 @@ func (c *cpp) directive(r tokenReader, w tokenWriter, cond cond) cond {
 				break
 			}
 
-			line = c.expands(trimAllSpace(line[1:]))
-			if c.tweaks.cppExpandTest {
-				w.write(line...)
-				break
-			}
-
+			line = trimAllSpace(line[1:])
 			if len(line) == 0 {
 				c.err(t, "empty include not allowed")
 				break
 			}
 
+			expanded := false
+		again:
 			switch line[0].Rune {
 			case '<':
+				if c.tweaks.cppExpandTest {
+					w.write(line...)
+					return cond
+				}
+
 				var nm string
 				for _, v := range line[1:] {
 					if v.Rune == '>' {
@@ -867,12 +869,28 @@ func (c *cpp) directive(r tokenReader, w tokenWriter, cond cond) cond {
 				}
 				c.err(t, "invalid include file name specification")
 			case STRINGLITERAL:
+				if c.tweaks.cppExpandTest {
+					w.write(line...)
+					return cond
+				}
+
 				b := dict.S(line[0].Val)      // `"foo.h"`
 				nm := string(b[1 : len(b)-1]) // `foo.h`
 				c.include(t, nm, c.includePaths, w)
 				return cond
 			default:
-				panic(PrettyString(line))
+				if expanded {
+					panic(PrettyString(line))
+				}
+
+				line = c.expands(trimAllSpace(line))
+				expanded = true
+				if c.tweaks.cppExpandTest {
+					w.write(line...)
+					return cond
+				}
+
+				goto again
 			}
 		case idEndif:
 			switch cond.tos() {
@@ -907,6 +925,10 @@ func (c *cpp) directive(r tokenReader, w tokenWriter, cond cond) cond {
 
 			delete(c.macros, line[0].Val)
 		case idWarning:
+			if !cond.on() {
+				break
+			}
+
 			panic(fmt.Errorf("%v", c.position(t)))
 		default:
 			panic(fmt.Errorf("%v", c.position(t)))
@@ -943,7 +965,7 @@ func (c *cpp) include(n Node, nm string, paths []string, w tokenWriter) {
 	}
 
 	if path == "" {
-		panic(c.position(n))
+		panic(fmt.Errorf("%v: %q %q", c.position(n), nm, paths))
 	}
 
 	r, err := c.parse(newFileSource(path))
@@ -951,6 +973,7 @@ func (c *cpp) include(n Node, nm string, paths []string, w tokenWriter) {
 		c.err(n, "%s", err.Error())
 	}
 
+	//dbg("%v: #include %q", c.position(n), path)
 	c.expand(r, w, cond(nil).push(condZero))
 }
 

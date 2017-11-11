@@ -2,7 +2,7 @@
 # Use of this source code is governed by a BSD-style
 # license that can be found in the LICENSE file.
 
-.PHONY:	all clean cover cpu editor internalError later mem nuke todo edit full
+.PHONY:	all clean cover cpu editor internalError later mem nuke todo edit
 
 grep=--include=*.go --include=*.l --include=*.y --include=*.yy
 ngrep='TODOOK\|parser\.go\|scanner\.go\|trigraphs\.go\|.*_string\.go'
@@ -30,27 +30,13 @@ cpu: clean
 
 edit:
 	touch log
-	@ 1>/dev/null 2>/dev/null gvim -p Makefile *.l *.yy all_test.go log ast2.go c99.go cpp.go encoding.go enum.go etc.go lexer.go model.go type.go value.go
+	@ 1>/dev/null 2>/dev/null gvim -p Makefile *.l *.yy all_test.go log ast2.go c99.go cpp.go encoding.go enum.go etc.go lexer.go model.go operand.go type.go
 
 editor: ast.go parser.go scanner.go trigraphs.go enum_string.go
 	gofmt -l -s -w *.go
 	go test -i
 	go test -short 2>&1 | tee log
 	go build
-
-full:
-	gofmt -l -s -w *.go
-	go test -i
-	go test 2>&1 | tee log
-	go build
-	go vet 2>&1 | grep -v $(ngrep) || true
-	golint 2>&1 | grep -v $(ngrep) || true
-	make todo
-	unused . || true
-	misspell *.go
-	gosimple || true
-	maligned || true
-	unconvert -apply
 
 internalError:
 	egrep -ho '"internal error.*"' *.go | sort | cat -n

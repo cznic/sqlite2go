@@ -361,8 +361,8 @@ func (n *CompoundStmt) Pos() token.Pos {
 //	ConstExpr:
 //	        Expr  // Case 0
 type ConstExpr struct {
-	Value *Value
-	Expr  *Expr
+	Operand *Operand
+	Expr    *Expr
 }
 
 func (n *ConstExpr) fragment() interface{} { return n }
@@ -1384,7 +1384,7 @@ func (n ExprCase) String() string {
 //	|       LONGSTRINGLITERAL                                  // Case ExprLString
 //	|       STRINGLITERAL                                      // Case ExprString
 type Expr struct {
-	Value               *Value
+	Operand             *Operand
 	ArgumentExprListOpt *ArgumentExprListOpt
 	Case                ExprCase
 	CommaOpt            *CommaOpt
@@ -1428,7 +1428,7 @@ func (n *Expr) Pos() token.Pos {
 //	        Expr               // Case 0
 //	|       ExprList ',' Expr  // Case 1
 type ExprList struct {
-	Value    *Value
+	Operand  *Operand
 	Case     int
 	Expr     *Expr
 	ExprList *ExprList

@@ -7,6 +7,7 @@ package c99
 // [0]: http://www.open-std.org/jtc1/sc22/wg14/www/docs/n1256.pdf
 
 import (
+	"bytes"
 	"fmt"
 	"go/token"
 	"strconv"
@@ -20,16 +21,16 @@ type Node interface {
 	Pos() token.Pos
 }
 
-func (n *ConstExpr) eval(ctx *context) *Value {
-	if n.Value == nil {
-		n.Value = n.Expr.eval(ctx)
+func (n *ConstExpr) eval(ctx *context) *Operand {
+	if n.Operand == nil {
+		n.Operand = n.Expr.eval(ctx)
 	}
-	return n.Value
+	return n.Operand
 }
 
-func (n *Expr) eval(ctx *context) *Value {
-	if n.Value != nil {
-		return n.Value
+func (n *Expr) eval(ctx *context) *Operand {
+	if n.Operand != nil {
+		return n.Operand
 	}
 
 	switch n.Case {
@@ -42,20 +43,20 @@ func (n *Expr) eval(ctx *context) *Value {
 	case ExprSizeofExpr: // "sizeof" Expr
 		panic(fmt.Errorf("%v: TODO\n%s", ctx.fset.Position(n.Pos()), PrettyString(n)))
 	case ExprNot: // '!' Expr
-		n.Value = &Value{Type: Int}
+		n.Operand = &Operand{Type: Int}
 		a := n.Expr.eval(ctx)
 		if a.isZero() {
-			n.Value.Value = &ir.Int64Value{Value: 1}
+			n.Operand.Value = &ir.Int64Value{Value: 1}
 			break
 		}
 
 		if a.isNonzero() {
-			n.Value.Value = &ir.Int64Value{Value: 0}
+			n.Operand.Value = &ir.Int64Value{Value: 0}
 		}
 	case ExprAddrof: // '&' Expr
 		panic(fmt.Errorf("%v: TODO\n%s", ctx.fset.Position(n.Pos()), PrettyString(n)))
 	case ExprPExprList: // '(' ExprList ')'
-		n.Value = n.ExprList.eval(ctx)
+		n.Operand = n.ExprList.eval(ctx)
 	case ExprCompLit: // '(' TypeName ')' '{' InitializerList CommaOpt '}'
 		panic(fmt.Errorf("%v: TODO\n%s", ctx.fset.Position(n.Pos()), PrettyString(n)))
 	case ExprCast: // '(' TypeName ')' Expr
@@ -65,31 +66,44 @@ func (n *Expr) eval(ctx *context) *Value {
 	case ExprUnaryPlus: // '+' Expr
 		panic(fmt.Errorf("%v: TODO\n%s", ctx.fset.Position(n.Pos()), PrettyString(n)))
 	case ExprUnaryMinus: // '-' Expr
-		panic(fmt.Errorf("%v: TODO\n%s", ctx.fset.Position(n.Pos()), PrettyString(n)))
+		n.Operand = n.Expr.eval(ctx).unaryMinus(ctx)
 	case ExprCpl: // '~' Expr
 		panic(fmt.Errorf("%v: TODO\n%s", ctx.fset.Position(n.Pos()), PrettyString(n)))
 	case ExprChar: // CHARCONST
-		panic(fmt.Errorf("%v: TODO\n%s", ctx.fset.Position(n.Pos()), PrettyString(n)))
+		s := dict.S(n.Token.Val)
+		if bytes.Contains(s, []byte{'\\'}) && bytes.Contains(s, []byte{'"'}) {
+			panic("TODO") // If present, must replace any `\"` with `"`.
+		}
+		r, _, tail, err := strconv.UnquoteChar(string(s[1:len(s)-1]), '\'')
+		if err != nil {
+			panic(err)
+		}
+
+		if tail != "" {
+			panic("TODO")
+		}
+
+		n.Operand = &Operand{Int, &ir.Int64Value{Value: int64(r)}}
 	case ExprNe: // Expr "!=" Expr
-		panic(fmt.Errorf("%v: TODO\n%s", ctx.fset.Position(n.Pos()), PrettyString(n)))
+		n.Operand = n.Expr.eval(ctx).ne(ctx, n.Expr2.eval(ctx))
 	case ExprModAssign: // Expr "%=" Expr
 		panic(fmt.Errorf("%v: TODO\n%s", ctx.fset.Position(n.Pos()), PrettyString(n)))
 	case ExprLAnd: // Expr "&&" Expr
-		n.Value = &Value{Type: Int}
+		n.Operand = &Operand{Type: Int}
 		a := n.Expr.eval(ctx)
 		if a.isZero() {
-			n.Value.Value = &ir.Int64Value{Value: 0}
+			n.Operand.Value = &ir.Int64Value{Value: 0}
 			break
 		}
 
 		b := n.Expr2.eval(ctx)
 		if b.isZero() {
-			n.Value.Value = &ir.Int64Value{Value: 0}
+			n.Operand.Value = &ir.Int64Value{Value: 0}
 			break
 		}
 
 		if a.isNonzero() && b.isNonzero() {
-			n.Value.Value = &ir.Int64Value{Value: 1}
+			n.Operand.Value = &ir.Int64Value{Value: 1}
 		}
 	case ExprAndAssign: // Expr "&=" Expr
 		panic(fmt.Errorf("%v: TODO\n%s", ctx.fset.Position(n.Pos()), PrettyString(n)))
@@ -112,11 +126,11 @@ func (n *Expr) eval(ctx *context) *Value {
 	case ExprLshAssign: // Expr "<<=" Expr
 		panic(fmt.Errorf("%v: TODO\n%s", ctx.fset.Position(n.Pos()), PrettyString(n)))
 	case ExprLe: // Expr "<=" Expr
-		panic(fmt.Errorf("%v: TODO\n%s", ctx.fset.Position(n.Pos()), PrettyString(n)))
+		n.Operand = n.Expr.eval(ctx).le(ctx, n.Expr2.eval(ctx))
 	case ExprEq: // Expr "==" Expr
-		n.Value = n.Expr.eval(ctx).eq(ctx, n.Expr2.eval(ctx))
+		n.Operand = n.Expr.eval(ctx).eq(ctx, n.Expr2.eval(ctx))
 	case ExprGe: // Expr ">=" Expr
-		panic(fmt.Errorf("%v: TODO\n%s", ctx.fset.Position(n.Pos()), PrettyString(n)))
+		n.Operand = n.Expr.eval(ctx).ge(ctx, n.Expr2.eval(ctx))
 	case ExprRsh: // Expr ">>" Expr
 		panic(fmt.Errorf("%v: TODO\n%s", ctx.fset.Position(n.Pos()), PrettyString(n)))
 	case ExprRshAssign: // Expr ">>=" Expr
@@ -126,21 +140,21 @@ func (n *Expr) eval(ctx *context) *Value {
 	case ExprOrAssign: // Expr "|=" Expr
 		panic(fmt.Errorf("%v: TODO\n%s", ctx.fset.Position(n.Pos()), PrettyString(n)))
 	case ExprLOr: // Expr "||" Expr
-		n.Value = &Value{Type: Int}
+		n.Operand = &Operand{Type: Int}
 		a := n.Expr.eval(ctx)
 		if a.isNonzero() {
-			n.Value.Value = &ir.Int64Value{Value: 1}
+			n.Operand.Value = &ir.Int64Value{Value: 1}
 			break
 		}
 
 		b := n.Expr2.eval(ctx)
 		if b.isNonzero() {
-			n.Value.Value = &ir.Int64Value{Value: 1}
+			n.Operand.Value = &ir.Int64Value{Value: 1}
 			break
 		}
 
 		if a.isZero() && b.isZero() {
-			n.Value.Value = &ir.Int64Value{Value: 0}
+			n.Operand.Value = &ir.Int64Value{Value: 0}
 		}
 	case ExprMod: // Expr '%' Expr
 		panic(fmt.Errorf("%v: TODO\n%s", ctx.fset.Position(n.Pos()), PrettyString(n)))
@@ -151,7 +165,7 @@ func (n *Expr) eval(ctx *context) *Value {
 	case ExprMul: // Expr '*' Expr
 		panic(fmt.Errorf("%v: TODO\n%s", ctx.fset.Position(n.Pos()), PrettyString(n)))
 	case ExprAdd: // Expr '+' Expr
-		n.Value = n.Expr.eval(ctx).add(ctx, n.Expr2.eval(ctx))
+		n.Operand = n.Expr.eval(ctx).add(ctx, n.Expr2.eval(ctx))
 	case ExprSub: // Expr '-' Expr
 		panic(fmt.Errorf("%v: TODO\n%s", ctx.fset.Position(n.Pos()), PrettyString(n)))
 	case ExprSelect: // Expr '.' IDENTIFIER
@@ -159,11 +173,11 @@ func (n *Expr) eval(ctx *context) *Value {
 	case ExprDiv: // Expr '/' Expr
 		panic(fmt.Errorf("%v: TODO\n%s", ctx.fset.Position(n.Pos()), PrettyString(n)))
 	case ExprLt: // Expr '<' Expr
-		n.Value = n.Expr.eval(ctx).lt(ctx, n.Expr2.eval(ctx))
+		n.Operand = n.Expr.eval(ctx).lt(ctx, n.Expr2.eval(ctx))
 	case ExprAssign: // Expr '=' Expr
 		panic(fmt.Errorf("%v: TODO\n%s", ctx.fset.Position(n.Pos()), PrettyString(n)))
 	case ExprGt: // Expr '>' Expr
-		n.Value = n.Expr.eval(ctx).gt(ctx, n.Expr2.eval(ctx))
+		n.Operand = n.Expr.eval(ctx).gt(ctx, n.Expr2.eval(ctx))
 	case ExprCond: // Expr '?' ExprList ':' Expr
 		panic(fmt.Errorf("%v: TODO\n%s", ctx.fset.Position(n.Pos()), PrettyString(n)))
 	case ExprIndex: // Expr '[' ExprList ']'
@@ -197,9 +211,11 @@ func (n *Expr) eval(ctx *context) *Value {
 		// [0]6.4.4.1
 		switch suff := strings.ToUpper(s0[len(s):]); {
 		case suff == "" && decadic:
-			n.Value = ctx.newIntConstValue(n, v, Int, Long, LongLong)
+			n.Operand = newIntConstOperand(ctx, n, v, Int, Long, LongLong)
+		case suff == "":
+			n.Operand = newIntConstOperand(ctx, n, v, Int, UInt, Long, ULong, LongLong, ULongLong)
 		case suff == "L" && decadic:
-			n.Value = ctx.newIntConstValue(n, v, Long, LongLong)
+			n.Operand = newIntConstOperand(ctx, n, v, Long, LongLong)
 		default:
 			panic(fmt.Errorf("%v: TODO %q %q decadic: %v\n%s", ctx.fset.Position(n.Pos()), s, suff, decadic, PrettyString(n)))
 		}
@@ -212,14 +228,14 @@ func (n *Expr) eval(ctx *context) *Value {
 	default:
 		panic(fmt.Errorf("%v: TODO\n%s", ctx.fset.Position(n.Pos()), PrettyString(n)))
 	}
-	return n.Value
+	return n.Operand
 }
 
-func (n *ExprList) eval(ctx *context) *Value {
-	if n.Value == nil {
+func (n *ExprList) eval(ctx *context) *Operand {
+	if n.Operand == nil {
 		for l := n; l != nil; l = l.ExprList {
-			n.Value = l.Expr.eval(ctx)
+			n.Operand = l.Expr.eval(ctx)
 		}
 	}
-	return n.Value
+	return n.Operand
 }

@@ -258,7 +258,7 @@ import (
                         |	ArgumentExprList
 
                         // [0]6.5.16
-			//yy:field	Value	*Value
+			//yy:field	Operand	*Operand
 /*yy:case PreInc  */ Expr:
                         	"++" Expr
 /*yy:case PreDec     */ |	"--" Expr
@@ -323,7 +323,7 @@ import (
 
                         // [0]6.5.17
                         //yy:list
-			//yy:field	Value	*Value
+			//yy:field	Operand	*Operand
                         ExprList:
                         	Expr
                         |	ExprList ',' Expr
@@ -333,7 +333,7 @@ import (
                         |	ExprList
 
                         // [0]6.6
-			//yy:field	Value	*Value
+			//yy:field	Operand	*Operand
                         ConstExpr:
                         	Expr
 

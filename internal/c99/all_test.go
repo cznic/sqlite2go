@@ -667,12 +667,5 @@ func TestCPPSQLite(t *testing.T) {
 		#define SQLITE_WITHOUT_MSIZE 1
 		`
 
-	dir := filepath.FromSlash("../../_sqlite/sqlite-amalgamation-3210000")
-	files := []string{
-		"sqlite3.c",
-	}
-
-	for _, file := range files {
-		testCPP(t, filepath.Join(dir, file), predef, []string{"@"}, []string{ccir.LibcIncludePath})
-	}
+	testCPP(t, filepath.FromSlash("../../_sqlite/sqlite-amalgamation-3210000/sqlite3.c"), predef, []string{"@", ccir.LibcIncludePath}, []string{ccir.LibcIncludePath})
 }
