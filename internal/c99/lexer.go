@@ -293,6 +293,12 @@ out:
 			lval.Token = xc.Token{Char: ch, Val: dict.ID(l.TokenBytes(nil))}
 		}
 	}
+	if lval.Token.Rune == IDENTIFIER {
+		if d := l.scope.lookup(lval.Token.Val); d != nil && d.declarationSpecifiers.isTypeDef() {
+			// https://en.wikipedia.org/wiki/The_lexer_hack
+			lval.Token.Rune = TYPEDEF_NAME
+		}
+	}
 	return int(lval.Token.Rune)
 }
 

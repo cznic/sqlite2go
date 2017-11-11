@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	maxIncludeLevel = 200 // gcc, std is 15.
+	maxIncludeLevel = 200 // gcc, std is at least 15.
 )
 
 var (
@@ -112,12 +112,12 @@ more:
 	return t
 }
 
-type cond []condValue
+type conds []cond
 
-func (c cond) on() bool              { return condOn[c.tos()] }
-func (c cond) pop() cond             { return c[:len(c)-1] }
-func (c cond) push(n condValue) cond { return append(c, n) }
-func (c cond) tos() condValue        { return c[len(c)-1] }
+func (c conds) on() bool          { return condOn[c.tos()] }
+func (c conds) pop() conds        { return c[:len(c)-1] }
+func (c conds) push(n cond) conds { return append(c, n) }
+func (c conds) tos() cond         { return c[len(c)-1] }
 
 type macro struct {
 	def  xc.Token
@@ -312,8 +312,8 @@ func (c *cpp) eval(r tokenReader, w tokenWriter) (err error) {
 			err = newPanicError(fmt.Errorf("%T: PANIC: %v\n%s", c, e, debugStack()))
 		}
 	}()
-	if cond := c.expand(r, w, cond(nil).push(condZero)); len(cond) != 1 || cond.tos() != condZero {
-		panic(cond)
+	if cs := c.expand(r, w, conds(nil).push(condZero)); len(cs) != 1 || cs.tos() != condZero {
+		panic(cs)
 	}
 	return nil
 }
@@ -343,20 +343,20 @@ func (c *cpp) eval(r tokenReader, w tokenWriter) (err error) {
 // 	note TS must be T^HS • TS’
 // 	return T^HS • expand(TS’);
 // }
-func (c *cpp) expand(r tokenReader, w tokenWriter, cond cond) cond {
+func (c *cpp) expand(r tokenReader, w tokenWriter, cs conds) conds {
 	for {
 		t := r.read()
 		switch t.Rune {
 		case lex.RuneEOF:
 			// -------------------------------------------------- A
-			return cond
+			return cs
 		case DIRECTIVE:
-			cond = c.directive(r, w, cond)
+			cs = c.directive(r, w, cs)
 			t.Rune = '\n'
 			t.Val = 0
 			w.write(t)
 		case IDENTIFIER:
-			if !cond.on() {
+			if !cs.on() {
 				break
 			}
 
@@ -412,7 +412,7 @@ func (c *cpp) expand(r tokenReader, w tokenWriter, cond cond) cond {
 
 			w.write(t)
 		case SENTINEL:
-			if !cond.on() {
+			if !cs.on() {
 				panic("internal error")
 			}
 
@@ -422,7 +422,7 @@ func (c *cpp) expand(r tokenReader, w tokenWriter, cond cond) cond {
 			}
 		default:
 			// -------------------------------------------------- E
-			if !cond.on() {
+			if !cs.on() {
 				break
 			}
 
@@ -485,7 +485,7 @@ func (c *cpp) expands(toks []xc.Token) (out []xc.Token) {
 	//defer func(hs, in string) { dbg("Z expands(%v)\t%q\t%q", hs, in, toksDump(out)) }(hsDump(c.hideSet), toksDump(toks))
 	var r, w tokenBuffer
 	r.toks = toks
-	c.expand(&r, &w, cond(nil).push(condZero))
+	c.expand(&r, &w, conds(nil).push(condZero))
 	return w.toks
 }
 
@@ -695,7 +695,7 @@ func (c *cpp) glue(ls, rs []xc.Token) (n int, out []xc.Token) {
 	return n, append(append(ls, l), rs...)
 }
 
-// Givenatoken sequence, stringize returns a single string literal token
+// Given a token sequence, stringize returns a single string literal token
 // containing the concatenated spellings of the tokens.
 //
 // [1] pg. 3
@@ -723,10 +723,10 @@ func (c *cpp) stringize(s []xc.Token) xc.Token {
 	return xc.Token{}
 }
 
-func (c *cpp) directive(r tokenReader, w tokenWriter, cond cond) cond {
+func (c *cpp) directive(r tokenReader, w tokenWriter, cs conds) conds {
 	line := c.line(r)
 	if len(line) == 0 {
-		return cond
+		return cs
 	}
 
 	switch t := line[0]; t.Rune {
@@ -735,7 +735,7 @@ func (c *cpp) directive(r tokenReader, w tokenWriter, cond cond) cond {
 	case IDENTIFIER:
 		switch t.Val {
 		case idDefine:
-			if !cond.on() {
+			if !cs.on() {
 				break
 			}
 
@@ -746,49 +746,49 @@ func (c *cpp) directive(r tokenReader, w tokenWriter, cond cond) cond {
 
 			c.define(line[1:])
 		case idElif:
-			switch cond.tos() {
+			switch cs.tos() {
 			case condIfOff:
 				if c.constExpr(line[1:]) {
-					return cond.pop().push(condIfOn)
+					return cs.pop().push(condIfOn)
 				}
 			case condIfOn:
-				return cond.pop().push(condIfSkip)
+				return cs.pop().push(condIfSkip)
 			case condIfSkip:
 				// nop
 			default:
-				panic(fmt.Errorf("%v: %v", c.position(t), cond.tos()))
+				panic(fmt.Errorf("%v: %v", c.position(t), cs.tos()))
 			}
 		case idElse:
-			switch cond.tos() {
+			switch cs.tos() {
 			case condIfOff:
-				return cond.pop().push(condIfOn)
+				return cs.pop().push(condIfOn)
 			case condIfOn:
-				return cond.pop().push(condIfOff)
+				return cs.pop().push(condIfOff)
 			case condIfSkip:
 				// nop
 			default:
-				panic(fmt.Errorf("%v: %v", c.position(t), cond.tos()))
+				panic(fmt.Errorf("%v: %v", c.position(t), cs.tos()))
 			}
 		case idError:
-			if !cond.on() {
+			if !cs.on() {
 				break
 			}
 
 			panic(fmt.Errorf("%v", c.position(t)))
 		case idIf:
-			if !cond.on() {
-				return cond.push(condIfSkip)
+			if !cs.on() {
+				return cs.push(condIfSkip)
 			}
 
 			switch {
 			case c.constExpr(line[1:]):
-				return cond.push(condIfOn)
+				return cs.push(condIfOn)
 			default:
-				return cond.push(condIfOff)
+				return cs.push(condIfOff)
 			}
 		case idIfdef:
-			if !cond.on() {
-				return cond.push(condIfSkip)
+			if !cs.on() {
+				return cs.push(condIfSkip)
 			}
 
 			line = trimAllSpace(line[1:])
@@ -808,13 +808,13 @@ func (c *cpp) directive(r tokenReader, w tokenWriter, cond cond) cond {
 			}
 
 			if _, ok := c.macros[line[0].Val]; ok {
-				return cond.push(condIfOn)
+				return cs.push(condIfOn)
 			}
 
-			return cond.push(condIfOff)
+			return cs.push(condIfOff)
 		case idIfndef:
-			if !cond.on() {
-				return cond.push(condIfSkip)
+			if !cs.on() {
+				return cs.push(condIfSkip)
 			}
 
 			line = trimAllSpace(line[1:])
@@ -834,12 +834,12 @@ func (c *cpp) directive(r tokenReader, w tokenWriter, cond cond) cond {
 			}
 
 			if _, ok := c.macros[line[0].Val]; ok {
-				return cond.push(condIfOff)
+				return cs.push(condIfOff)
 			}
 
-			return cond.push(condIfOn)
+			return cs.push(condIfOn)
 		case idInclude:
-			if !cond.on() {
+			if !cs.on() {
 				break
 			}
 
@@ -855,14 +855,14 @@ func (c *cpp) directive(r tokenReader, w tokenWriter, cond cond) cond {
 			case '<':
 				if c.tweaks.cppExpandTest {
 					w.write(line...)
-					return cond
+					return cs
 				}
 
 				var nm string
 				for _, v := range line[1:] {
 					if v.Rune == '>' {
 						c.include(t, nm, c.sysIncludePaths, w)
-						return cond
+						return cs
 					}
 
 					nm += TokSrc(v)
@@ -871,13 +871,13 @@ func (c *cpp) directive(r tokenReader, w tokenWriter, cond cond) cond {
 			case STRINGLITERAL:
 				if c.tweaks.cppExpandTest {
 					w.write(line...)
-					return cond
+					return cs
 				}
 
 				b := dict.S(line[0].Val)      // `"foo.h"`
 				nm := string(b[1 : len(b)-1]) // `foo.h`
 				c.include(t, nm, c.includePaths, w)
-				return cond
+				return cs
 			default:
 				if expanded {
 					panic(PrettyString(line))
@@ -887,45 +887,42 @@ func (c *cpp) directive(r tokenReader, w tokenWriter, cond cond) cond {
 				expanded = true
 				if c.tweaks.cppExpandTest {
 					w.write(line...)
-					return cond
+					return cs
 				}
 
 				goto again
 			}
 		case idEndif:
-			switch cond.tos() {
+			switch cs.tos() {
 			case condIfOn, condIfOff, condIfSkip:
-				return cond.pop()
+				return cs.pop()
 			default:
-				panic(fmt.Errorf("%v: %v", c.position(t), cond.tos()))
+				panic(fmt.Errorf("%v: %v", c.position(t), cs.tos()))
 			}
 		case idPragma:
-			if !cond.on() {
+			if !cs.on() {
 				break
 			}
 
 			panic(fmt.Errorf("%v", c.position(t)))
 		case idUndef:
-			if !cond.on() {
+			if !cs.on() {
 				break
 			}
 
 			line = trimSpace(line[1:])
 			if len(line) == 0 {
-				panic("TODO")
 			}
 
 			if len(line) > 1 {
-				panic("TODO")
 			}
 
 			if line[0].Rune != IDENTIFIER {
-				panic("TODO")
 			}
 
 			delete(c.macros, line[0].Val)
 		case idWarning:
-			if !cond.on() {
+			if !cs.on() {
 				break
 			}
 
@@ -936,7 +933,7 @@ func (c *cpp) directive(r tokenReader, w tokenWriter, cond cond) cond {
 	default:
 		panic(PrettyString(t))
 	}
-	return cond
+	return cs
 }
 
 func (c *cpp) include(n Node, nm string, paths []string, w tokenWriter) {
@@ -974,12 +971,12 @@ func (c *cpp) include(n Node, nm string, paths []string, w tokenWriter) {
 	}
 
 	//dbg("%v: #include %q", c.position(n), path)
-	c.expand(r, w, cond(nil).push(condZero))
+	c.expand(r, w, conds(nil).push(condZero))
 }
 
 func (c *cpp) constExpr(toks []xc.Token) (y bool) {
 	toks = trimAllSpace(toks)
-	for i, v := range toks {
+	for i, v := range toks { // [0]6.10.1-1
 		if v.Rune == IDENTIFIER && v.Val == idDefined {
 			s := toks[i:]
 			switch {

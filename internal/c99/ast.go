@@ -518,6 +518,7 @@ func (n DeclarationSpecifiersCase) String() string {
 //	|       TypeQualifier DeclarationSpecifiersOpt          // Case DeclarationSpecifiersQualifier
 //	|       TypeSpecifier DeclarationSpecifiersOpt          // Case DeclarationSpecifiersSpecifier
 type DeclarationSpecifiers struct {
+	storageClassSpecifier    *StorageClassSpecifier
 	Case                     DeclarationSpecifiersCase
 	DeclarationSpecifiersOpt *DeclarationSpecifiersOpt
 	FunctionSpecifier        *FunctionSpecifier
@@ -559,6 +560,7 @@ func (n *DeclarationSpecifiers) Pos() token.Pos {
 //	        /* empty */            // Case 0
 //	|       DeclarationSpecifiers  // Case 1
 type DeclarationSpecifiersOpt struct {
+	storageClassSpecifier *StorageClassSpecifier
 	DeclarationSpecifiers *DeclarationSpecifiers
 }
 
@@ -583,8 +585,10 @@ func (n *DeclarationSpecifiersOpt) Pos() token.Pos {
 //	Declarator:
 //	        PointerOpt DirectDeclarator  // Case 0
 type Declarator struct {
-	DirectDeclarator *DirectDeclarator
-	PointerOpt       *PointerOpt
+	declarationSpecifiers *DeclarationSpecifiers
+	nm                    int
+	DirectDeclarator      *DirectDeclarator
+	PointerOpt            *PointerOpt
 }
 
 func (n *Declarator) fragment() interface{} { return n }
@@ -927,6 +931,8 @@ func (n DirectDeclaratorCase) String() string {
 //	|       DirectDeclarator '[' TypeQualifierListOpt ExprOpt ']'        // Case DirectDeclaratorArray
 //	|       IDENTIFIER                                                   // Case DirectDeclaratorIdent
 type DirectDeclarator struct {
+	nm                   int
+	scope                *scope
 	Case                 DirectDeclaratorCase
 	Declarator           *Declarator
 	DirectDeclarator     *DirectDeclarator
@@ -3004,6 +3010,7 @@ func (n StructOrUnionSpecifierCase) String() string {
 //	        StructOrUnion IDENTIFIER                                   // Case StructOrUnionSpecifierTag
 //	|       StructOrUnion IdentifierOpt '{' StructDeclarationList '}'  // Case StructOrUnionSpecifierDefine
 type StructOrUnionSpecifier struct {
+	scope                 *scope
 	Case                  StructOrUnionSpecifierCase
 	IdentifierOpt         *IdentifierOpt
 	StructDeclarationList *StructDeclarationList

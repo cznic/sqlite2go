@@ -342,15 +342,45 @@ import (
                         	DeclarationSpecifiers InitDeclaratorListOpt ';'
 
                         // [0]6.7
+			//yy:field	storageClassSpecifier *StorageClassSpecifier
 /*yy:case Func       */ DeclarationSpecifiers:
                         	FunctionSpecifier DeclarationSpecifiersOpt
+				{
+					if n := lhs.DeclarationSpecifiersOpt; n != nil {
+						lhs.storageClassSpecifier = n.storageClassSpecifier
+					}
+					lx.declarationSpecifiers = lhs
+				}
 /*yy:case Strorage   */ |	StorageClassSpecifier DeclarationSpecifiersOpt
+				{
+					if n := lhs.DeclarationSpecifiersOpt; n != nil && n.storageClassSpecifier != nil {
+						panic("TODO") // [0]6.7.1-2
+					}
+					lhs.storageClassSpecifier = lhs.StorageClassSpecifier
+					lx.declarationSpecifiers = lhs
+				}
 /*yy:case Qualifier  */ |	TypeQualifier DeclarationSpecifiersOpt
+				{
+					if n := lhs.DeclarationSpecifiersOpt; n != nil {
+						lhs.storageClassSpecifier = n.storageClassSpecifier
+					}
+					lx.declarationSpecifiers = lhs
+				}
 /*yy:case Specifier  */ |	TypeSpecifier DeclarationSpecifiersOpt
+				{
+					if n := lhs.DeclarationSpecifiersOpt; n != nil {
+						lhs.storageClassSpecifier = n.storageClassSpecifier
+					}
+					lx.declarationSpecifiers = lhs
+				}
 
+			//yy:field	storageClassSpecifier *StorageClassSpecifier
                         DeclarationSpecifiersOpt:
                         	/* empty */ {}
                         |	DeclarationSpecifiers
+				{
+					lhs.storageClassSpecifier = lhs.DeclarationSpecifiers.storageClassSpecifier
+				}
 
                         // [0]6.7
                         InitDeclaratorList:
@@ -393,9 +423,20 @@ import (
 /*yy:case Name       */ |	TYPEDEF_NAME
 
                         // [0]6.7.2.1
+			//yy:field	scope	*scope
 /*yy:case Tag        */ StructOrUnionSpecifier:
                         	StructOrUnion IDENTIFIER
-/*yy:case Define     */ |	StructOrUnion IdentifierOpt '{' StructDeclarationList '}'
+/*yy:case Define     */ |	StructOrUnion IdentifierOpt
+				{
+					lx.scopes = append(lx.scopes, lx.scope)
+					lx.scope = newScope(nil)
+				}
+				'{' StructDeclarationList '}'
+				{
+					lhs.scope = lx.scope
+					lx.scope = lx.scopes[len(lx.scopes)-1]
+					lx.scopes = lx.scopes[:len(lx.scopes)-1]
+				}
 
                         // [0]6.7.2.1
 /*yy:case Struct     */ StructOrUnion:
@@ -460,23 +501,72 @@ import (
 				"inline"
 
                         // [0]6.7.5
+			//yy:field	declarationSpecifiers	*DeclarationSpecifiers
+			//yy:field	nm			int
                         Declarator:
                         	PointerOpt DirectDeclarator
+				{
+					lhs.declarationSpecifiers = lx.declarationSpecifiers
+					lhs.nm = lhs.DirectDeclarator.nm
+					lx.scope.insert(lx.context, lhs)
+				}
 
                         DeclaratorOpt:
                         	/* empty */ {}
                         |	Declarator
 
                         // [0]6.7.5
+			//yy:field	nm	int
+			//yy:field	scope	*scope
 /*yy:case Paren      */ DirectDeclarator:
                         	'(' Declarator ')'
-/*yy:case IdentList  */ |	DirectDeclarator '(' IdentifierListOpt ')'
-/*yy:case ParamList  */ |	DirectDeclarator '(' ParameterTypeList ')'
+				{
+					lhs.nm = lhs.Declarator.nm
+				}
+/*yy:case IdentList  */ |	DirectDeclarator '('
+				{
+					lx.scopes = append(lx.scopes, lx.scope)
+					lx.scope = newScope(nil)
+				}
+				IdentifierListOpt ')'
+				{
+					lhs.nm = lhs.DirectDeclarator.nm
+					lhs.scope = lx.scope
+					lx.scope = lx.scopes[len(lx.scopes)-1]
+					lx.scopes = lx.scopes[:len(lx.scopes)-1]
+				}
+/*yy:case ParamList  */ |	DirectDeclarator '('
+				{
+					lx.scopes = append(lx.scopes, lx.scope)
+					lx.scope = newScope(nil)
+				}
+				ParameterTypeList ')'
+				{
+					lhs.nm = lhs.DirectDeclarator.nm
+					lhs.scope = lx.scope
+					lx.scope = lx.scopes[len(lx.scopes)-1]
+					lx.scopes = lx.scopes[:len(lx.scopes)-1]
+				}
 /*yy:case ArraySize  */ |	DirectDeclarator '[' "static" TypeQualifierListOpt Expr ']'
+				{
+					lhs.nm = lhs.DirectDeclarator.nm
+				}
 /*yy:case ArraySize2 */ |	DirectDeclarator '[' TypeQualifierList "static" Expr ']'
+				{
+					lhs.nm = lhs.DirectDeclarator.nm
+				}
 /*yy:case ArrayVar   */ |	DirectDeclarator '[' TypeQualifierListOpt '*' ']'
+				{
+					lhs.nm = lhs.DirectDeclarator.nm
+				}
 /*yy:case Array      */ |	DirectDeclarator '[' TypeQualifierListOpt ExprOpt ']'
+				{
+					lhs.nm = lhs.DirectDeclarator.nm
+				}
 /*yy:case Ident      */ |	IDENTIFIER
+				{
+					lhs.nm = lhs.Token.Val
+				}
 
                         // [0]6.7.5
 /*yy:case Base       */ Pointer:
@@ -600,7 +690,14 @@ import (
 
                         // [0]6.8.2
                         CompoundStmt:
-                        	'{' BlockItemListOpt '}'
+				'{'
+				{
+					lx.scope = newScope(lx.scope)
+				}
+				BlockItemListOpt '}'
+				{
+					lx.scope = lx.scope.parent
+				}
 
                         // [0]6.8.2
                         BlockItemList:

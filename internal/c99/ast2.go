@@ -239,3 +239,7 @@ func (n *ExprList) eval(ctx *context) *Operand {
 	}
 	return n.Operand
 }
+
+func (n *DeclarationSpecifiers) isTypeDef() bool {
+	return n != nil && n.storageClassSpecifier != nil && n.storageClassSpecifier.Case == StorageClassSpecifierTypedef
+}

@@ -42,10 +42,10 @@ const (
 	maxTypeKind
 )
 
-type condValue int
+type cond int
 
 const (
-	condZero condValue = iota
+	condZero cond = iota
 
 	condIfOff
 	condIfOn
