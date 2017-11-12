@@ -110,9 +110,9 @@ type lexer struct {
 	commentPos0 token.Pos
 	last        lex.Char
 	mode        int // CONSTANT_EXPRESSION, TRANSLATION_UNIT
-	prev        lex.Char
 	sc          int
 	t           *trigraphs
+	tc          *tokenPipe
 	ungetBuffer
 }
 
@@ -144,32 +144,42 @@ func newLexer(ctx *context, nm string, sz int, r io.Reader) (*lexer, error) {
 
 func (l *lexer) Error(msg string)             { l.err(l.First, "%v", msg) }
 func (l *lexer) ReadRune() (rune, int, error) { panic("internal error") }
+func (l *lexer) comment(general bool)         { /*TODO*/ }
+func (l *lexer) lastPosition() token.Position { return l.fset.PositionFor(l.last.Pos(), true) }
+func (l *lexer) parseExpr() bool              { return l.parse(CONSTANT_EXPRESSION) }
 
 func (l *lexer) Lex(lval *yySymType) (r int) {
-	// defer func() { dbg("", r) }()
 	//TODO use follow set to recover from errors.
-	if len(l.ungetBuffer) != 0 {
-		lval.Token = l.ungetBuffer.read()
-		if lval.Token.Rune == PPNUMBER {
-			lval.Token.Rune = INTCONST
-		out:
-			for _, v := range dict.S(lval.Token.Val) {
-				switch v {
-				case '.', '+', '-', 'e', 'E', 'p', 'P':
-					lval.Token.Rune = FLOATCONST
-					break out
-				}
+	l.lex(lval)
+	lval.Token.Rune = l.toC(lval.Token.Rune, lval.Token.Val)
+	switch lval.Token.Rune {
+	case NON_REPL:
+		lval.Token.Rune = IDENTIFIER
+		fallthrough
+	case IDENTIFIER:
+		if !followSetHasTypedefName[lval.yys] {
+			break
+		}
+
+		if l.scope.lookup(lval.Token.Val) != nil {
+			// https://en.wikipedia.org/wiki/The_lexer_hack
+			lval.Token.Rune = TYPEDEF_NAME
+		}
+	case PPNUMBER:
+		lval.Token.Rune = INTCONST
+		for _, v := range dict.S(lval.Token.Val) {
+			switch v {
+			case '.', '+', '-', 'e', 'E', 'p', 'P':
+				lval.Token.Rune = FLOATCONST
+				return int(lval.Token.Rune)
 			}
 		}
 		return int(lval.Token.Rune)
-	}
-
-	if l.lex0(lval) < 0 {
+	case ccEOF:
+		lval.Token.Rune = lex.RuneEOF
 		lval.Token.Val = 0
-		return int(lval.Token.Rune)
 	}
 
-	lval.Token.Rune = l.toC(lval.Token.Rune, lval.Token.Val)
 	return int(lval.Token.Rune)
 }
 
@@ -253,11 +263,6 @@ func (l *lexer) Reduced(rule, state int, lval *yySymType) (stop bool) {
 	return true
 }
 
-func (l *lexer) comment(general bool)         { /*TODO*/ }
-func (l *lexer) parseC() bool                 { return l.parse(TRANSLATION_UNIT) }
-func (l *lexer) parseExpr() bool              { return l.parse(CONSTANT_EXPRESSION) }
-func (l *lexer) lastPosition() token.Position { return l.fset.PositionFor(l.last.Pos(), true) }
-
 func (l *lexer) cppScan() lex.Char {
 again:
 	r := l.scan()
@@ -265,41 +270,27 @@ again:
 		goto again
 	}
 
-	l.prev = l.last
 	l.last = lex.NewChar(l.First.Pos(), rune(r))
 	return l.last
 }
 
-func (l *lexer) lex0(lval *yySymType) int {
+func (l *lexer) lex(lval *yySymType) {
+	if len(l.ungetBuffer) != 0 {
+		lval.Token = l.ungetBuffer.read()
+		return
+	}
+
+	if l.tc != nil {
+		lval.Token = l.tc.read()
+		l.First = lval.Token.Char
+		return
+	}
+
 	ch := l.scanChar()
 	lval.Token = xc.Token{Char: ch}
-out:
-	switch ch.Rune {
-	case ccEOF:
-		lval.Token.Rune = -1
-	case PPNUMBER:
-		lval.Token.Rune = INTCONST
-		s := l.TokenBytes(nil)
-		lval.Token.Val = dict.ID(s)
-		for _, v := range s {
-			switch v {
-			case '.', '+', '-', 'e', 'E', 'p', 'P':
-				lval.Token.Rune = FLOATCONST
-				break out
-			}
-		}
-	default:
-		if _, ok := tokHasVal[ch.Rune]; ok {
-			lval.Token = xc.Token{Char: ch, Val: dict.ID(l.TokenBytes(nil))}
-		}
+	if _, ok := tokHasVal[ch.Rune]; ok {
+		lval.Token = xc.Token{Char: ch, Val: dict.ID(l.TokenBytes(nil))}
 	}
-	if lval.Token.Rune == IDENTIFIER {
-		if d := l.scope.lookup(lval.Token.Val); d != nil && d.declarationSpecifiers.isTypeDef() {
-			// https://en.wikipedia.org/wiki/The_lexer_hack
-			lval.Token.Rune = TYPEDEF_NAME
-		}
-	}
-	return int(lval.Token.Rune)
 }
 
 func (l *lexer) parse(mode int) bool {
@@ -318,7 +309,6 @@ again:
 		goto again
 	}
 
-	l.prev = l.last
 	l.last = lex.NewChar(l.First.Pos(), rune(r))
 	switch r {
 	case CONSTANT_EXPRESSION, TRANSLATION_UNIT:

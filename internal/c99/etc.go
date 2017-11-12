@@ -10,7 +10,6 @@ import (
 	"go/scanner"
 	"io"
 	"runtime/debug"
-	"strings"
 
 	"github.com/cznic/strutil"
 	"github.com/cznic/xc"
@@ -83,16 +82,4 @@ func printError(w io.Writer, pref string, err error) {
 	default:
 		fmt.Fprintf(w, "%s%v\n", pref, err)
 	}
-}
-
-func toksDump(toks []xc.Token, sep string) string {
-	var a []string
-	for _, t := range toks {
-		if t.Rune == '\n' {
-			continue
-		}
-
-		a = append(a, TokSrc(t))
-	}
-	return strings.Join(a, sep)
 }

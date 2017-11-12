@@ -259,7 +259,7 @@ import (
 
                         // [0]6.5.16
 			//yy:field	Operand	*Operand
-/*yy:case PreInc  */ Expr:
+/*yy:case PreInc     */ Expr:
                         	"++" Expr
 /*yy:case PreDec     */ |	"--" Expr
 /*yy:case SizeOfType */ |	"sizeof" '(' TypeName ')' %prec SIZEOF
@@ -340,47 +340,20 @@ import (
                         // [0]6.7
 			Declaration:
                         	DeclarationSpecifiers InitDeclaratorListOpt ';'
+				{
+					lx.scope.typedef = false
+				}
 
                         // [0]6.7
-			//yy:field	storageClassSpecifier *StorageClassSpecifier
 /*yy:case Func       */ DeclarationSpecifiers:
                         	FunctionSpecifier DeclarationSpecifiersOpt
-				{
-					if n := lhs.DeclarationSpecifiersOpt; n != nil {
-						lhs.storageClassSpecifier = n.storageClassSpecifier
-					}
-					lx.declarationSpecifiers = lhs
-				}
-/*yy:case Strorage   */ |	StorageClassSpecifier DeclarationSpecifiersOpt
-				{
-					if n := lhs.DeclarationSpecifiersOpt; n != nil && n.storageClassSpecifier != nil {
-						panic("TODO") // [0]6.7.1-2
-					}
-					lhs.storageClassSpecifier = lhs.StorageClassSpecifier
-					lx.declarationSpecifiers = lhs
-				}
+/*yy:case Storage   */ |	StorageClassSpecifier DeclarationSpecifiersOpt
 /*yy:case Qualifier  */ |	TypeQualifier DeclarationSpecifiersOpt
-				{
-					if n := lhs.DeclarationSpecifiersOpt; n != nil {
-						lhs.storageClassSpecifier = n.storageClassSpecifier
-					}
-					lx.declarationSpecifiers = lhs
-				}
 /*yy:case Specifier  */ |	TypeSpecifier DeclarationSpecifiersOpt
-				{
-					if n := lhs.DeclarationSpecifiersOpt; n != nil {
-						lhs.storageClassSpecifier = n.storageClassSpecifier
-					}
-					lx.declarationSpecifiers = lhs
-				}
 
-			//yy:field	storageClassSpecifier *StorageClassSpecifier
                         DeclarationSpecifiersOpt:
                         	/* empty */ {}
                         |	DeclarationSpecifiers
-				{
-					lhs.storageClassSpecifier = lhs.DeclarationSpecifiers.storageClassSpecifier
-				}
 
                         // [0]6.7
                         InitDeclaratorList:
@@ -403,6 +376,9 @@ import (
 /*yy:case Register   */ |	"register"
 /*yy:case Static     */ |	"static"
 /*yy:case Typedef    */ |	"typedef"
+				{
+					lx.scope.typedef = true
+				}
 
                         // [0]6.7.2
 /*yy:case Bool       */ TypeSpecifier:
@@ -426,16 +402,19 @@ import (
 			//yy:field	scope	*scope
 /*yy:case Tag        */ StructOrUnionSpecifier:
                         	StructOrUnion IDENTIFIER
-/*yy:case Define     */ |	StructOrUnion IdentifierOpt
+/*yy:case Empty      */ |	StructOrUnion IdentifierOpt '{' '}'
 				{
-					lx.scopes = append(lx.scopes, lx.scope)
-					lx.scope = newScope(nil)
+					if !lx.tweaks.enableEmptyStructs {
+						lx.err($1, "empty structs/unions not allowed")
+					}
 				}
-				'{' StructDeclarationList '}'
+/*yy:case Define     */ |	StructOrUnion IdentifierOpt '{'
 				{
-					lhs.scope = lx.scope
-					lx.scope = lx.scopes[len(lx.scopes)-1]
-					lx.scopes = lx.scopes[:len(lx.scopes)-1]
+					lx.newScope()
+				}
+				StructDeclarationList '}'
+				{
+					lhs.scope, _ = lx.popScope()
 				}
 
                         // [0]6.7.2.1
@@ -501,14 +480,14 @@ import (
 				"inline"
 
                         // [0]6.7.5
-			//yy:field	declarationSpecifiers	*DeclarationSpecifiers
-			//yy:field	nm			int
+			//yy:field	embedded	bool // [0]6.7.5-3: not a full declarator
                         Declarator:
                         	PointerOpt DirectDeclarator
 				{
-					lhs.declarationSpecifiers = lx.declarationSpecifiers
-					lhs.nm = lhs.DirectDeclarator.nm
-					lx.scope.insert(lx.context, lhs)
+					if lx.scope.typedef {
+						delete(lx.scope.m, lhs.DirectDeclarator.nm())
+						lx.scope.predeclareTypedef(lx.context, lhs)
+					}
 				}
 
                         DeclaratorOpt:
@@ -516,57 +495,33 @@ import (
                         |	Declarator
 
                         // [0]6.7.5
-			//yy:field	nm	int
 			//yy:field	scope	*scope
 /*yy:case Paren      */ DirectDeclarator:
                         	'(' Declarator ')'
 				{
-					lhs.nm = lhs.Declarator.nm
+					lhs.Declarator.embedded = true
 				}
 /*yy:case IdentList  */ |	DirectDeclarator '('
 				{
-					lx.scopes = append(lx.scopes, lx.scope)
-					lx.scope = newScope(nil)
+					lx.newScope()
 				}
 				IdentifierListOpt ')'
 				{
-					lhs.nm = lhs.DirectDeclarator.nm
-					lhs.scope = lx.scope
-					lx.scope = lx.scopes[len(lx.scopes)-1]
-					lx.scopes = lx.scopes[:len(lx.scopes)-1]
+					lhs.scope, _ = lx.popScope()
 				}
 /*yy:case ParamList  */ |	DirectDeclarator '('
 				{
-					lx.scopes = append(lx.scopes, lx.scope)
-					lx.scope = newScope(nil)
+					lx.newScope()
 				}
 				ParameterTypeList ')'
 				{
-					lhs.nm = lhs.DirectDeclarator.nm
-					lhs.scope = lx.scope
-					lx.scope = lx.scopes[len(lx.scopes)-1]
-					lx.scopes = lx.scopes[:len(lx.scopes)-1]
+					lhs.scope, _ = lx.popScope()
 				}
 /*yy:case ArraySize  */ |	DirectDeclarator '[' "static" TypeQualifierListOpt Expr ']'
-				{
-					lhs.nm = lhs.DirectDeclarator.nm
-				}
 /*yy:case ArraySize2 */ |	DirectDeclarator '[' TypeQualifierList "static" Expr ']'
-				{
-					lhs.nm = lhs.DirectDeclarator.nm
-				}
 /*yy:case ArrayVar   */ |	DirectDeclarator '[' TypeQualifierListOpt '*' ']'
-				{
-					lhs.nm = lhs.DirectDeclarator.nm
-				}
 /*yy:case Array      */ |	DirectDeclarator '[' TypeQualifierListOpt ExprOpt ']'
-				{
-					lhs.nm = lhs.DirectDeclarator.nm
-				}
 /*yy:case Ident      */ |	IDENTIFIER
-				{
-					lhs.nm = lhs.Token.Val
-				}
 
                         // [0]6.7.5
 /*yy:case Base       */ Pointer:
@@ -603,7 +558,13 @@ import (
                         // [0]6.7.5
 /*yy:case Abstract   */ ParameterDeclaration:
                         	DeclarationSpecifiers AbstractDeclaratorOpt
+				{
+					lx.scope.typedef = false
+				}
 /*yy:case Declarator */ |	DeclarationSpecifiers Declarator
+				{
+					lx.scope.typedef = false
+				}
 
                         // [0]6.7.5
                         IdentifierList:
@@ -692,11 +653,11 @@ import (
                         CompoundStmt:
 				'{'
 				{
-					lx.scope = newScope(lx.scope)
+					lx.newScope()
 				}
 				BlockItemListOpt '}'
 				{
-					lx.scope = lx.scope.parent
+					lx.popScope()
 				}
 
                         // [0]6.8.2
@@ -751,6 +712,9 @@ import (
                         // [0]6.9.1
 			FunctionDefinition:
                         	DeclarationSpecifiers Declarator DeclarationListOpt FunctionBody
+				{
+					lx.scope.typedef = false
+				}
 
 			FunctionBody:
 				CompoundStmt

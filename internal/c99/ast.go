@@ -489,7 +489,7 @@ type DeclarationSpecifiersCase int
 // Values of type DeclarationSpecifiersCase
 const (
 	DeclarationSpecifiersFunc DeclarationSpecifiersCase = iota
-	DeclarationSpecifiersStrorage
+	DeclarationSpecifiersStorage
 	DeclarationSpecifiersQualifier
 	DeclarationSpecifiersSpecifier
 )
@@ -499,8 +499,8 @@ func (n DeclarationSpecifiersCase) String() string {
 	switch n {
 	case DeclarationSpecifiersFunc:
 		return "DeclarationSpecifiersFunc"
-	case DeclarationSpecifiersStrorage:
-		return "DeclarationSpecifiersStrorage"
+	case DeclarationSpecifiersStorage:
+		return "DeclarationSpecifiersStorage"
 	case DeclarationSpecifiersQualifier:
 		return "DeclarationSpecifiersQualifier"
 	case DeclarationSpecifiersSpecifier:
@@ -514,11 +514,10 @@ func (n DeclarationSpecifiersCase) String() string {
 //
 //	DeclarationSpecifiers:
 //	        FunctionSpecifier DeclarationSpecifiersOpt      // Case DeclarationSpecifiersFunc
-//	|       StorageClassSpecifier DeclarationSpecifiersOpt  // Case DeclarationSpecifiersStrorage
+//	|       StorageClassSpecifier DeclarationSpecifiersOpt  // Case DeclarationSpecifiersStorage
 //	|       TypeQualifier DeclarationSpecifiersOpt          // Case DeclarationSpecifiersQualifier
 //	|       TypeSpecifier DeclarationSpecifiersOpt          // Case DeclarationSpecifiersSpecifier
 type DeclarationSpecifiers struct {
-	storageClassSpecifier    *StorageClassSpecifier
 	Case                     DeclarationSpecifiersCase
 	DeclarationSpecifiersOpt *DeclarationSpecifiersOpt
 	FunctionSpecifier        *FunctionSpecifier
@@ -560,7 +559,6 @@ func (n *DeclarationSpecifiers) Pos() token.Pos {
 //	        /* empty */            // Case 0
 //	|       DeclarationSpecifiers  // Case 1
 type DeclarationSpecifiersOpt struct {
-	storageClassSpecifier *StorageClassSpecifier
 	DeclarationSpecifiers *DeclarationSpecifiers
 }
 
@@ -585,10 +583,9 @@ func (n *DeclarationSpecifiersOpt) Pos() token.Pos {
 //	Declarator:
 //	        PointerOpt DirectDeclarator  // Case 0
 type Declarator struct {
-	declarationSpecifiers *DeclarationSpecifiers
-	nm                    int
-	DirectDeclarator      *DirectDeclarator
-	PointerOpt            *PointerOpt
+	embedded         bool // [0]6.7.5-3: not a full declarator
+	DirectDeclarator *DirectDeclarator
+	PointerOpt       *PointerOpt
 }
 
 func (n *Declarator) fragment() interface{} { return n }
@@ -931,7 +928,6 @@ func (n DirectDeclaratorCase) String() string {
 //	|       DirectDeclarator '[' TypeQualifierListOpt ExprOpt ']'        // Case DirectDeclaratorArray
 //	|       IDENTIFIER                                                   // Case DirectDeclaratorIdent
 type DirectDeclarator struct {
-	nm                   int
 	scope                *scope
 	Case                 DirectDeclaratorCase
 	Declarator           *Declarator
@@ -2989,6 +2985,7 @@ type StructOrUnionSpecifierCase int
 // Values of type StructOrUnionSpecifierCase
 const (
 	StructOrUnionSpecifierTag StructOrUnionSpecifierCase = iota
+	StructOrUnionSpecifierEmpty
 	StructOrUnionSpecifierDefine
 )
 
@@ -2997,6 +2994,8 @@ func (n StructOrUnionSpecifierCase) String() string {
 	switch n {
 	case StructOrUnionSpecifierTag:
 		return "StructOrUnionSpecifierTag"
+	case StructOrUnionSpecifierEmpty:
+		return "StructOrUnionSpecifierEmpty"
 	case StructOrUnionSpecifierDefine:
 		return "StructOrUnionSpecifierDefine"
 	default:
@@ -3008,6 +3007,7 @@ func (n StructOrUnionSpecifierCase) String() string {
 //
 //	StructOrUnionSpecifier:
 //	        StructOrUnion IDENTIFIER                                   // Case StructOrUnionSpecifierTag
+//	|       StructOrUnion IdentifierOpt '{' '}'                        // Case StructOrUnionSpecifierEmpty
 //	|       StructOrUnion IdentifierOpt '{' StructDeclarationList '}'  // Case StructOrUnionSpecifierDefine
 type StructOrUnionSpecifier struct {
 	scope                 *scope

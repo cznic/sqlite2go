@@ -28,6 +28,21 @@ func (n *ConstExpr) eval(ctx *context) *Operand {
 	return n.Operand
 }
 
+func (n *Declarator) nm() int { return n.DirectDeclarator.nm() }
+
+func (n *DirectDeclarator) nm() int {
+	switch n.Case {
+	case DirectDeclaratorArray, DirectDeclaratorParamList:
+		return n.DirectDeclarator.nm()
+	case DirectDeclaratorIdent:
+		return n.Token.Val
+	case DirectDeclaratorParen:
+		return n.Declarator.nm()
+	default:
+		panic(fmt.Errorf("TODO %v", n.Case))
+	}
+}
+
 func (n *Expr) eval(ctx *context) *Operand {
 	if n.Operand != nil {
 		return n.Operand
@@ -238,8 +253,4 @@ func (n *ExprList) eval(ctx *context) *Operand {
 		}
 	}
 	return n.Operand
-}
-
-func (n *DeclarationSpecifiers) isTypeDef() bool {
-	return n != nil && n.storageClassSpecifier != nil && n.storageClassSpecifier.Case == StorageClassSpecifierTypedef
 }

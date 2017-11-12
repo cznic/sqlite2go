@@ -30,7 +30,7 @@ cpu: clean
 
 edit:
 	touch log
-	@ 1>/dev/null 2>/dev/null gvim -p Makefile *.l *.yy all_test.go log ast2.go c99.go cpp.go encoding.go enum.go etc.go lexer.go model.go operand.go type.go
+	gvim -p Makefile *.l *.yy all_test.go log ast2.go c99.go cpp.go encoding.go enum.go etc.go lexer.go model.go operand.go type.go
 
 editor: ast.go parser.go scanner.go trigraphs.go enum_string.go
 	gofmt -l -s -w *.go
@@ -59,5 +59,4 @@ todo:
 	@grep -nr $(grep) [^[:alpha:]]println * | grep -v $(ngrep) || true
 
 ast.go parser.go scanner.go trigraphs.go enum_string.go: parser.yy scanner.l trigraphs.l enum.go
-	rm -f ast.go parser.go scanner.go trigraphs.go xegen
 	go generate	

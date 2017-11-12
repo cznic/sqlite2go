@@ -17,7 +17,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cznic/golex/lex"
 	"github.com/cznic/ir"
 	"github.com/cznic/mathutil"
 	"github.com/cznic/xc"
@@ -30,7 +29,9 @@ const (
 var (
 	_ tokenReader = (*cppReader)(nil)
 	_ tokenReader = (*tokenBuffer)(nil)
+	_ tokenReader = (*tokenPipe)(nil)
 	_ tokenWriter = (*tokenBuffer)(nil)
+	_ tokenWriter = (*tokenPipe)(nil)
 )
 
 type tokenWriter interface {
@@ -41,6 +42,63 @@ type tokenReader interface {
 	read() xc.Token
 	unget(xc.Token)
 	ungets(...xc.Token)
+}
+
+type tokenPipe struct {
+	b  []byte
+	ch chan xc.Token
+	s  []xc.Token
+}
+
+func newTokenPipe(n int) *tokenPipe { return &tokenPipe{ch: make(chan xc.Token, n)} }
+
+func (*tokenPipe) unget(xc.Token)     { panic("internal error") }
+func (*tokenPipe) ungets(...xc.Token) { panic("internal error") }
+
+func (p *tokenPipe) close() {
+	if len(p.s) != 0 {
+		p.flush()
+	}
+	close(p.ch)
+}
+
+func (p *tokenPipe) flush() {
+	p.b = p.b[:0]
+	p.b = append(p.b, '"')
+	for _, t := range p.s {
+		s := dict.S(t.Val)
+		p.b = append(p.b, s[1:len(s)-1]...)
+	}
+	p.b = append(p.b, '"')
+	p.s[0].Val = dict.ID(p.b)
+	p.ch <- p.s[0]
+	p.s = p.s[:0]
+}
+
+func (p *tokenPipe) read() xc.Token {
+	t, ok := <-p.ch
+	if !ok {
+		t.Rune = ccEOF
+	}
+	return t
+}
+
+func (p *tokenPipe) write(toks ...xc.Token) {
+	for _, t := range toks {
+		switch t.Rune {
+		case '\n', ' ':
+			// nop
+		case STRINGLITERAL:
+			p.s = append(p.s, t)
+		case LONGSTRINGLITERAL:
+			panic("TODO")
+		default:
+			if len(p.s) != 0 {
+				p.flush()
+			}
+			p.ch <- t
+		}
+	}
 }
 
 type tokenBuffer struct {
@@ -58,7 +116,7 @@ func (b *tokenBuffer) read() (t xc.Token) {
 	}
 
 	if len(b.toks) == 0 {
-		t.Rune = lex.RuneEOF
+		t.Rune = ccEOF
 		return
 	}
 
@@ -90,7 +148,7 @@ func (c *cppReader) read() (t xc.Token) {
 more:
 	if len(c.decBuf) == 0 {
 		if len(c.tu) == 0 {
-			t.Rune = lex.RuneEOF
+			t.Rune = ccEOF
 			return t
 		}
 
@@ -128,10 +186,7 @@ type macro struct {
 	variadic bool
 }
 
-func newMacro(def xc.Token, repl []xc.Token) *macro {
-	// dbg("#define %s %s", dict.S(def.Val), toksDump(repl))
-	return &macro{def: def, repl: repl}
-}
+func newMacro(def xc.Token, repl []xc.Token) *macro { return &macro{def: def, repl: repl} }
 
 func (m *macro) param(ap [][]xc.Token, nm int, out *[]xc.Token) bool {
 	*out = nil
@@ -347,7 +402,7 @@ func (c *cpp) expand(r tokenReader, w tokenWriter, cs conds) conds {
 	for {
 		t := r.read()
 		switch t.Rune {
-		case lex.RuneEOF:
+		case ccEOF:
 			// -------------------------------------------------- A
 			return cs
 		case DIRECTIVE:
@@ -388,7 +443,7 @@ func (c *cpp) expand(r tokenReader, w tokenWriter, cs conds) conds {
 					goto again
 				case '(':
 					// ok
-				case lex.RuneEOF:
+				case ccEOF:
 					r.ungets(sentinels...)
 					w.write(t)
 					continue
@@ -482,7 +537,6 @@ func (c *cpp) actuals(m *macro, r tokenReader) (out [][]xc.Token) {
 }
 
 func (c *cpp) expands(toks []xc.Token) (out []xc.Token) {
-	//defer func(hs, in string) { dbg("Z expands(%v)\t%q\t%q", hs, in, toksDump(out)) }(hsDump(c.hideSet), toksDump(toks))
 	var r, w tokenBuffer
 	r.toks = toks
 	c.expand(&r, &w, conds(nil).push(condZero))
@@ -544,7 +598,6 @@ func (c *cpp) expands(toks []xc.Token) (out []xc.Token) {
 // 	return subst(IS’,FP,AP,HS,OS • THS’);
 // }
 func (c *cpp) subst(m *macro, ap [][]xc.Token) (out []xc.Token) {
-	//defer func(hs, in string) { dbg("Z subst(%v)\t%q\t%q", hs, in, toksDump(out)) }(hsDump(c.hideSet), toksDump(repl))
 	repl := m.repl
 	var arg []xc.Token
 	for {
@@ -658,7 +711,6 @@ func (c *cpp) subst(m *macro, ap [][]xc.Token) (out []xc.Token) {
 //
 // [1] pg. 3
 func (c *cpp) glue(ls, rs []xc.Token) (n int, out []xc.Token) {
-	//defer func(a, b string) { dbg("glue\t%q\t%q\t%q", a, b, toksDump(out)) }(toksDump(ls), toksDump(rs))
 	for len(ls) != 0 && ls[len(ls)-1].Rune == ' ' {
 		ls = ls[:len(ls)-1]
 	}
@@ -730,7 +782,7 @@ func (c *cpp) directive(r tokenReader, w tokenWriter, cs conds) conds {
 	}
 
 	switch t := line[0]; t.Rune {
-	case lex.RuneEOF:
+	case ccEOF:
 		// nop
 	case IDENTIFIER:
 		switch t.Val {
@@ -970,7 +1022,6 @@ func (c *cpp) include(n Node, nm string, paths []string, w tokenWriter) {
 		c.err(n, "%s", err.Error())
 	}
 
-	//dbg("%v: #include %q", c.position(n), path)
 	c.expand(r, w, conds(nil).push(condZero))
 }
 
@@ -1010,7 +1061,6 @@ func (c *cpp) constExpr(toks []xc.Token) (y bool) {
 	}
 	c.lx.ungetBuffer = c.lx.ungetBuffer[:0]
 	c.lx.ungets(toks...)
-	//defer func(n Node, in string) { dbg("%v: %q: %v", c.position(n), in, y) }(toks[0], toksDump(toks, ""))
 	if !c.lx.parseExpr() {
 		return false
 	}
@@ -1056,7 +1106,7 @@ func (c *cpp) defineMacro(line []xc.Token) {
 		var repl []xc.Token
 		if len(line) != 0 {
 			switch line[0].Rune {
-			case '\n', lex.RuneEOF:
+			case '\n', ccEOF:
 				// nop
 			case ' ':
 				repl = line[1:]
@@ -1160,7 +1210,7 @@ func (c *cpp) identicalParamLists(a, b []int) bool {
 func (c *cpp) line(r tokenReader) (toks []xc.Token) {
 	for {
 		switch t := r.read(); t.Rune {
-		case '\n', lex.RuneEOF:
+		case '\n', ccEOF:
 			for len(toks) != 0 && toks[0].Rune == ' ' {
 				toks = toks[1:]
 			}

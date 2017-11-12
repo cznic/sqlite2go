@@ -18,7 +18,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"sort"
 	"strings"
 	"testing"
 	"unicode"
@@ -80,18 +79,30 @@ func init() {
 
 // ============================================================================
 
-var (
-	oRE = flag.String("re", "", "")
+const (
+	inj = `
+		#define _CCGO 1
+		#define __arch__ %s
+		#define __os__ %s
+		#include <builtin.h>
+		%s
+`
+	predef = `
+		#define HAVE_MALLOC_H 1
+		#define HAVE_MALLOC_USABLE_SIZE 1
+		#define HAVE_USLEEP 1
+		#define SQLITE_DEBUG 1 //TODOOK
+		#define SQLITE_ENABLE_API_ARMOR 1
+		#define SQLITE_USE_URI 1
+		#define SQLITE_WITHOUT_MSIZE 1
+`
 )
 
-func hsDump(hs map[int]int) string {
-	var a []string
-	for k, v := range hs {
-		a = append(a, fmt.Sprintf("%s: %v", dict.S(k), v))
-	}
-	sort.Strings(a)
-	return "{" + strings.Join(a, ", ") + "}"
-}
+var (
+	oRE = flag.String("re", "", "")
+
+	sqlite3c = filepath.FromSlash("../../_sqlite/sqlite-amalgamation-3210000/sqlite3.c")
+)
 
 func testUCNTable(t *testing.T, tab []rune, fOk, fOther func(rune) bool, fcategory func(rune) bool, tag string) {
 	m := map[rune]struct{}{}
@@ -219,7 +230,7 @@ nextTest:
 		var c lex.Char
 		var lval yySymType
 		for i := 0; c.Rune >= 0 && i < len(test.src)+2; i++ {
-			lx.lex0(&lval)
+			lx.Lex(&lval)
 			c = lval.Token.Char
 			chars = append(chars, c)
 		}
@@ -416,7 +427,7 @@ func TestLexerTrigraphs(t *testing.T) {
 }
 
 func exampleAST(rule int, src string) interface{} {
-	ctx, err := newContext(token.NewFileSet(), &tweaks{})
+	ctx, err := newContext(token.NewFileSet(), &tweaks{enableEmptyStructs: true})
 	if err != nil {
 		return fmt.Sprintf("TODO: %v", err) //TODOOK
 	}
@@ -438,25 +449,6 @@ func exampleAST(rule int, src string) interface{} {
 	}
 
 	return ctx.exampleAST
-}
-
-type stringSource struct {
-	*strings.Reader
-	name string
-	src  string
-}
-
-func newStringSource(name, src string) *stringSource { return &stringSource{name: name, src: src} }
-
-func (s *stringSource) Cache([]uint32)       {}
-func (s *stringSource) Cached() []uint32     { return nil }
-func (s *stringSource) Close() error         { return nil }
-func (s *stringSource) Name() string         { return s.name }
-func (s *stringSource) Size() (int64, error) { return int64(len(s.src)), nil }
-
-func (s *stringSource) ReadCloser() (io.ReadCloser, error) {
-	s.Reader = strings.NewReader(s.src)
-	return s, nil
 }
 
 func testCPPParseSource(ctx *context, src Source) (*cpp, tokenReader, error) {
@@ -573,7 +565,7 @@ func TestCPPExpand(t *testing.T) {
 		var a []string
 		for {
 			t := tb.read()
-			if t.Rune == lex.RuneEOF {
+			if t.Rune == ccEOF {
 				break
 			}
 
@@ -598,7 +590,7 @@ func (b *tokenBuffer) WriteTo(fset *token.FileSet, w io.Writer) {
 	var lpos token.Position
 	for {
 		t := b.read()
-		if t.Rune == lex.RuneEOF {
+		if t.Rune == ccEOF {
 			return
 		}
 
@@ -617,15 +609,8 @@ func (b *tokenBuffer) Bytes(fset *token.FileSet) []byte {
 	return buf.Bytes()
 }
 
-func testCPP(t *testing.T, path, predef string, includePaths, sysIncludePaths []string) {
-	const inj = `
-#define _CCGO 1
-#define __arch__ %s
-#define __os__ %s
-#include <builtin.h>
-%s
-`
-	predef = fmt.Sprintf(inj, runtime.GOARCH, runtime.GOOS, predef)
+func TestPreprocessSQLite(t *testing.T) {
+	predef := fmt.Sprintf(inj, runtime.GOARCH, runtime.GOOS, predef)
 
 	model, err := newModel()
 	if err != nil {
@@ -639,33 +624,40 @@ func testCPP(t *testing.T, path, predef string, includePaths, sysIncludePaths []
 
 	ctx.model = model
 	cpp := newCPP(ctx)
-	cpp.includePaths = includePaths
-	cpp.sysIncludePaths = sysIncludePaths
-	r, err := cpp.parse(newStringSource("<predef>", predef), newFileSource(path))
+	cpp.includePaths = []string{"@", ccir.LibcIncludePath}
+	cpp.sysIncludePaths = []string{ccir.LibcIncludePath}
+	r, err := cpp.parse(newStringSource("<predef>", predef), newFileSource(sqlite3c))
 	if err != nil {
-		t.Fatalf("%v: %v", path, err)
+		t.Fatalf("%v: %v", sqlite3c, err)
 	}
 
 	var w tokenBuffer
 	if err := cpp.eval(r, &w); err != nil {
-		t.Fatalf("%v: %v", path, errString(err))
+		t.Fatalf("%v: %v", sqlite3c, errString(err))
 	}
 
 	if err := cpp.error(); err != nil {
-		t.Fatalf("%v: %v", path, errString(err))
+		t.Fatalf("%v: %v", sqlite3c, errString(err))
+	}
+
+	if n := len(cpp.lx.ungetBuffer); n != 0 {
+		t.Fatal(n)
 	}
 }
 
-func TestCPPSQLite(t *testing.T) {
-	const predef = `
-		#define HAVE_MALLOC_H 1
-		#define HAVE_MALLOC_USABLE_SIZE 1
-		#define HAVE_USLEEP 1
-		#define SQLITE_DEBUG 1
-		#define SQLITE_ENABLE_API_ARMOR 1
-		#define SQLITE_USE_URI 1
-		#define SQLITE_WITHOUT_MSIZE 1
-		`
-
-	testCPP(t, filepath.FromSlash("../../_sqlite/sqlite-amalgamation-3210000/sqlite3.c"), predef, []string{"@", ccir.LibcIncludePath}, []string{ccir.LibcIncludePath})
+func TestParseSQLite(t *testing.T) {
+	if _, err := parse(
+		token.NewFileSet(),
+		[]Source{
+			newStringSource("<builtin>", fmt.Sprintf(inj, runtime.GOARCH, runtime.GOOS, predef)),
+			newFileSource(sqlite3c),
+		},
+		[]string{"@", ccir.LibcIncludePath},
+		[]string{ccir.LibcIncludePath},
+		&tweaks{
+			enableEmptyStructs: true,
+		},
+	); err != nil {
+		t.Fatalf("%v", errString(err))
+	}
 }

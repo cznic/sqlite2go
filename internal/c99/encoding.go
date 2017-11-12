@@ -58,6 +58,7 @@ func init() {
 		(*ir.Int32Value)(nil),
 		(*ir.Int64Value)(nil),
 		(*ir.StringValue)(nil),
+		DirectDeclaratorCase(0),
 		ExprCase(0),
 		TypeKind(0),
 	} {
@@ -70,6 +71,8 @@ func init() {
 }
 
 var (
+	nopos xc.Token
+
 	idDefine  = dict.SID("define")
 	idDefined = dict.SID("defined")
 	idElif    = dict.SID("elif")
@@ -201,7 +204,19 @@ var (
 		STRINGLITERAL:     {},
 		TYPEDEF_NAME:      {},
 	}
+
+	followSetHasTypedefName = [len(yyParseTab)]bool{}
 )
+
+func init() {
+	for i, v := range yyFollow {
+		for _, v := range v {
+			if v == TYPEDEF_NAME {
+				followSetHasTypedefName[i] = true
+			}
+		}
+	}
+}
 
 func isUCNDigit(r rune) bool {
 	return int(r) < len(ucnDigits)<<bitShift && ucnDigits[uint(r)>>bitShift]&(1<<uint(r&bitMask)) != 0
