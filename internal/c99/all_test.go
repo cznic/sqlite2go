@@ -555,7 +555,7 @@ func TestCPPExpand(t *testing.T) {
 				return nil
 			}
 
-			t.Fatalf("should have failed: %s", path)
+			t.Fatalf("unexpected success: %s", path)
 		default:
 			if c.error() != nil {
 				t.Fatal(errString(err))
@@ -610,7 +610,7 @@ func (b *tokenBuffer) Bytes(fset *token.FileSet) []byte {
 }
 
 func TestPreprocessSQLite(t *testing.T) {
-	predef := fmt.Sprintf(inj, runtime.GOARCH, runtime.GOOS, predef)
+	builtin := fmt.Sprintf(inj, runtime.GOARCH, runtime.GOOS, predef)
 
 	model, err := newModel()
 	if err != nil {
@@ -626,7 +626,7 @@ func TestPreprocessSQLite(t *testing.T) {
 	cpp := newCPP(ctx)
 	cpp.includePaths = []string{"@", ccir.LibcIncludePath}
 	cpp.sysIncludePaths = []string{ccir.LibcIncludePath}
-	r, err := cpp.parse(newStringSource("<predef>", predef), newFileSource(sqlite3c))
+	r, err := cpp.parse(newStringSource("<builtin>", builtin), newFileSource(sqlite3c))
 	if err != nil {
 		t.Fatalf("%v: %v", sqlite3c, err)
 	}
@@ -646,18 +646,63 @@ func TestPreprocessSQLite(t *testing.T) {
 }
 
 func TestParseSQLite(t *testing.T) {
-	if _, err := parse(
-		token.NewFileSet(),
+	model, err := newModel()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, err := newContext(token.NewFileSet(), &tweaks{
+		enableEmptyStructs: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx.model = model
+	ctx.includePaths = []string{"@", ccir.LibcIncludePath}
+	ctx.sysIncludePaths = []string{ccir.LibcIncludePath}
+	if _, err := ctx.parse(
 		[]Source{
 			newStringSource("<builtin>", fmt.Sprintf(inj, runtime.GOARCH, runtime.GOOS, predef)),
 			newFileSource(sqlite3c),
 		},
-		[]string{"@", ccir.LibcIncludePath},
-		[]string{ccir.LibcIncludePath},
-		&tweaks{
-			enableEmptyStructs: true,
-		},
 	); err != nil {
 		t.Fatalf("%v", errString(err))
+	}
+}
+
+func TestTypeCheckSQLite(t *testing.T) {
+	model, err := newModel()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, err := newContext(token.NewFileSet(), &tweaks{
+		enableEmptyStructs: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx.model = model
+	ctx.includePaths = []string{"@", ccir.LibcIncludePath}
+	ctx.sysIncludePaths = []string{ccir.LibcIncludePath}
+	ast, err := ctx.parse(
+		[]Source{
+			newStringSource("<builtin>", fmt.Sprintf(inj, runtime.GOARCH, runtime.GOOS, predef)),
+			newFileSource(sqlite3c),
+		},
+	)
+	if err != nil {
+		t.Fatalf("%v", errString(err))
+	}
+
+	return //TODO-
+	if err := ast.check(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ctx.error(); err != nil {
+		t.Fatal(err)
 	}
 }

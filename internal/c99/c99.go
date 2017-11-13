@@ -7,15 +7,14 @@
 //go:generate golex -o scanner.go scanner.l
 
 //go:generate rm -f ast.go
-//go:generate yy -kind Case -o parser.y -astImport "\"github.com/cznic/xc\";\"go/token\";\"fmt\"" -prettyString PrettyString parser.yy
+//go:generate yy -kind Case -o parser.y -astImport "\"github.com/cznic/ir\";\"github.com/cznic/xc\";\"go/token\";\"fmt\"" -prettyString PrettyString parser.yy
 
 //go:generate rm -f parser.go
 //go:generate goyacc -o /dev/null -xegen xegen parser.y
 //go:generate goyacc -o parser.go -fs -xe xegen -dlvalf "%v" -dlval "PrettyString(lval.Token)" parser.y
 //go:generate rm -f xegen
 
-//go:generate rm -f enum_string.go
-//go:generate stringer -output enum_string.go -type=TypeKind,cond enum.go type.go
+//go:generate stringer -output enum_string.go -type=cond
 //go:generate sh -c "go test -run ^Example |fe"
 //go:generate gofmt -l -s -w .
 
@@ -89,6 +88,41 @@ func (c *context) error() error {
 	c.errors.Sort()
 	err := append(scanner.ErrorList(nil), c.errors...)
 	return err
+}
+
+func (c *context) parse(in []Source) (*TranslationUnit, error) {
+	cpp := newCPP(c)
+	r, err := cpp.parse(in...)
+	if err != nil {
+		return nil, err
+	}
+
+	lx, err := newLexer(c, "", 0, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	p := newTokenPipe(1024)
+	lx.tc = p
+
+	go func() {
+		defer p.close()
+
+		if err := cpp.eval(r, p); err != nil {
+			c.err(nopos, "%v", err)
+		}
+	}()
+
+	ok := lx.parse(TRANSLATION_UNIT)
+	if err := c.error(); err != nil || !ok {
+		go func() { // drain
+			for range p.ch {
+			}
+		}()
+		return nil, err
+	}
+
+	return lx.ast.(*TranslationUnit), nil
 }
 
 func (c *context) popScope() (old, new *scope) {
@@ -178,6 +212,22 @@ type scope struct {
 
 func newScope(parent *scope) *scope { return &scope{parent: parent} }
 
+func (s *scope) insert(c *context, d *Declarator) {
+	if s.m == nil {
+		s.m = map[int]*Declarator{}
+	}
+	nm := d.nm()
+	if ex := s.m[nm]; ex != nil {
+		if ex == d {
+			return
+		}
+
+		panic(c.position(d))
+	}
+
+	s.m[nm] = d
+}
+
 func (s *scope) predeclareTypedef(c *context, d *Declarator) {
 	if s.m == nil {
 		s.m = map[int]*Declarator{}
@@ -194,53 +244,4 @@ func (s *scope) lookup(nm int) *Declarator {
 		s = s.parent
 	}
 	return nil
-}
-
-func parse(fset *token.FileSet, in []Source, includePaths, sysIncludePaths []string, tweaks *tweaks) (*TranslationUnit, error) {
-	model, err := newModel()
-	if err != nil {
-		return nil, err
-	}
-
-	ctx, err := newContext(fset, tweaks)
-	if err != nil {
-		return nil, err
-	}
-
-	ctx.model = model
-	cpp := newCPP(ctx)
-	cpp.includePaths = includePaths
-	cpp.sysIncludePaths = sysIncludePaths
-	r, err := cpp.parse(in...)
-	if err != nil {
-		return nil, err
-	}
-
-	lx, err := newLexer(ctx, "", 0, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	p := newTokenPipe(1024)
-	lx.tc = p
-
-	go func() {
-		defer p.close()
-
-		if err := cpp.eval(r, p); err != nil {
-			ctx.err(nopos, "%v", err)
-		}
-	}()
-
-	if !lx.parse(TRANSLATION_UNIT) { // drain
-		go func() {
-			for range p.ch {
-			}
-		}()
-	}
-	if err := ctx.error(); err != nil {
-		return nil, err
-	}
-
-	return lx.ast.(*TranslationUnit), nil
 }

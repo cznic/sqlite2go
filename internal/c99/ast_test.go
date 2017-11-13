@@ -247,7 +247,7 @@ func ExampleDeclaration_case0() {
 }
 
 func ExampleDeclarationList_case0() {
-	fmt.Println(exampleAST(229, "\U00100001 auto a auto ; {"))
+	fmt.Println(exampleAST(230, "\U00100001 auto a auto ; {"))
 	// Output:
 	// &c99.DeclarationList{
 	// · Declaration: &c99.Declaration{
@@ -263,7 +263,7 @@ func ExampleDeclarationList_case0() {
 }
 
 func ExampleDeclarationList_case1() {
-	fmt.Println(exampleAST(230, "\U00100001 auto a auto ; auto ; {"))
+	fmt.Println(exampleAST(231, "\U00100001 auto a auto ; auto ; {"))
 	// Output:
 	// &c99.DeclarationList{
 	// · Declaration: &c99.Declaration{
@@ -291,13 +291,13 @@ func ExampleDeclarationList_case1() {
 }
 
 func ExampleDeclarationListOpt_case0() {
-	fmt.Println(exampleAST(231, "\U00100001 auto a {") == (*DeclarationListOpt)(nil))
+	fmt.Println(exampleAST(232, "\U00100001 auto a {") == (*DeclarationListOpt)(nil))
 	// Output:
 	// true
 }
 
 func ExampleDeclarationListOpt_case1() {
-	fmt.Println(exampleAST(232, "\U00100001 auto a auto ; {"))
+	fmt.Println(exampleAST(233, "\U00100001 auto a auto ; {"))
 	// Output:
 	// &c99.DeclarationListOpt{
 	// · DeclarationList: &c99.DeclarationList{
@@ -608,6 +608,7 @@ func ExampleDirectDeclarator_paren() {
 	// &c99.DirectDeclarator{
 	// · Case: DirectDeclaratorParen,
 	// · Declarator: &c99.Declarator{
+	// · · Embedded: true,
 	// · · DirectDeclarator: &c99.DirectDeclarator{
 	// · · · Case: DirectDeclaratorIdent,
 	// · · · Token: IDENTIFIER "a",
@@ -1816,7 +1817,7 @@ func ExampleExternalDeclaration_func() {
 }
 
 func ExampleFunctionBody_case0() {
-	fmt.Println(exampleAST(228, "\U00100001 auto a { }"))
+	fmt.Println(exampleAST(229, "\U00100001 auto a { }"))
 	// Output:
 	// &c99.FunctionBody{
 	// · CompoundStmt: &c99.CompoundStmt{
@@ -1827,7 +1828,7 @@ func ExampleFunctionBody_case0() {
 }
 
 func ExampleFunctionDefinition_case0() {
-	fmt.Println(exampleAST(227, "\U00100001 auto a { }"))
+	fmt.Println(exampleAST(228, "\U00100001 auto a { }"))
 	// Output:
 	// &c99.FunctionDefinition{
 	// · DeclarationSpecifiers: &c99.DeclarationSpecifiers{

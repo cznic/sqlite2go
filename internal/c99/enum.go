@@ -4,44 +4,6 @@
 
 package c99
 
-var (
-	_ Type = TypeKind(0)
-)
-
-// TypeKind represents a particular type kind.
-type TypeKind int
-
-// Kind implements Type.
-func (k TypeKind) Kind() TypeKind { return k }
-
-// TypeKind values.
-const (
-	_ TypeKind = iota
-
-	Bool
-	Char
-	Int
-	Long
-	LongLong
-	SChar
-	Short
-	UChar
-	UInt
-	ULong
-	ULongLong
-	UShort
-
-	Float
-	Double
-	LongDouble
-
-	FloatComplex
-	DoubleComplex
-	LongDoubleComplex
-
-	maxTypeKind
-)
-
 type cond int
 
 const (

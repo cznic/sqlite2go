@@ -241,7 +241,7 @@ import (
 				}
                         |	TRANSLATION_UNIT TranslationUnit
 				{
-					lx.ast = $2
+					lx.ast = $2.(*TranslationUnit).reverse()
 				}
 
                         // [0]6.4.4.3
@@ -347,7 +347,7 @@ import (
                         // [0]6.7
 /*yy:case Func       */ DeclarationSpecifiers:
                         	FunctionSpecifier DeclarationSpecifiersOpt
-/*yy:case Storage   */ |	StorageClassSpecifier DeclarationSpecifiersOpt
+/*yy:case Storage    */ |	StorageClassSpecifier DeclarationSpecifiersOpt
 /*yy:case Qualifier  */ |	TypeQualifier DeclarationSpecifiersOpt
 /*yy:case Specifier  */ |	TypeSpecifier DeclarationSpecifiersOpt
 
@@ -400,6 +400,7 @@ import (
 
                         // [0]6.7.2.1
 			//yy:field	scope	*scope
+			//yy:field	typ	Type
 /*yy:case Tag        */ StructOrUnionSpecifier:
                         	StructOrUnion IDENTIFIER
 /*yy:case Empty      */ |	StructOrUnion IdentifierOpt '{' '}'
@@ -480,10 +481,16 @@ import (
 				"inline"
 
                         // [0]6.7.5
-			//yy:field	embedded	bool // [0]6.7.5-3: not a full declarator
+			//yy:field	DeclarationSpecifier	*DeclarationSpecifier	// Nil for embedded declarators.
+			//yy:field	Embedded		bool			// [0]6.7.5-3: Not a full declarator.
+			//yy:field	Initializer		ir.Value		// Only when part of an InitDeclarator.
+			//yy:field	Type			Type			// Declared type.
+			//yy:field	TypeQualifiers		[]*TypeQualifier	// From the PointerOpt production, if any.
+			//yy:field	scope			*scope
                         Declarator:
                         	PointerOpt DirectDeclarator
 				{
+					lhs.scope = lx.scope
 					if lx.scope.typedef {
 						delete(lx.scope.m, lhs.DirectDeclarator.nm())
 						lx.scope.predeclareTypedef(lx.context, lhs)
@@ -499,7 +506,7 @@ import (
 /*yy:case Paren      */ DirectDeclarator:
                         	'(' Declarator ')'
 				{
-					lhs.Declarator.embedded = true
+					lhs.Declarator.Embedded = true
 				}
 /*yy:case IdentList  */ |	DirectDeclarator '('
 				{
@@ -584,6 +591,9 @@ import (
                         	SpecifierQualifierList AbstractDeclaratorOpt
 
                         // [0]6.7.6
+			//yy:field	DeclarationSpecifier	*DeclarationSpecifier
+			//yy:field	Type			Type
+			//yy:field	TypeQualifiers		[]*TypeQualifier
 /*yy:case Pointer    */ AbstractDeclarator:
                         	Pointer
 /*yy:case Abstract   */ |	PointerOpt DirectAbstractDeclarator
@@ -711,10 +721,11 @@ import (
 
                         // [0]6.9.1
 			FunctionDefinition:
-                        	DeclarationSpecifiers Declarator DeclarationListOpt FunctionBody
+				DeclarationSpecifiers Declarator
 				{
 					lx.scope.typedef = false
 				}
+				DeclarationListOpt FunctionBody
 
 			FunctionBody:
 				CompoundStmt

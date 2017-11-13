@@ -8,6 +8,7 @@ package c99
 
 import (
 	"fmt"
+	"github.com/cznic/ir"
 	"github.com/cznic/xc"
 	"go/token"
 )
@@ -39,6 +40,9 @@ func (n AbstractDeclaratorCase) String() string {
 //	        Pointer                              // Case AbstractDeclaratorPointer
 //	|       PointerOpt DirectAbstractDeclarator  // Case AbstractDeclaratorAbstract
 type AbstractDeclarator struct {
+	DeclarationSpecifier     *DeclarationSpecifier
+	Type                     Type
+	TypeQualifiers           []*TypeQualifier
 	Case                     AbstractDeclaratorCase
 	DirectAbstractDeclarator *DirectAbstractDeclarator
 	Pointer                  *Pointer
@@ -583,9 +587,14 @@ func (n *DeclarationSpecifiersOpt) Pos() token.Pos {
 //	Declarator:
 //	        PointerOpt DirectDeclarator  // Case 0
 type Declarator struct {
-	embedded         bool // [0]6.7.5-3: not a full declarator
-	DirectDeclarator *DirectDeclarator
-	PointerOpt       *PointerOpt
+	DeclarationSpecifier *DeclarationSpecifier // Nil for embedded declarators.
+	Embedded             bool                  // [0]6.7.5-3: Not a full declarator.
+	Initializer          ir.Value              // Only when part of an InitDeclarator.
+	Type                 Type                  // Declared type.
+	TypeQualifiers       []*TypeQualifier      // From the PointerOpt production, if any.
+	scope                *scope
+	DirectDeclarator     *DirectDeclarator
+	PointerOpt           *PointerOpt
 }
 
 func (n *Declarator) fragment() interface{} { return n }
@@ -3011,6 +3020,7 @@ func (n StructOrUnionSpecifierCase) String() string {
 //	|       StructOrUnion IdentifierOpt '{' StructDeclarationList '}'  // Case StructOrUnionSpecifierDefine
 type StructOrUnionSpecifier struct {
 	scope                 *scope
+	typ                   Type
 	Case                  StructOrUnionSpecifierCase
 	IdentifierOpt         *IdentifierOpt
 	StructDeclarationList *StructDeclarationList

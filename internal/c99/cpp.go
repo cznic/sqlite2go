@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/cznic/golex/lex"
 	"github.com/cznic/ir"
 	"github.com/cznic/mathutil"
 	"github.com/cznic/xc"
@@ -428,6 +429,9 @@ func (c *cpp) expand(r tokenReader, w tokenWriter, cs conds) conds {
 				t.Rune = SENTINEL
 				r.unget(t)
 				toks := c.subst(m, nil)
+				for i, v := range toks {
+					toks[i].Char = lex.NewChar(t.Pos(), v.Rune)
+				}
 				c.hideSet[nm]++
 				r.ungets(c.sanitize(toks)...)
 				continue
@@ -460,6 +464,9 @@ func (c *cpp) expand(r tokenReader, w tokenWriter, cs conds) conds {
 				t.Rune = SENTINEL
 				sentinels = append([]xc.Token{t}, sentinels...)
 				toks := append(c.subst(m, ap), sentinels...)
+				for i, v := range toks {
+					toks[i].Char = lex.NewChar(t.Pos(), v.Rune)
+				}
 				c.hideSet[nm]++
 				r.ungets(c.sanitize(toks)...)
 				continue
