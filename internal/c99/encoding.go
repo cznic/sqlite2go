@@ -58,6 +58,7 @@ func init() {
 		(*ir.Int32Value)(nil),
 		(*ir.Int64Value)(nil),
 		(*ir.StringValue)(nil),
+		(*PointerType)(nil), //TODO- ?
 		DirectDeclaratorCase(0),
 		ExprCase(0),
 		TypeKind(0),
@@ -85,6 +86,7 @@ var (
 	idInclude = dict.SID("include")
 	idOne     = dict.SID("1")
 	idPragma  = dict.SID("pragma")
+	idSizeT   = dict.SID("size_t")
 	idUndef   = dict.SID("undef")
 	idVaArgs  = dict.SID("__VA_ARGS__")
 	idWarning = dict.SID("warning")

@@ -58,6 +58,7 @@ const (
 	LongDoubleComplex
 
 	Array
+	Enum
 	EnumTag
 	Function
 	Ptr
@@ -110,6 +111,8 @@ func (k TypeKind) String() string {
 		return "long double complex"
 	case Array:
 		return "array"
+	case Enum:
+		return "enum"
 	case EnumTag:
 		return "enum tag"
 	case Function:
@@ -140,7 +143,7 @@ type Type interface {
 // ArrayType type represents an array type.
 type ArrayType struct {
 	Item           Type
-	Expr           *Expr
+	Size           *Operand
 	TypeQualifiers []*TypeQualifier // Eg. double a[restrict 3][5], see 6.7.5.3-21.
 }
 
@@ -148,42 +151,45 @@ type ArrayType struct {
 func (t *ArrayType) Kind() TypeKind { return Array }
 
 func (t *ArrayType) String() string {
-	var buf bytes.Buffer
-	buf.WriteString(t.Item.String())
-	buf.WriteByte('[')
-	for range t.TypeQualifiers {
-		panic("TODO")
+	switch {
+	case t.Size != nil && t.Size.Value != nil:
+		return fmt.Sprintf("array %v of %v", t.Size.Value, t.Item)
+	default:
+		return fmt.Sprintf("array of %v", t.Item)
 	}
-	if t.Expr != nil && t.Expr.Operand.Value != nil {
-		buf.WriteString(t.Expr.Operand.Value.(fmt.Stringer).String())
-	}
-	buf.WriteByte(']')
-	return buf.String()
+}
+
+// EnumMember describes a enumeration member
+type EnumMember struct {
+	Name    int
+	Operand *Operand
+}
+
+// EnumType represents an enum type.
+type EnumType struct {
+	Enums []EnumMember
+}
+
+// Kind implements Type.
+func (t *EnumType) Kind() TypeKind { return Enum }
+func (t *EnumType) String() string { panic("TODO169b") }
+
+// Field represents a struct/union field.
+type Field struct {
+	Name int
+	Type Type
 }
 
 // FunctionType represents a function type.
 type FunctionType struct {
-	Params   []*ParameterDeclaration
+	Params   []Type
 	Result   Type
 	Variadic bool
 }
 
 // Kind implements Type.
 func (t *FunctionType) Kind() TypeKind { return Function }
-
-func (t *FunctionType) String() string {
-	var buf bytes.Buffer
-	buf.WriteString(t.Result.String())
-	buf.WriteByte('(')
-	for i, v := range t.Params {
-		if i != 0 {
-			buf.WriteString(", ")
-		}
-		buf.WriteString(v.Declarator.Type.String())
-	}
-	buf.WriteByte(')')
-	return buf.String()
-}
+func (t *FunctionType) String() string { panic("TODO159") }
 
 // NamedType represents a type described by a typedef name.
 type NamedType struct {
@@ -193,8 +199,7 @@ type NamedType struct {
 
 // Kind implements Type.
 func (t *NamedType) Kind() TypeKind { return TypedefName }
-
-func (t *NamedType) String() string { return string(dict.S(t.Name)) }
+func (t *NamedType) String() string { panic("TODO169") }
 
 // PointerType represents a pointer type.
 type PointerType struct {
@@ -203,25 +208,54 @@ type PointerType struct {
 
 // Kind implements Type.
 func (t *PointerType) Kind() TypeKind { return Ptr }
+func (t *PointerType) String() string { return fmt.Sprintf("pointer to %v", t.Item) }
 
-func (t *PointerType) String() string { return t.Item.String() + "*" }
-
-// StructType type represents a struct type.
+// StructType represents a struct type.
 type StructType struct {
-	Fields []*StructDeclarator
+	Fields []Field
 }
 
 // Kind implements Type.
 func (t *StructType) Kind() TypeKind { return Struct }
-
 func (t *StructType) String() string {
 	var buf bytes.Buffer
 	buf.WriteString("struct{")
 	for i, v := range t.Fields {
 		if i != 0 {
-			buf.WriteString(", ")
+			buf.WriteByte(';')
 		}
-		buf.WriteString(v.string())
+		fmt.Fprintf(&buf, "%s %v", dict.S(v.Name), v.Type)
+	}
+	buf.WriteByte('}')
+	return buf.String()
+}
+
+// TaggedStruct represents a struct type described by a tag name.
+type TaggedStruct struct {
+	Tag int
+	Type
+}
+
+// Kind implements Type.
+func (t *TaggedStruct) Kind() TypeKind { return StructTag }
+func (t *TaggedStruct) String() string { return fmt.Sprintf("struct %s", dict.S(t.Tag)) }
+
+// UnionType represents a union type.
+type UnionType struct {
+	Fields []Field
+}
+
+// Kind implements Type.
+func (t *UnionType) Kind() TypeKind { return Union }
+
+func (t *UnionType) String() string {
+	var buf bytes.Buffer
+	buf.WriteString("union{")
+	for i, v := range t.Fields {
+		if i != 0 {
+			buf.WriteByte(';')
+		}
+		fmt.Fprintf(&buf, "%s %v", dict.S(v.Name), v.Type)
 	}
 	buf.WriteByte('}')
 	return buf.String()

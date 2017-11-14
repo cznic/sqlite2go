@@ -14,7 +14,7 @@
 //go:generate goyacc -o parser.go -fs -xe xegen -dlvalf "%v" -dlval "PrettyString(lval.Token)" parser.y
 //go:generate rm -f xegen
 
-//go:generate stringer -output enum_string.go -type=cond
+//go:generate stringer -output enum_string.go -type=cond enum.go
 //go:generate sh -c "go test -run ^Example |fe"
 //go:generate gofmt -l -s -w .
 
@@ -33,6 +33,7 @@ import (
 	"go/token"
 	"io"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -131,6 +132,20 @@ func (c *context) popScope() (old, new *scope) {
 	return old, c.scope
 }
 
+func (c *context) sizeof(t Type) *Operand {
+	n := c.model.Sizeof(t)
+	d := c.scope.lookupIdent(idSizeT)
+	if d == nil {
+		return newIntConstOperand(c, nopos, uint64(n), UInt, ULong, ULongLong)
+	}
+
+	if d.Type.Kind() != TypedefName {
+		panic(d.Type)
+	}
+
+	panic(d.Type.(*NamedType).Type)
+}
+
 func (c *context) toC(ch rune, val int) rune {
 	if ch != IDENTIFIER {
 		return ch
@@ -205,43 +220,102 @@ func (s *stringSource) ReadCloser() (io.ReadCloser, error) {
 }
 
 type scope struct {
-	m       map[int]*Declarator // name: *Declarator
-	parent  *scope
+	enumTags   map[int]Type        // name: Type
+	idents     map[int]*Declarator // name: *Declarator //TODO Type
+	parent     *scope
+	structTags map[int]*StructOrUnionSpecifier // name: *StructOrUnionSpecifier //TODO Type
+	typedefs   map[int]struct{}
+
 	typedef bool
 }
 
 func newScope(parent *scope) *scope { return &scope{parent: parent} }
 
-func (s *scope) insert(c *context, d *Declarator) {
-	if s.m == nil {
-		s.m = map[int]*Declarator{}
+func (s *scope) insertEnumTag(ctx *context, nm int, t Type) {
+	if s.enumTags == nil {
+		s.enumTags = map[int]Type{}
+	}
+	if ex := s.enumTags[nm]; ex != nil {
+		if ex == t {
+			return
+		}
+
+		panic("TODO")
+	}
+
+	s.enumTags[nm] = t
+}
+
+func (s *scope) insertIdent(ctx *context, d *Declarator) {
+	if s.idents == nil {
+		s.idents = map[int]*Declarator{}
 	}
 	nm := d.nm()
-	if ex := s.m[nm]; ex != nil {
+	if ex := s.idents[nm]; ex != nil {
 		if ex == d {
 			return
 		}
 
-		panic(c.position(d))
+		if ex.DeclarationSpecifier.isTypedef() && d.DeclarationSpecifier.isTypedef() && ex.Type.String() == d.Type.String() { //TODO not correct
+			return
+		}
+
+		panic(fmt.Errorf("%v: ex %v, %v: new %v", ctx.position(ex), ex.Type, ctx.position(d), d.Type))
 	}
 
-	s.m[nm] = d
+	s.idents[nm] = d
 }
 
-func (s *scope) predeclareTypedef(c *context, d *Declarator) {
-	if s.m == nil {
-		s.m = map[int]*Declarator{}
+func (s *scope) insertStructTag(ctx *context, ss *StructOrUnionSpecifier) {
+	if s.structTags == nil {
+		s.structTags = map[int]*StructOrUnionSpecifier{}
 	}
-	s.m[d.nm()] = d
+	nm := ss.IdentifierOpt.Token.Val
+	if ex := s.structTags[nm]; ex != nil {
+		if ex == ss {
+			return
+		}
+
+		panic(ctx.position(ss))
+	}
+
+	s.structTags[nm] = ss
 }
 
-func (s *scope) lookup(nm int) *Declarator {
+func (s *scope) lookupIdent(nm int) *Declarator {
 	for s != nil {
-		if d := s.m[nm]; d != nil {
+		if d := s.idents[nm]; d != nil {
 			return d
 		}
 
 		s = s.parent
 	}
 	return nil
+}
+
+func (s *scope) isTypedef(nm int) bool {
+	for s != nil {
+		if _, ok := s.typedefs[nm]; ok {
+			return true
+		}
+
+		s = s.parent
+	}
+	return false
+}
+
+func (s *scope) insertTypedef(ctx *context, d *Declarator) {
+	if s.typedefs == nil {
+		s.typedefs = map[int]struct{}{}
+	}
+	s.typedefs[d.nm()] = struct{}{}
+}
+
+func (s *scope) String() string {
+	var a []string
+	for _, v := range s.idents {
+		a = append(a, string(dict.S(v.nm())))
+	}
+	sort.Strings(a)
+	return "{" + strings.Join(a, ", ") + "}"
 }

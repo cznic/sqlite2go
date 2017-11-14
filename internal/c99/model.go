@@ -47,8 +47,18 @@ func newModel() (m Model, err error) {
 			FloatComplex:      {8, 8, 4},
 			DoubleComplex:     {8, 8, 4},
 			LongDoubleComplex: {8, 8, 4},
+
+			Ptr: {8, 8, 8},
 		}, nil
 	default:
 		return nil, fmt.Errorf("unknown/unsupported architecture %s", arch)
 	}
+}
+
+func (m Model) Sizeof(t Type) int64 {
+	if x, ok := m[t.Kind()]; ok {
+		return int64(x.Size)
+	}
+
+	panic(t)
 }

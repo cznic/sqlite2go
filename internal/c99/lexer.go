@@ -161,7 +161,7 @@ func (l *lexer) Lex(lval *yySymType) (r int) {
 			break
 		}
 
-		if l.scope.lookup(lval.Token.Val) != nil {
+		if l.scope.isTypedef(lval.Token.Val) {
 			// https://en.wikipedia.org/wiki/The_lexer_hack
 			lval.Token.Rune = TYPEDEF_NAME
 		}

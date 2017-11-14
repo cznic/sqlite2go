@@ -339,6 +339,7 @@ func (n *CommaOpt) Pos() token.Pos {
 //	CompoundStmt:
 //	        '{' BlockItemListOpt '}'  // Case 0
 type CompoundStmt struct {
+	scope            *scope
 	BlockItemListOpt *BlockItemListOpt
 	Token            xc.Token
 	Token2           xc.Token
@@ -937,7 +938,7 @@ func (n DirectDeclaratorCase) String() string {
 //	|       DirectDeclarator '[' TypeQualifierListOpt ExprOpt ']'        // Case DirectDeclaratorArray
 //	|       IDENTIFIER                                                   // Case DirectDeclaratorIdent
 type DirectDeclarator struct {
-	scope                *scope
+	paramScope           *scope
 	Case                 DirectDeclaratorCase
 	Declarator           *Declarator
 	DirectDeclarator     *DirectDeclarator
@@ -1002,6 +1003,7 @@ func (n EnumSpecifierCase) String() string {
 //	        "enum" IDENTIFIER                                     // Case EnumSpecifierTag
 //	|       "enum" IdentifierOpt '{' EnumeratorList CommaOpt '}'  // Case EnumSpecifierDefine
 type EnumSpecifier struct {
+	scope          *scope
 	Case           EnumSpecifierCase
 	CommaOpt       *CommaOpt
 	EnumeratorList *EnumeratorList
@@ -1396,6 +1398,7 @@ func (n ExprCase) String() string {
 //	|       STRINGLITERAL                                      // Case ExprString
 type Expr struct {
 	Operand             *Operand
+	scope               *scope
 	ArgumentExprListOpt *ArgumentExprListOpt
 	Case                ExprCase
 	CommaOpt            *CommaOpt
@@ -2145,6 +2148,7 @@ func (n JumpStmtCase) String() string {
 //	|       "goto" IDENTIFIER ';'     // Case JumpStmtGoto
 //	|       "return" ExprListOpt ';'  // Case JumpStmtReturn
 type JumpStmt struct {
+	ReturnOp    *Operand
 	Case        JumpStmtCase
 	ExprListOpt *ExprListOpt
 	Token       xc.Token

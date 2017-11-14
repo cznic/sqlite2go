@@ -79,7 +79,7 @@ var (
 // result, whose type domain is the type domain of the operands if they are the
 // same, and complex otherwise. This pattern is called the usual arithmetic
 // conversions:
-func usualArithmeticConversions(ctx *context, a, b *Operand) (c, d *Operand) {
+func usualArithmeticConversions(ctx *context, a, b *Operand) (*Operand, *Operand) {
 	if !a.isArithmeticType() || !b.isArithmeticType() {
 		panic("TODO")
 	}
@@ -144,6 +144,19 @@ func usualArithmeticConversions(ctx *context, a, b *Operand) (c, d *Operand) {
 		return a.convertTo(ctx, t), b.convertTo(ctx, t)
 	}
 
+	// Otherwise, if the operand that has unsigned integer type has rank
+	// greater or equal to the rank of the type of the other operand, then
+	// the operand with signed integer type is converted to the type of the
+	// operand with unsigned integer type.
+	switch {
+	case a.isSigned(): // b is unsigned
+		if intConvRank[b.Type.Kind()] >= intConvRank[a.Type.Kind()] {
+			return a.convertTo(ctx, b.Type), b
+		}
+	default:
+		panic(fmt.Errorf("TODO %v %v", a, b))
+	}
+
 	panic(fmt.Errorf("TODO %v %v", a, b))
 }
 
@@ -166,19 +179,20 @@ func newIntConstOperand(c *context, n Node, v uint64, t ...TypeKind) (r *Operand
 	return &Operand{Type: Undefined}
 }
 
+func (o *Operand) String() string         { return fmt.Sprintf("%v %v", o.Type, o.Value) }
 func (o *Operand) isArithmeticType() bool { return isArithmeticType[o.Type.Kind()] }
 func (o *Operand) isIntegerType() bool    { return intConvRank[o.Type.Kind()] != 0 }
 func (o *Operand) isSigned() bool         { return isSigned[o.Type.Kind()] }
 
-func (o *Operand) add(ctx *context, w *Operand) (r *Operand) {
-	o, w = usualArithmeticConversions(ctx, o, w)
-	if o.Value == nil || w.Value == nil {
+func (o *Operand) add(ctx *context, p *Operand) (r *Operand) {
+	o, p = usualArithmeticConversions(ctx, o, p)
+	if o.Value == nil || p.Value == nil {
 		return &Operand{Type: o.Type}
 	}
 
 	switch x := o.Value.(type) {
 	case *ir.Int64Value:
-		return (&Operand{o.Type, &ir.Int64Value{Value: x.Value + w.Value.(*ir.Int64Value).Value}}).normalize(ctx)
+		return (&Operand{o.Type, &ir.Int64Value{Value: x.Value + p.Value.(*ir.Int64Value).Value}}).normalize(ctx)
 	default:
 		panic(fmt.Errorf("TODO %T", x))
 	}
@@ -198,6 +212,8 @@ func (o *Operand) convertTo(ctx *context, t Type) *Operand {
 		switch t.Kind() {
 		case Long:
 			return &Operand{t, o.Value}
+		case UInt:
+			return (&Operand{t, o.Value}).normalize(ctx)
 		default:
 			panic(fmt.Errorf("%v -> %v", o, t))
 		}
@@ -206,17 +222,34 @@ func (o *Operand) convertTo(ctx *context, t Type) *Operand {
 	}
 }
 
-func (o *Operand) eq(ctx *context, w *Operand) (r *Operand) {
+func (o *Operand) div(ctx *context, p *Operand) (r *Operand) {
+	o, p = usualArithmeticConversions(ctx, o, p)
+	if o.Value == nil || p.Value == nil {
+		return &Operand{Type: o.Type}
+	}
+
+	if p.isZero() {
+		panic("TODO")
+	}
+	switch x := o.Value.(type) {
+	case *ir.Int64Value:
+		return (&Operand{o.Type, &ir.Int64Value{Value: x.Value / p.Value.(*ir.Int64Value).Value}}).normalize(ctx)
+	default:
+		panic(fmt.Errorf("TODO %T", x))
+	}
+}
+
+func (o *Operand) eq(ctx *context, p *Operand) (r *Operand) {
 	r = &Operand{Type: Int}
-	if o.Value == nil || w.Value == nil {
+	if o.Value == nil || p.Value == nil {
 		return r
 	}
 
-	o, w = usualArithmeticConversions(ctx, o, w)
+	o, p = usualArithmeticConversions(ctx, o, p)
 	switch x := o.Value.(type) {
 	case *ir.Int64Value:
 		var val int64
-		if x.Value == w.Value.(*ir.Int64Value).Value {
+		if x.Value == p.Value.(*ir.Int64Value).Value {
 			val = 1
 		}
 		r.Value = &ir.Int64Value{Value: val}
@@ -226,19 +259,19 @@ func (o *Operand) eq(ctx *context, w *Operand) (r *Operand) {
 	return r
 }
 
-func (o *Operand) ge(ctx *context, w *Operand) (r *Operand) {
+func (o *Operand) ge(ctx *context, p *Operand) (r *Operand) {
 	r = &Operand{Type: Int}
-	if o.Value == nil || w.Value == nil {
+	if o.Value == nil || p.Value == nil {
 		return r
 	}
 
-	o, w = usualArithmeticConversions(ctx, o, w)
+	o, p = usualArithmeticConversions(ctx, o, p)
 	switch x := o.Value.(type) {
 	case *ir.Int64Value:
 		var val int64
 		switch {
 		case o.isSigned():
-			if x.Value >= w.Value.(*ir.Int64Value).Value {
+			if x.Value >= p.Value.(*ir.Int64Value).Value {
 				val = 1
 			}
 		default:
@@ -251,19 +284,19 @@ func (o *Operand) ge(ctx *context, w *Operand) (r *Operand) {
 	return r
 }
 
-func (o *Operand) gt(ctx *context, w *Operand) (r *Operand) {
+func (o *Operand) gt(ctx *context, p *Operand) (r *Operand) {
 	r = &Operand{Type: Int}
-	if o.Value == nil || w.Value == nil {
+	if o.Value == nil || p.Value == nil {
 		return r
 	}
 
-	o, w = usualArithmeticConversions(ctx, o, w)
+	o, p = usualArithmeticConversions(ctx, o, p)
 	switch x := o.Value.(type) {
 	case *ir.Int64Value:
 		var val int64
 		switch {
 		case o.isSigned():
-			if x.Value > w.Value.(*ir.Int64Value).Value {
+			if x.Value > p.Value.(*ir.Int64Value).Value {
 				val = 1
 			}
 		default:
@@ -276,19 +309,23 @@ func (o *Operand) gt(ctx *context, w *Operand) (r *Operand) {
 	return r
 }
 
-func (o *Operand) le(ctx *context, w *Operand) (r *Operand) {
+func (o *Operand) isScalarType() bool { // [0]6.2.5-21
+	return o.isArithmeticType() || o.Type.Kind() == Ptr || o.Type.Kind() == Array
+}
+
+func (o *Operand) le(ctx *context, p *Operand) (r *Operand) {
 	r = &Operand{Type: Int}
-	if o.Value == nil || w.Value == nil {
+	if o.Value == nil || p.Value == nil {
 		return r
 	}
 
-	o, w = usualArithmeticConversions(ctx, o, w)
+	o, p = usualArithmeticConversions(ctx, o, p)
 	switch x := o.Value.(type) {
 	case *ir.Int64Value:
 		var val int64
 		switch {
 		case o.isSigned():
-			if x.Value <= w.Value.(*ir.Int64Value).Value {
+			if x.Value <= p.Value.(*ir.Int64Value).Value {
 				val = 1
 			}
 		default:
@@ -301,23 +338,25 @@ func (o *Operand) le(ctx *context, w *Operand) (r *Operand) {
 	return r
 }
 
-func (o *Operand) lt(ctx *context, w *Operand) (r *Operand) {
+func (o *Operand) lt(ctx *context, p *Operand) (r *Operand) {
 	r = &Operand{Type: Int}
-	if o.Value == nil || w.Value == nil {
+	if o.Value == nil || p.Value == nil {
 		return r
 	}
 
-	o, w = usualArithmeticConversions(ctx, o, w)
+	o, p = usualArithmeticConversions(ctx, o, p)
 	switch x := o.Value.(type) {
 	case *ir.Int64Value:
 		var val int64
 		switch {
 		case o.isSigned():
-			if x.Value < w.Value.(*ir.Int64Value).Value {
+			if x.Value < p.Value.(*ir.Int64Value).Value {
 				val = 1
 			}
 		default:
-			panic("TODO")
+			if uint64(x.Value) < uint64(p.Value.(*ir.Int64Value).Value) {
+				val = 1
+			}
 		}
 		r.Value = &ir.Int64Value{Value: val}
 	default:
@@ -326,17 +365,31 @@ func (o *Operand) lt(ctx *context, w *Operand) (r *Operand) {
 	return r
 }
 
-func (o *Operand) ne(ctx *context, w *Operand) (r *Operand) {
+func (o *Operand) mul(ctx *context, p *Operand) (r *Operand) {
+	o, p = usualArithmeticConversions(ctx, o, p)
+	if o.Value == nil || p.Value == nil {
+		return &Operand{Type: o.Type}
+	}
+
+	switch x := o.Value.(type) {
+	case *ir.Int64Value:
+		return (&Operand{o.Type, &ir.Int64Value{Value: x.Value * p.Value.(*ir.Int64Value).Value}}).normalize(ctx)
+	default:
+		panic(fmt.Errorf("TODO %T", x))
+	}
+}
+
+func (o *Operand) ne(ctx *context, p *Operand) (r *Operand) {
 	r = &Operand{Type: Int}
-	if o.Value == nil || w.Value == nil {
+	if o.Value == nil || p.Value == nil {
 		return r
 	}
 
-	o, w = usualArithmeticConversions(ctx, o, w)
+	o, p = usualArithmeticConversions(ctx, o, p)
 	switch x := o.Value.(type) {
 	case *ir.Int64Value:
 		var val int64
-		if x.Value != w.Value.(*ir.Int64Value).Value {
+		if x.Value != p.Value.(*ir.Int64Value).Value {
 			val = 1
 		}
 		r.Value = &ir.Int64Value{Value: val}
@@ -361,7 +414,7 @@ func (o *Operand) normalize(ctx *context) *Operand {
 					x.Value = val & math.MaxUint32
 				}
 			default:
-				panic("TODO")
+				x.Value = val & math.MaxUint32
 			}
 		default:
 			panic(fmt.Errorf("TODO %v", sz))
@@ -399,10 +452,10 @@ func (o *Operand) unaryMinus(ctx *context) *Operand {
 // integer promotions.
 func (o *Operand) integerPromotion() *Operand {
 	switch o.Type.Kind() {
-	case Int, Long:
+	case Int, Long, UInt:
 		return o
 	default:
-		panic(o)
+		panic(o.Type)
 	}
 }
 

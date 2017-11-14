@@ -259,6 +259,7 @@ import (
 
                         // [0]6.5.16
 			//yy:field	Operand	*Operand
+			//yy:field	scope	*scope
 /*yy:case PreInc     */ Expr:
                         	"++" Expr
 /*yy:case PreDec     */ |	"--" Expr
@@ -312,6 +313,9 @@ import (
 /*yy:case Or         */ |	Expr '|' Expr
 /*yy:case Float      */ |	FLOATCONST
 /*yy:case Ident      */ |	IDENTIFIER %prec NOSEMI
+				{
+					lhs.scope = lx.scope
+				}
 /*yy:case Int        */ |	INTCONST
 /*yy:case LChar      */ |	LONGCHARCONST
 /*yy:case LString    */ |	LONGSTRINGLITERAL
@@ -456,9 +460,17 @@ import (
                         |	','
 
                         // [0]6.7.2.2
+			//yy:field	scope	*scope
 /*yy:case Tag        */ EnumSpecifier:
                         	"enum" IDENTIFIER
-/*yy:case Define     */ |	"enum" IdentifierOpt '{' EnumeratorList  CommaOpt '}'
+/*yy:case Define     */ |	"enum" IdentifierOpt '{'
+			{
+				lx.newScope()
+			}
+			EnumeratorList  CommaOpt '}'
+			{
+				lhs.scope, _ = lx.popScope()
+			}
 
                         // [0]6.7.2.2
                         EnumeratorList:
@@ -492,8 +504,8 @@ import (
 				{
 					lhs.scope = lx.scope
 					if lx.scope.typedef {
-						delete(lx.scope.m, lhs.DirectDeclarator.nm())
-						lx.scope.predeclareTypedef(lx.context, lhs)
+						delete(lx.scope.idents, lhs.DirectDeclarator.nm())
+						lx.scope.insertTypedef(lx.context, lhs)
 					}
 				}
 
@@ -502,7 +514,7 @@ import (
                         |	Declarator
 
                         // [0]6.7.5
-			//yy:field	scope	*scope
+			//yy:field	paramScope	*scope
 /*yy:case Paren      */ DirectDeclarator:
                         	'(' Declarator ')'
 				{
@@ -514,7 +526,7 @@ import (
 				}
 				IdentifierListOpt ')'
 				{
-					lhs.scope, _ = lx.popScope()
+					lhs.paramScope, _ = lx.popScope()
 				}
 /*yy:case ParamList  */ |	DirectDeclarator '('
 				{
@@ -522,7 +534,7 @@ import (
 				}
 				ParameterTypeList ')'
 				{
-					lhs.scope, _ = lx.popScope()
+					lhs.paramScope, _ = lx.popScope()
 				}
 /*yy:case ArraySize  */ |	DirectDeclarator '[' "static" TypeQualifierListOpt Expr ']'
 /*yy:case ArraySize2 */ |	DirectDeclarator '[' TypeQualifierList "static" Expr ']'
@@ -660,6 +672,7 @@ import (
 /*yy:case Label      */ |	IDENTIFIER ':' Stmt
 
                         // [0]6.8.2
+			//yy:field	scope	*scope
                         CompoundStmt:
 				'{'
 				{
@@ -667,7 +680,7 @@ import (
 				}
 				BlockItemListOpt '}'
 				{
-					lx.popScope()
+					lhs.scope, _ = lx.popScope()
 				}
 
                         // [0]6.8.2
@@ -702,6 +715,7 @@ import (
 /*yy:case While      */ |	"while" '(' ExprList ')' Stmt
 
                         // [0]6.8.6
+			//yy:field	ReturnOp	*Operand
 /*yy:case Break      */ JumpStmt:
                         	"break" ';'
 /*yy:case Continue   */ |	"continue" ';'
