@@ -162,16 +162,21 @@ func usualArithmeticConversions(ctx *context, a, b *Operand) (*Operand, *Operand
 
 // Operand represents the type and optionally the value of an expression.
 type Operand struct {
+	Addr *ir.AddressValue // When known statically.
 	Type Type
 	ir.Value
 }
 
-func newIntConstOperand(c *context, n Node, v uint64, t ...TypeKind) (r *Operand) {
+func newOperand(t Type, v ir.Value, addr *ir.AddressValue) *Operand {
+	return &Operand{Type: t, Value: v, Addr: addr}
+}
+
+func newIntConst(c *context, n Node, v uint64, t ...TypeKind) (r *Operand) {
 	r = &Operand{Type: Undefined}
 	b := bits.Len64(v)
 	for _, t := range t {
 		if c.model[t].Size*8 >= b {
-			return &Operand{t, &ir.Int64Value{Value: int64(v)}}
+			return newOperand(t, &ir.Int64Value{Value: int64(v)}, nil)
 		}
 	}
 
@@ -179,9 +184,11 @@ func newIntConstOperand(c *context, n Node, v uint64, t ...TypeKind) (r *Operand
 	return &Operand{Type: Undefined}
 }
 
-func (o *Operand) String() string         { return fmt.Sprintf("%v %v", o.Type, o.Value) }
+func (o *Operand) String() string         { return fmt.Sprintf("(%v, %v, %v)", o.Type, o.Value, o.Addr) }
+func (o *Operand) copy() *Operand         { r := *o; return &r }
 func (o *Operand) isArithmeticType() bool { return isArithmeticType[o.Type.Kind()] }
 func (o *Operand) isIntegerType() bool    { return intConvRank[o.Type.Kind()] != 0 }
+func (o *Operand) isScalarType() bool     { return o.Type.IsScalarType() } // [0]6.2.5-21
 func (o *Operand) isSigned() bool         { return isSigned[o.Type.Kind()] }
 
 func (o *Operand) add(ctx *context, p *Operand) (r *Operand) {
@@ -192,7 +199,21 @@ func (o *Operand) add(ctx *context, p *Operand) (r *Operand) {
 
 	switch x := o.Value.(type) {
 	case *ir.Int64Value:
-		return (&Operand{o.Type, &ir.Int64Value{Value: x.Value + p.Value.(*ir.Int64Value).Value}}).normalize(ctx)
+		return newOperand(o.Type, &ir.Int64Value{Value: x.Value + p.Value.(*ir.Int64Value).Value}, nil).normalize(ctx)
+	default:
+		panic(fmt.Errorf("TODO %T", x))
+	}
+}
+
+func (o *Operand) and(ctx *context, p *Operand) (r *Operand) {
+	o, p = usualArithmeticConversions(ctx, o, p)
+	if o.Value == nil || p.Value == nil {
+		return &Operand{Type: o.Type}
+	}
+
+	switch x := o.Value.(type) {
+	//case *ir.Int64Value:
+	//	return newOperand(o.Type, &ir.Int64Value{Value: x.Value + p.Value.(*ir.Int64Value).Value}, nil).normalize(ctx)
 	default:
 		panic(fmt.Errorf("TODO %T", x))
 	}
@@ -211,9 +232,16 @@ func (o *Operand) convertTo(ctx *context, t Type) *Operand {
 	case Int:
 		switch t.Kind() {
 		case Long:
-			return &Operand{t, o.Value}
+			return newOperand(t, o.Value, nil)
 		case UInt:
-			return (&Operand{t, o.Value}).normalize(ctx)
+			return newOperand(t, o.Value, nil).normalize(ctx)
+		default:
+			panic(fmt.Errorf("%v -> %v", o, t))
+		}
+	case /*TODO Array,*/ Ptr:
+		switch t.Kind() {
+		case Ptr:
+			return newOperand(t, o.Value, nil)
 		default:
 			panic(fmt.Errorf("%v -> %v", o, t))
 		}
@@ -233,7 +261,7 @@ func (o *Operand) div(ctx *context, p *Operand) (r *Operand) {
 	}
 	switch x := o.Value.(type) {
 	case *ir.Int64Value:
-		return (&Operand{o.Type, &ir.Int64Value{Value: x.Value / p.Value.(*ir.Int64Value).Value}}).normalize(ctx)
+		return newOperand(o.Type, &ir.Int64Value{Value: x.Value / p.Value.(*ir.Int64Value).Value}, nil).normalize(ctx)
 	default:
 		panic(fmt.Errorf("TODO %T", x))
 	}
@@ -309,10 +337,6 @@ func (o *Operand) gt(ctx *context, p *Operand) (r *Operand) {
 	return r
 }
 
-func (o *Operand) isScalarType() bool { // [0]6.2.5-21
-	return o.isArithmeticType() || o.Type.Kind() == Ptr || o.Type.Kind() == Array
-}
-
 func (o *Operand) le(ctx *context, p *Operand) (r *Operand) {
 	r = &Operand{Type: Int}
 	if o.Value == nil || p.Value == nil {
@@ -373,7 +397,7 @@ func (o *Operand) mul(ctx *context, p *Operand) (r *Operand) {
 
 	switch x := o.Value.(type) {
 	case *ir.Int64Value:
-		return (&Operand{o.Type, &ir.Int64Value{Value: x.Value * p.Value.(*ir.Int64Value).Value}}).normalize(ctx)
+		return newOperand(o.Type, &ir.Int64Value{Value: x.Value * p.Value.(*ir.Int64Value).Value}, nil).normalize(ctx)
 	default:
 		panic(fmt.Errorf("TODO %T", x))
 	}
@@ -423,6 +447,20 @@ func (o *Operand) normalize(ctx *context) *Operand {
 		panic(fmt.Errorf("TODO %T", x))
 	}
 	return o
+}
+
+func (o *Operand) or(ctx *context, p *Operand) (r *Operand) {
+	o, p = usualArithmeticConversions(ctx, o, p)
+	if o.Value == nil || p.Value == nil {
+		return &Operand{Type: o.Type}
+	}
+
+	switch x := o.Value.(type) {
+	case *ir.Int64Value:
+		return newOperand(o.Type, &ir.Int64Value{Value: x.Value | p.Value.(*ir.Int64Value).Value}, nil).normalize(ctx)
+	default:
+		panic(fmt.Errorf("TODO %T", x))
+	}
 }
 
 func (o *Operand) unaryMinus(ctx *context) *Operand {

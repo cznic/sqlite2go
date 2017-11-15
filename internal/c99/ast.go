@@ -42,7 +42,7 @@ func (n AbstractDeclaratorCase) String() string {
 type AbstractDeclarator struct {
 	DeclarationSpecifier     *DeclarationSpecifier
 	Type                     Type
-	TypeQualifiers           []*TypeQualifier
+	TypeQualifiers           []*TypeQualifier // From the PointerOpt production, if any.
 	Case                     AbstractDeclaratorCase
 	DirectAbstractDeclarator *DirectAbstractDeclarator
 	Pointer                  *Pointer
@@ -591,9 +591,11 @@ type Declarator struct {
 	DeclarationSpecifier *DeclarationSpecifier // Nil for embedded declarators.
 	Embedded             bool                  // [0]6.7.5-3: Not a full declarator.
 	Initializer          ir.Value              // Only when part of an InitDeclarator.
+	Linkage              Linkage               // Linkage of the declared name, [0]6.2.2.
+	StorageDuration      StorageDuration       // Storage duration of the declared name, [0]6.2.4.
 	Type                 Type                  // Declared type.
 	TypeQualifiers       []*TypeQualifier      // From the PointerOpt production, if any.
-	scope                *scope
+	scope                *scope                // Declare the name in scope.
 	DirectDeclarator     *DirectDeclarator
 	PointerOpt           *PointerOpt
 }
@@ -1003,7 +1005,8 @@ func (n EnumSpecifierCase) String() string {
 //	        "enum" IDENTIFIER                                     // Case EnumSpecifierTag
 //	|       "enum" IdentifierOpt '{' EnumeratorList CommaOpt '}'  // Case EnumSpecifierDefine
 type EnumSpecifier struct {
-	scope          *scope
+	scope          *scope // Where to declare enumeration constants.
+	typ            Type
 	Case           EnumSpecifierCase
 	CommaOpt       *CommaOpt
 	EnumeratorList *EnumeratorList
@@ -1034,7 +1037,8 @@ func (n *EnumSpecifier) Pos() token.Pos {
 //	EnumerationConstant:
 //	        IDENTIFIER  // Case 0
 type EnumerationConstant struct {
-	Token xc.Token
+	Operand *Operand
+	Token   xc.Token
 }
 
 func (n *EnumerationConstant) fragment() interface{} { return n }
@@ -1178,7 +1182,7 @@ const (
 	ExprLAnd
 	ExprAndAssign
 	ExprMulAssign
-	ExprPostInt
+	ExprPostInc
 	ExprAddAssign
 	ExprPostDec
 	ExprSubAssign
@@ -1258,8 +1262,8 @@ func (n ExprCase) String() string {
 		return "ExprAndAssign"
 	case ExprMulAssign:
 		return "ExprMulAssign"
-	case ExprPostInt:
-		return "ExprPostInt"
+	case ExprPostInc:
+		return "ExprPostInc"
 	case ExprAddAssign:
 		return "ExprAddAssign"
 	case ExprPostDec:
@@ -1359,7 +1363,7 @@ func (n ExprCase) String() string {
 //	|       Expr "&&" Expr                                     // Case ExprLAnd
 //	|       Expr "&=" Expr                                     // Case ExprAndAssign
 //	|       Expr "*=" Expr                                     // Case ExprMulAssign
-//	|       Expr "++"                                          // Case ExprPostInt
+//	|       Expr "++"                                          // Case ExprPostInc
 //	|       Expr "+=" Expr                                     // Case ExprAddAssign
 //	|       Expr "--"                                          // Case ExprPostDec
 //	|       Expr "-=" Expr                                     // Case ExprSubAssign
@@ -1398,7 +1402,7 @@ func (n ExprCase) String() string {
 //	|       STRINGLITERAL                                      // Case ExprString
 type Expr struct {
 	Operand             *Operand
-	scope               *scope
+	scope               *scope // case Ident
 	ArgumentExprListOpt *ArgumentExprListOpt
 	Case                ExprCase
 	CommaOpt            *CommaOpt
@@ -2148,12 +2152,12 @@ func (n JumpStmtCase) String() string {
 //	|       "goto" IDENTIFIER ';'     // Case JumpStmtGoto
 //	|       "return" ExprListOpt ';'  // Case JumpStmtReturn
 type JumpStmt struct {
-	ReturnOp    *Operand
-	Case        JumpStmtCase
-	ExprListOpt *ExprListOpt
-	Token       xc.Token
-	Token2      xc.Token
-	Token3      xc.Token
+	ReturnOperand *Operand
+	Case          JumpStmtCase
+	ExprListOpt   *ExprListOpt
+	Token         xc.Token
+	Token2        xc.Token
+	Token3        xc.Token
 }
 
 func (n *JumpStmt) fragment() interface{} { return n }
@@ -3023,7 +3027,7 @@ func (n StructOrUnionSpecifierCase) String() string {
 //	|       StructOrUnion IdentifierOpt '{' '}'                        // Case StructOrUnionSpecifierEmpty
 //	|       StructOrUnion IdentifierOpt '{' StructDeclarationList '}'  // Case StructOrUnionSpecifierDefine
 type StructOrUnionSpecifier struct {
-	scope                 *scope
+	scope                 *scope // Declare the struct tag in scope.parent.
 	typ                   Type
 	Case                  StructOrUnionSpecifierCase
 	IdentifierOpt         *IdentifierOpt
@@ -3105,6 +3109,7 @@ func (n *TranslationUnit) Pos() token.Pos {
 //	TypeName:
 //	        SpecifierQualifierList AbstractDeclaratorOpt  // Case 0
 type TypeName struct {
+	Type                   Type
 	AbstractDeclaratorOpt  *AbstractDeclaratorOpt
 	SpecifierQualifierList *SpecifierQualifierList
 }

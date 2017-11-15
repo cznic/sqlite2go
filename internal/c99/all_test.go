@@ -24,6 +24,7 @@ import (
 
 	"github.com/cznic/ccir"
 	"github.com/cznic/golex/lex"
+	"github.com/cznic/xc"
 )
 
 func caller(s string, va ...interface{}) {
@@ -73,7 +74,7 @@ func TODO(...interface{}) string { //TODOOK
 func use(...interface{}) {}
 
 func init() {
-	use(caller, caller3, dbg, TODO) //TODOOK
+	use(caller, caller3, dbg, TODO, toksDump) //TODOOK
 	flag.IntVar(&yyDebug, "yydebug", 0, "")
 }
 
@@ -103,6 +104,18 @@ var (
 
 	sqlite3c = filepath.FromSlash("../../_sqlite/sqlite-amalgamation-3210000/sqlite3.c")
 )
+
+func toksDump(toks []xc.Token, sep string) string {
+	var a []string
+	for _, t := range toks {
+		if t.Rune == '\n' {
+			continue
+		}
+
+		a = append(a, TokSrc(t))
+	}
+	return strings.Join(a, sep)
+}
 
 func testUCNTable(t *testing.T, tab []rune, fOk, fOther func(rune) bool, fcategory func(rune) bool, tag string) {
 	m := map[rune]struct{}{}

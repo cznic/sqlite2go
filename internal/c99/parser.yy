@@ -245,6 +245,7 @@ import (
 				}
 
                         // [0]6.4.4.3
+			//yy:field	Operand	*Operand
                         EnumerationConstant:
                         	IDENTIFIER
 
@@ -259,7 +260,7 @@ import (
 
                         // [0]6.5.16
 			//yy:field	Operand	*Operand
-			//yy:field	scope	*scope
+			//yy:field	scope	*scope	// case Ident
 /*yy:case PreInc     */ Expr:
                         	"++" Expr
 /*yy:case PreDec     */ |	"--" Expr
@@ -280,7 +281,7 @@ import (
 /*yy:case LAnd       */ |	Expr "&&" Expr
 /*yy:case AndAssign  */ |	Expr "&=" Expr
 /*yy:case MulAssign  */ |	Expr "*=" Expr
-/*yy:case PostInt    */ |	Expr "++"
+/*yy:case PostInc    */ |	Expr "++"
 /*yy:case AddAssign  */ |	Expr "+=" Expr
 /*yy:case PostDec    */ |	Expr "--"
 /*yy:case SubAssign  */ |	Expr "-=" Expr
@@ -403,7 +404,7 @@ import (
 /*yy:case Name       */ |	TYPEDEF_NAME
 
                         // [0]6.7.2.1
-			//yy:field	scope	*scope
+			//yy:field	scope	*scope	// Declare the struct tag in scope.parent.
 			//yy:field	typ	Type
 /*yy:case Tag        */ StructOrUnionSpecifier:
                         	StructOrUnion IDENTIFIER
@@ -460,17 +461,14 @@ import (
                         |	','
 
                         // [0]6.7.2.2
-			//yy:field	scope	*scope
+			//yy:field	scope	*scope	// Where to declare enumeration constants.
+			//yy:field	typ	Type
 /*yy:case Tag        */ EnumSpecifier:
                         	"enum" IDENTIFIER
-/*yy:case Define     */ |	"enum" IdentifierOpt '{'
-			{
-				lx.newScope()
-			}
-			EnumeratorList  CommaOpt '}'
-			{
-				lhs.scope, _ = lx.popScope()
-			}
+/*yy:case Define     */ |	"enum" IdentifierOpt '{' EnumeratorList  CommaOpt '}'
+				{
+					lhs.scope = lx.scope
+				}
 
                         // [0]6.7.2.2
                         EnumeratorList:
@@ -496,9 +494,11 @@ import (
 			//yy:field	DeclarationSpecifier	*DeclarationSpecifier	// Nil for embedded declarators.
 			//yy:field	Embedded		bool			// [0]6.7.5-3: Not a full declarator.
 			//yy:field	Initializer		ir.Value		// Only when part of an InitDeclarator.
+			//yy:field	Linkage			Linkage			// Linkage of the declared name, [0]6.2.2.
+			//yy:field	StorageDuration		StorageDuration		// Storage duration of the declared name, [0]6.2.4.
 			//yy:field	Type			Type			// Declared type.
 			//yy:field	TypeQualifiers		[]*TypeQualifier	// From the PointerOpt production, if any.
-			//yy:field	scope			*scope
+			//yy:field	scope			*scope			// Declare the name in scope.
                         Declarator:
                         	PointerOpt DirectDeclarator
 				{
@@ -599,13 +599,14 @@ import (
                         |	IDENTIFIER
 
                         // [0]6.7.6
+			//yy:field	Type			Type
                         TypeName:
                         	SpecifierQualifierList AbstractDeclaratorOpt
 
                         // [0]6.7.6
 			//yy:field	DeclarationSpecifier	*DeclarationSpecifier
 			//yy:field	Type			Type
-			//yy:field	TypeQualifiers		[]*TypeQualifier
+			//yy:field	TypeQualifiers		[]*TypeQualifier	// From the PointerOpt production, if any.
 /*yy:case Pointer    */ AbstractDeclarator:
                         	Pointer
 /*yy:case Abstract   */ |	PointerOpt DirectAbstractDeclarator
@@ -715,7 +716,7 @@ import (
 /*yy:case While      */ |	"while" '(' ExprList ')' Stmt
 
                         // [0]6.8.6
-			//yy:field	ReturnOp	*Operand
+			//yy:field	ReturnOperand	*Operand
 /*yy:case Break      */ JumpStmt:
                         	"break" ';'
 /*yy:case Continue   */ |	"continue" ';'

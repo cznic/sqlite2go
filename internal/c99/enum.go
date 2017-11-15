@@ -4,6 +4,12 @@
 
 package c99
 
+import (
+	"github.com/cznic/ir"
+)
+
+// [0]: http://www.open-std.org/jtc1/sc22/wg14/www/docs/n1256.pdf
+
 type cond int
 
 const (
@@ -21,4 +27,23 @@ var (
 		condIfOn: true,
 		condZero: true,
 	}
+)
+
+// Linkage describes linkage of identifiers, [0]6.2.2.
+type Linkage int
+
+// Values of Linkage
+const (
+	LinkageNone     Linkage = iota
+	LinkageInternal Linkage = Linkage(ir.InternalLinkage)
+	LinkageExternal Linkage = Linkage(ir.ExternalLinkage)
+)
+
+// StorageDuration describes lifetime of an object, [0]6.2.4.
+type StorageDuration int
+
+// Values of StorageDuration
+const (
+	StorageDurationAutomatic StorageDuration = iota
+	StorageDurationStatic
 )

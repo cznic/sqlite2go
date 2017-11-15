@@ -14,7 +14,7 @@
 //go:generate goyacc -o parser.go -fs -xe xegen -dlvalf "%v" -dlval "PrettyString(lval.Token)" parser.y
 //go:generate rm -f xegen
 
-//go:generate stringer -output enum_string.go -type=cond enum.go
+//go:generate stringer -output stringer.go -type=cond,Linkage,StorageDuration enum.go
 //go:generate sh -c "go test -run ^Example |fe"
 //go:generate gofmt -l -s -w .
 
@@ -123,6 +123,10 @@ func (c *context) parse(in []Source) (*TranslationUnit, error) {
 		return nil, err
 	}
 
+	if c.scope.parent != nil {
+		panic("internal error")
+	}
+
 	return lx.ast.(*TranslationUnit), nil
 }
 
@@ -133,10 +137,10 @@ func (c *context) popScope() (old, new *scope) {
 }
 
 func (c *context) sizeof(t Type) *Operand {
-	n := c.model.Sizeof(t)
-	d := c.scope.lookupIdent(idSizeT)
-	if d == nil {
-		return newIntConstOperand(c, nopos, uint64(n), UInt, ULong, ULongLong)
+	sz := c.model.Sizeof(t)
+	d, ok := c.scope.lookupIdent(idSizeT).(*Declarator)
+	if !ok {
+		return newIntConst(c, nopos, uint64(sz), UInt, ULong, ULongLong)
 	}
 
 	if d.Type.Kind() != TypedefName {
@@ -220,10 +224,10 @@ func (s *stringSource) ReadCloser() (io.ReadCloser, error) {
 }
 
 type scope struct {
-	enumTags   map[int]Type        // name: Type
-	idents     map[int]*Declarator // name: *Declarator //TODO Type
+	enumTags   map[int]Type // name: Type
+	idents     map[int]Node // name: Node in {*Declarator, EnumerationConstant}
 	parent     *scope
-	structTags map[int]*StructOrUnionSpecifier // name: *StructOrUnionSpecifier //TODO Type
+	structTags map[int]*StructOrUnionSpecifier // name: *StructOrUnionSpecifier
 	typedefs   map[int]struct{}
 
 	typedef bool
@@ -246,24 +250,32 @@ func (s *scope) insertEnumTag(ctx *context, nm int, t Type) {
 	s.enumTags[nm] = t
 }
 
-func (s *scope) insertIdent(ctx *context, d *Declarator) {
+func (s *scope) insertDeclarator(ctx *context, d *Declarator) {
 	if s.idents == nil {
-		s.idents = map[int]*Declarator{}
+		s.idents = map[int]Node{}
 	}
 	nm := d.nm()
 	if ex := s.idents[nm]; ex != nil {
-		if ex == d {
-			return
-		}
-
-		if ex.DeclarationSpecifier.isTypedef() && d.DeclarationSpecifier.isTypedef() && ex.Type.String() == d.Type.String() { //TODO not correct
-			return
-		}
-
-		panic(fmt.Errorf("%v: ex %v, %v: new %v", ctx.position(ex), ex.Type, ctx.position(d), d.Type))
+		panic("internal error")
 	}
 
 	s.idents[nm] = d
+}
+
+func (s *scope) insertEnumerationConstant(ctx *context, c *EnumerationConstant) {
+	if s.idents == nil {
+		s.idents = map[int]Node{}
+	}
+	nm := c.Token.Val
+	if ex := s.idents[nm]; ex != nil {
+		if ex == c {
+			return
+		}
+
+		panic(ctx.position(c))
+	}
+
+	s.idents[nm] = c
 }
 
 func (s *scope) insertStructTag(ctx *context, ss *StructOrUnionSpecifier) {
@@ -282,10 +294,10 @@ func (s *scope) insertStructTag(ctx *context, ss *StructOrUnionSpecifier) {
 	s.structTags[nm] = ss
 }
 
-func (s *scope) lookupIdent(nm int) *Declarator {
+func (s *scope) lookupIdent(nm int) Node {
 	for s != nil {
-		if d := s.idents[nm]; d != nil {
-			return d
+		if n := s.idents[nm]; n != nil {
+			return n
 		}
 
 		s = s.parent
@@ -314,7 +326,10 @@ func (s *scope) insertTypedef(ctx *context, d *Declarator) {
 func (s *scope) String() string {
 	var a []string
 	for _, v := range s.idents {
-		a = append(a, string(dict.S(v.nm())))
+		switch x := v.(type) {
+		default:
+			panic(fmt.Errorf("%T", x))
+		}
 	}
 	sort.Strings(a)
 	return "{" + strings.Join(a, ", ") + "}"

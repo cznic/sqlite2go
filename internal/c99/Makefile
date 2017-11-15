@@ -32,7 +32,7 @@ edit:
 	touch log
 	gvim -p Makefile *.l *.yy all_test.go log ast2.go c99.go cpp.go encoding.go enum.go etc.go lexer.go model.go operand.go type.go
 
-editor: ast.go parser.go scanner.go trigraphs.go enum_string.go
+editor: ast.go parser.go scanner.go trigraphs.go stringer.go
 	gofmt -l -s -w *.go
 	go test -i
 	go test -short 2>&1 | tee log
@@ -58,5 +58,5 @@ todo:
 	@grep -nr $(grep) BUG * | grep -v $(ngrep) || true
 	@grep -nr $(grep) [^[:alpha:]]println * | grep -v $(ngrep) || true
 
-ast.go parser.go scanner.go trigraphs.go enum_string.go: parser.yy scanner.l trigraphs.l enum.go
+ast.go parser.go scanner.go trigraphs.go stringer.go: parser.yy scanner.l trigraphs.l enum.go
 	go generate	
