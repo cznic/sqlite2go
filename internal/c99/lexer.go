@@ -167,11 +167,14 @@ func (l *lexer) Lex(lval *yySymType) (r int) {
 		}
 	case PPNUMBER:
 		lval.Token.Rune = INTCONST
-		for _, v := range dict.S(lval.Token.Val) {
-			switch v {
-			case '.', '+', '-', 'e', 'E', 'p', 'P':
-				lval.Token.Rune = FLOATCONST
-				return int(lval.Token.Rune)
+		val := dict.S(lval.Token.Val)
+		if !(len(val) > 1 && val[0] == '0' && (val[1] == 'x' || val[1] == 'X')) {
+			for _, v := range val {
+				switch v {
+				case '.', '+', '-', 'e', 'E', 'p', 'P':
+					lval.Token.Rune = FLOATCONST
+					return int(lval.Token.Rune)
+				}
 			}
 		}
 		return int(lval.Token.Rune)

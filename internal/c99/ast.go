@@ -589,13 +589,16 @@ func (n *DeclarationSpecifiersOpt) Pos() token.Pos {
 //	        PointerOpt DirectDeclarator  // Case 0
 type Declarator struct {
 	DeclarationSpecifier *DeclarationSpecifier // Nil for embedded declarators.
-	Embedded             bool                  // [0]6.7.5-3: Not a full declarator.
 	Initializer          ir.Value              // Only when part of an InitDeclarator.
 	Linkage              Linkage               // Linkage of the declared name, [0]6.2.2.
 	StorageDuration      StorageDuration       // Storage duration of the declared name, [0]6.2.4.
 	Type                 Type                  // Declared type.
 	TypeQualifiers       []*TypeQualifier      // From the PointerOpt production, if any.
 	scope                *scope                // Declare the name in scope.
+	Bits                 int                   // StructDeclarator: bits.
+	Embedded             bool                  // [0]6.7.5-3: Not a full declarator.
+	isFnDefinition       bool
+	isFnParamater        bool
 	DirectDeclarator     *DirectDeclarator
 	PointerOpt           *PointerOpt
 }
@@ -2863,6 +2866,7 @@ func (n StructDeclaratorCase) String() string {
 //	        Declarator                   // Case StructDeclaratorBase
 //	|       DeclaratorOpt ':' ConstExpr  // Case StructDeclaratorBits
 type StructDeclarator struct {
+	Bits          int
 	Case          StructDeclaratorCase
 	ConstExpr     *ConstExpr
 	Declarator    *Declarator

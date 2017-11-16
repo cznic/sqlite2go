@@ -123,8 +123,8 @@ func usualArithmeticConversions(ctx *context, a, b *Operand) (*Operand, *Operand
 		panic("TODO")
 	}
 
-	a = a.integerPromotion()
-	b = b.integerPromotion()
+	a = a.integerPromotion(ctx)
+	b = b.integerPromotion(ctx)
 
 	// If both operands have the same type, then no further conversion is
 	// needed.
@@ -233,14 +233,44 @@ func (o *Operand) convertTo(ctx *context, t Type) *Operand {
 		switch t.Kind() {
 		case Long:
 			return newOperand(t, o.Value, nil)
-		case UInt:
+		case
+			UChar,
+			UInt,
+			UShort:
+
 			return newOperand(t, o.Value, nil).normalize(ctx)
+		case Ptr:
+			// [0]6.3.2.3
+
+			if o.isZero() {
+				// 3. An integer constant expression with the
+				// value 0, or such an expression cast to type
+				// void *, is called a null pointer constant.
+				// If a null pointer constant is converted to a
+				// pointer type, the resulting pointer, called
+				// a null pointer, is guaranteed to compare
+				// unequal to a pointer to any object or
+				// function.
+				return newOperand(t, o.Value, nil)
+			}
+
+			panic("TODO")
 		default:
 			panic(fmt.Errorf("%v -> %v", o, t))
 		}
-	case /*TODO Array,*/ Ptr:
+	case Ptr:
 		switch t.Kind() {
 		case Ptr:
+			return newOperand(t, o.Value, nil)
+		default:
+			panic(fmt.Errorf("%v -> %v", o, t))
+		}
+	case
+		UChar,
+		UShort:
+
+		switch t.Kind() {
+		case Int:
 			return newOperand(t, o.Value, nil)
 		default:
 			panic(fmt.Errorf("%v -> %v", o, t))
@@ -252,13 +282,13 @@ func (o *Operand) convertTo(ctx *context, t Type) *Operand {
 
 func (o *Operand) div(ctx *context, p *Operand) (r *Operand) {
 	o, p = usualArithmeticConversions(ctx, o, p)
+	if p.isZero() {
+		panic("TODO")
+	}
 	if o.Value == nil || p.Value == nil {
 		return &Operand{Type: o.Type}
 	}
 
-	if p.isZero() {
-		panic("TODO")
-	}
 	switch x := o.Value.(type) {
 	case *ir.Int64Value:
 		return newOperand(o.Type, &ir.Int64Value{Value: x.Value / p.Value.(*ir.Int64Value).Value}, nil).normalize(ctx)
@@ -389,6 +419,21 @@ func (o *Operand) lt(ctx *context, p *Operand) (r *Operand) {
 	return r
 }
 
+func (o *Operand) mod(ctx *context, p *Operand) (r *Operand) {
+	o, p = usualArithmeticConversions(ctx, o, p)
+	if p.isZero() {
+		panic("TODO")
+	}
+	if o.Value == nil || p.Value == nil {
+		return &Operand{Type: o.Type}
+	}
+
+	switch x := o.Value.(type) {
+	default:
+		panic(fmt.Errorf("TODO %T", x))
+	}
+}
+
 func (o *Operand) mul(ctx *context, p *Operand) (r *Operand) {
 	o, p = usualArithmeticConversions(ctx, o, p)
 	if o.Value == nil || p.Value == nil {
@@ -428,6 +473,20 @@ func (o *Operand) normalize(ctx *context) *Operand {
 	case *ir.Int64Value:
 		val := x.Value
 		switch sz := ctx.model[o.Type.Kind()].Size; sz {
+		case 1:
+			switch {
+			case o.isSigned():
+				panic("TODO")
+			default:
+				x.Value = val & math.MaxUint8
+			}
+		case 2:
+			switch {
+			case o.isSigned():
+				panic("TODO")
+			default:
+				x.Value = val & math.MaxUint16
+			}
 		case 4:
 			switch {
 			case o.isSigned():
@@ -463,6 +522,20 @@ func (o *Operand) or(ctx *context, p *Operand) (r *Operand) {
 	}
 }
 
+func (o *Operand) sub(ctx *context, p *Operand) (r *Operand) {
+	o, p = usualArithmeticConversions(ctx, o, p)
+	if o.Value == nil || p.Value == nil {
+		return &Operand{Type: o.Type}
+	}
+
+	switch x := o.Value.(type) {
+	case *ir.Int64Value:
+		return newOperand(o.Type, &ir.Int64Value{Value: x.Value - p.Value.(*ir.Int64Value).Value}, nil).normalize(ctx)
+	default:
+		panic(fmt.Errorf("TODO %T", x))
+	}
+}
+
 func (o *Operand) unaryMinus(ctx *context) *Operand {
 	if !o.isArithmeticType() {
 		panic("TODO")
@@ -470,10 +543,12 @@ func (o *Operand) unaryMinus(ctx *context) *Operand {
 
 	r := o
 	if o.isIntegerType() {
-		r = o.integerPromotion()
+		r = o.integerPromotion(ctx)
 	}
 
 	switch x := r.Value.(type) {
+	case nil:
+		return r
 	case *ir.Int64Value:
 		x.Value = -x.Value
 		return r.normalize(ctx)
@@ -488,10 +563,20 @@ func (o *Operand) unaryMinus(ctx *context) *Operand {
 // converted to an int; otherwise, it is converted to an unsigned int. These
 // are called the integer promotions. All other types are unchanged by the
 // integer promotions.
-func (o *Operand) integerPromotion() *Operand {
+func (o *Operand) integerPromotion(ctx *context) *Operand {
 	switch o.Type.Kind() {
-	case Int, Long, UInt:
+	case
+		Int,
+		Long,
+		UInt,
+		ULong:
+
 		return o
+	case
+		UChar,
+		UShort:
+
+		return o.convertTo(ctx, Int)
 	default:
 		panic(o.Type)
 	}
@@ -499,6 +584,8 @@ func (o *Operand) integerPromotion() *Operand {
 
 func (o *Operand) isNonzero() bool {
 	switch x := o.Value.(type) {
+	case nil:
+		return false
 	case *ir.Int64Value:
 		return x.Value != 0
 	default:
@@ -508,6 +595,8 @@ func (o *Operand) isNonzero() bool {
 
 func (o *Operand) isZero() bool {
 	switch x := o.Value.(type) {
+	case nil:
+		return false
 	case *ir.Int64Value:
 		return x.Value == 0
 	default:

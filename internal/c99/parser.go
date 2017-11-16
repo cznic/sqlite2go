@@ -3202,11 +3202,14 @@ yynewstate:
 		}
 	case 103:
 		{
-			yyVAL.node = &StructOrUnionSpecifier{
+			lx := yylex.(*lexer)
+			lhs := &StructOrUnionSpecifier{
 				Case:          StructOrUnionSpecifierTag,
 				StructOrUnion: yyS[yypt-1].node.(*StructOrUnion),
 				Token:         yyS[yypt-0].Token,
 			}
+			yyVAL.node = lhs
+			lhs.scope = lx.scope
 		}
 	case 104:
 		{

@@ -55,6 +55,7 @@ func newModel() (m Model, err error) {
 	}
 }
 
+// Sizeof returns the size in bytes of a variable of type t.
 func (m Model) Sizeof(t Type) int64 {
 	if x, ok := m[t.Kind()]; ok {
 		return int64(x.Size)

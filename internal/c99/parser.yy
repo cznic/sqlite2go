@@ -408,6 +408,9 @@ import (
 			//yy:field	typ	Type
 /*yy:case Tag        */ StructOrUnionSpecifier:
                         	StructOrUnion IDENTIFIER
+				{
+					lhs.scope = lx.scope
+				}
 /*yy:case Empty      */ |	StructOrUnion IdentifierOpt '{' '}'
 				{
 					if !lx.tweaks.enableEmptyStructs {
@@ -452,6 +455,7 @@ import (
                         |	StructDeclaratorList ',' StructDeclarator
 
                         // [0]6.7.2.1
+			//yy:field	Bits	int
 /*yy:case Base       */ StructDeclarator:
                         	Declarator
 /*yy:case Bits       */ |	DeclaratorOpt ':' ConstExpr
@@ -492,13 +496,16 @@ import (
 
                         // [0]6.7.5
 			//yy:field	DeclarationSpecifier	*DeclarationSpecifier	// Nil for embedded declarators.
-			//yy:field	Embedded		bool			// [0]6.7.5-3: Not a full declarator.
 			//yy:field	Initializer		ir.Value		// Only when part of an InitDeclarator.
 			//yy:field	Linkage			Linkage			// Linkage of the declared name, [0]6.2.2.
 			//yy:field	StorageDuration		StorageDuration		// Storage duration of the declared name, [0]6.2.4.
 			//yy:field	Type			Type			// Declared type.
 			//yy:field	TypeQualifiers		[]*TypeQualifier	// From the PointerOpt production, if any.
 			//yy:field	scope			*scope			// Declare the name in scope.
+			//yy:field	Bits			int			// StructDeclarator: bits.
+			//yy:field	Embedded		bool			// [0]6.7.5-3: Not a full declarator.
+			//yy:field	isFnDefinition		bool
+			//yy:field	isFnParamater		bool
                         Declarator:
                         	PointerOpt DirectDeclarator
 				{

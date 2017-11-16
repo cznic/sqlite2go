@@ -684,7 +684,7 @@ func TestParseSQLite(t *testing.T) {
 	}
 }
 
-func TestTypeCheckSQLite(t *testing.T) {
+func TestTypecheckSQLite(t *testing.T) {
 	model, err := newModel()
 	if err != nil {
 		t.Fatal(err)

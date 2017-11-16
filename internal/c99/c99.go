@@ -294,15 +294,11 @@ func (s *scope) insertStructTag(ctx *context, ss *StructOrUnionSpecifier) {
 	s.structTags[nm] = ss
 }
 
-func (s *scope) lookupIdent(nm int) Node {
-	for s != nil {
-		if n := s.idents[nm]; n != nil {
-			return n
-		}
-
-		s = s.parent
+func (s *scope) insertTypedef(ctx *context, d *Declarator) {
+	if s.typedefs == nil {
+		s.typedefs = map[int]struct{}{}
 	}
-	return nil
+	s.typedefs[d.nm()] = struct{}{}
 }
 
 func (s *scope) isTypedef(nm int) bool {
@@ -316,11 +312,26 @@ func (s *scope) isTypedef(nm int) bool {
 	return false
 }
 
-func (s *scope) insertTypedef(ctx *context, d *Declarator) {
-	if s.typedefs == nil {
-		s.typedefs = map[int]struct{}{}
+func (s *scope) lookupIdent(nm int) Node {
+	for s != nil {
+		if n := s.idents[nm]; n != nil {
+			return n
+		}
+
+		s = s.parent
 	}
-	s.typedefs[d.nm()] = struct{}{}
+	return nil
+}
+
+func (s *scope) lookupStructTag(nm int) *StructOrUnionSpecifier {
+	for s != nil {
+		if n := s.structTags[nm]; n != nil {
+			return n
+		}
+
+		s = s.parent
+	}
+	return nil
 }
 
 func (s *scope) String() string {

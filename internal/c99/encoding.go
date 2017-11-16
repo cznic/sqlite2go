@@ -61,6 +61,8 @@ func init() {
 		(*PointerType)(nil), //TODO- ?
 		DirectDeclaratorCase(0),
 		ExprCase(0),
+		Linkage(0),
+		StorageDuration(0),
 		TypeKind(0),
 	} {
 		printHooks[reflect.TypeOf(v)] = func(f strutil.Formatter, v interface{}, prefix, suffix string) {

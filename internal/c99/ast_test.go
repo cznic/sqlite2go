@@ -380,6 +380,8 @@ func ExampleDeclarator_case0() {
 	fmt.Println(exampleAST(132, "\U00100001 auto a )"))
 	// Output:
 	// &c99.Declarator{
+	// · Linkage: LinkageNone,
+	// · StorageDuration: StorageDurationAutomatic,
 	// · DirectDeclarator: &c99.DirectDeclarator{
 	// · · Case: DirectDeclaratorIdent,
 	// · · Token: IDENTIFIER "a",
@@ -398,6 +400,8 @@ func ExampleDeclaratorOpt_case1() {
 	// Output:
 	// &c99.DeclaratorOpt{
 	// · Declarator: &c99.Declarator{
+	// · · Linkage: LinkageNone,
+	// · · StorageDuration: StorageDurationAutomatic,
 	// · · DirectDeclarator: &c99.DirectDeclarator{
 	// · · · Case: DirectDeclaratorIdent,
 	// · · · Token: IDENTIFIER "a",
@@ -608,6 +612,8 @@ func ExampleDirectDeclarator_paren() {
 	// &c99.DirectDeclarator{
 	// · Case: DirectDeclaratorParen,
 	// · Declarator: &c99.Declarator{
+	// · · Linkage: LinkageNone,
+	// · · StorageDuration: StorageDurationAutomatic,
 	// · · Embedded: true,
 	// · · DirectDeclarator: &c99.DirectDeclarator{
 	// · · · Case: DirectDeclaratorIdent,
@@ -1801,6 +1807,8 @@ func ExampleExternalDeclaration_func() {
 	// · · · },
 	// · · },
 	// · · Declarator: &c99.Declarator{
+	// · · · Linkage: LinkageNone,
+	// · · · StorageDuration: StorageDurationAutomatic,
 	// · · · DirectDeclarator: &c99.DirectDeclarator{
 	// · · · · Case: DirectDeclaratorIdent,
 	// · · · · Token: IDENTIFIER "a",
@@ -1838,6 +1846,8 @@ func ExampleFunctionDefinition_case0() {
 	// · · },
 	// · },
 	// · Declarator: &c99.Declarator{
+	// · · Linkage: LinkageNone,
+	// · · StorageDuration: StorageDurationAutomatic,
 	// · · DirectDeclarator: &c99.DirectDeclarator{
 	// · · · Case: DirectDeclaratorIdent,
 	// · · · Token: IDENTIFIER "a",
@@ -1916,6 +1926,8 @@ func ExampleInitDeclarator_base() {
 	// Output:
 	// &c99.InitDeclarator{
 	// · Declarator: &c99.Declarator{
+	// · · Linkage: LinkageNone,
+	// · · StorageDuration: StorageDurationAutomatic,
 	// · · DirectDeclarator: &c99.DirectDeclarator{
 	// · · · Case: DirectDeclaratorIdent,
 	// · · · Token: IDENTIFIER "a",
@@ -1930,6 +1942,8 @@ func ExampleInitDeclarator_init() {
 	// &c99.InitDeclarator{
 	// · Case: 1,
 	// · Declarator: &c99.Declarator{
+	// · · Linkage: LinkageNone,
+	// · · StorageDuration: StorageDurationAutomatic,
 	// · · DirectDeclarator: &c99.DirectDeclarator{
 	// · · · Case: DirectDeclaratorIdent,
 	// · · · Token: IDENTIFIER "a",
@@ -1952,6 +1966,8 @@ func ExampleInitDeclaratorList_case0() {
 	// &c99.InitDeclaratorList{
 	// · InitDeclarator: &c99.InitDeclarator{
 	// · · Declarator: &c99.Declarator{
+	// · · · Linkage: LinkageNone,
+	// · · · StorageDuration: StorageDurationAutomatic,
 	// · · · DirectDeclarator: &c99.DirectDeclarator{
 	// · · · · Case: DirectDeclaratorIdent,
 	// · · · · Token: IDENTIFIER "a",
@@ -1967,6 +1983,8 @@ func ExampleInitDeclaratorList_case1() {
 	// &c99.InitDeclaratorList{
 	// · InitDeclarator: &c99.InitDeclarator{
 	// · · Declarator: &c99.Declarator{
+	// · · · Linkage: LinkageNone,
+	// · · · StorageDuration: StorageDurationAutomatic,
 	// · · · DirectDeclarator: &c99.DirectDeclarator{
 	// · · · · Case: DirectDeclaratorIdent,
 	// · · · · Token: IDENTIFIER "a",
@@ -1977,6 +1995,8 @@ func ExampleInitDeclaratorList_case1() {
 	// · · Case: 1,
 	// · · InitDeclarator: &c99.InitDeclarator{
 	// · · · Declarator: &c99.Declarator{
+	// · · · · Linkage: LinkageNone,
+	// · · · · StorageDuration: StorageDurationAutomatic,
 	// · · · · DirectDeclarator: &c99.DirectDeclarator{
 	// · · · · · Case: DirectDeclaratorIdent,
 	// · · · · · Token: IDENTIFIER "b",
@@ -2001,6 +2021,8 @@ func ExampleInitDeclaratorListOpt_case1() {
 	// · InitDeclaratorList: &c99.InitDeclaratorList{
 	// · · InitDeclarator: &c99.InitDeclarator{
 	// · · · Declarator: &c99.Declarator{
+	// · · · · Linkage: LinkageNone,
+	// · · · · StorageDuration: StorageDurationAutomatic,
 	// · · · · DirectDeclarator: &c99.DirectDeclarator{
 	// · · · · · Case: DirectDeclaratorIdent,
 	// · · · · · Token: IDENTIFIER "a",
@@ -2329,6 +2351,8 @@ func ExampleParameterDeclaration_declarator() {
 	// · · },
 	// · },
 	// · Declarator: &c99.Declarator{
+	// · · Linkage: LinkageNone,
+	// · · StorageDuration: StorageDurationAutomatic,
 	// · · DirectDeclarator: &c99.DirectDeclarator{
 	// · · · Case: DirectDeclaratorIdent,
 	// · · · Token: IDENTIFIER "a",
@@ -2754,6 +2778,8 @@ func ExampleStructDeclaration_case0() {
 	// · StructDeclaratorList: &c99.StructDeclaratorList{
 	// · · StructDeclarator: &c99.StructDeclarator{
 	// · · · Declarator: &c99.Declarator{
+	// · · · · Linkage: LinkageNone,
+	// · · · · StorageDuration: StorageDurationAutomatic,
 	// · · · · DirectDeclarator: &c99.DirectDeclarator{
 	// · · · · · Case: DirectDeclaratorIdent,
 	// · · · · · Token: IDENTIFIER "a",
@@ -2779,6 +2805,8 @@ func ExampleStructDeclarationList_case0() {
 	// · · StructDeclaratorList: &c99.StructDeclaratorList{
 	// · · · StructDeclarator: &c99.StructDeclarator{
 	// · · · · Declarator: &c99.Declarator{
+	// · · · · · Linkage: LinkageNone,
+	// · · · · · StorageDuration: StorageDurationAutomatic,
 	// · · · · · DirectDeclarator: &c99.DirectDeclarator{
 	// · · · · · · Case: DirectDeclaratorIdent,
 	// · · · · · · Token: IDENTIFIER "a",
@@ -2805,6 +2833,8 @@ func ExampleStructDeclarationList_case1() {
 	// · · StructDeclaratorList: &c99.StructDeclaratorList{
 	// · · · StructDeclarator: &c99.StructDeclarator{
 	// · · · · Declarator: &c99.Declarator{
+	// · · · · · Linkage: LinkageNone,
+	// · · · · · StorageDuration: StorageDurationAutomatic,
 	// · · · · · DirectDeclarator: &c99.DirectDeclarator{
 	// · · · · · · Case: DirectDeclaratorIdent,
 	// · · · · · · Token: IDENTIFIER "a",
@@ -2826,6 +2856,8 @@ func ExampleStructDeclarationList_case1() {
 	// · · · StructDeclaratorList: &c99.StructDeclaratorList{
 	// · · · · StructDeclarator: &c99.StructDeclarator{
 	// · · · · · Declarator: &c99.Declarator{
+	// · · · · · · Linkage: LinkageNone,
+	// · · · · · · StorageDuration: StorageDurationAutomatic,
 	// · · · · · · DirectDeclarator: &c99.DirectDeclarator{
 	// · · · · · · · Case: DirectDeclaratorIdent,
 	// · · · · · · · Token: IDENTIFIER "b",
@@ -2844,6 +2876,8 @@ func ExampleStructDeclarator_base() {
 	// Output:
 	// &c99.StructDeclarator{
 	// · Declarator: &c99.Declarator{
+	// · · Linkage: LinkageNone,
+	// · · StorageDuration: StorageDurationAutomatic,
 	// · · DirectDeclarator: &c99.DirectDeclarator{
 	// · · · Case: DirectDeclaratorIdent,
 	// · · · Token: IDENTIFIER "a",
@@ -2873,6 +2907,8 @@ func ExampleStructDeclaratorList_case0() {
 	// &c99.StructDeclaratorList{
 	// · StructDeclarator: &c99.StructDeclarator{
 	// · · Declarator: &c99.Declarator{
+	// · · · Linkage: LinkageNone,
+	// · · · StorageDuration: StorageDurationAutomatic,
 	// · · · DirectDeclarator: &c99.DirectDeclarator{
 	// · · · · Case: DirectDeclaratorIdent,
 	// · · · · Token: IDENTIFIER "a",
@@ -2888,6 +2924,8 @@ func ExampleStructDeclaratorList_case1() {
 	// &c99.StructDeclaratorList{
 	// · StructDeclarator: &c99.StructDeclarator{
 	// · · Declarator: &c99.Declarator{
+	// · · · Linkage: LinkageNone,
+	// · · · StorageDuration: StorageDurationAutomatic,
 	// · · · DirectDeclarator: &c99.DirectDeclarator{
 	// · · · · Case: DirectDeclaratorIdent,
 	// · · · · Token: IDENTIFIER "a",
@@ -2898,6 +2936,8 @@ func ExampleStructDeclaratorList_case1() {
 	// · · Case: 1,
 	// · · StructDeclarator: &c99.StructDeclarator{
 	// · · · Declarator: &c99.Declarator{
+	// · · · · Linkage: LinkageNone,
+	// · · · · StorageDuration: StorageDurationAutomatic,
 	// · · · · DirectDeclarator: &c99.DirectDeclarator{
 	// · · · · · Case: DirectDeclaratorIdent,
 	// · · · · · Token: IDENTIFIER "b",
@@ -2966,6 +3006,8 @@ func ExampleStructOrUnionSpecifier_define() {
 	// · · · StructDeclaratorList: &c99.StructDeclaratorList{
 	// · · · · StructDeclarator: &c99.StructDeclarator{
 	// · · · · · Declarator: &c99.Declarator{
+	// · · · · · · Linkage: LinkageNone,
+	// · · · · · · StorageDuration: StorageDurationAutomatic,
 	// · · · · · · DirectDeclarator: &c99.DirectDeclarator{
 	// · · · · · · · Case: DirectDeclaratorIdent,
 	// · · · · · · · Token: IDENTIFIER "a",

@@ -30,7 +30,7 @@ type undefinedType struct {
 
 // Type represents a C type.
 type Type interface {
-	Compatible(Type) bool // [0]6.2.7
+	IsCompatible(Type) bool // [0]6.2.7
 	Equal(Type) bool
 	IsScalarType() bool
 	Kind() TypeKind
@@ -39,21 +39,6 @@ type Type interface {
 
 // TypeKind represents a particular type kind.
 type TypeKind int
-
-// Kind implements Type.
-func (k TypeKind) Kind() TypeKind { return k }
-
-// IsScalarType implements Type.
-func (k TypeKind) IsScalarType() bool {
-	switch k {
-	case
-		Char,
-		UChar:
-		return true
-	default:
-		panic(k)
-	}
-}
 
 // TypeKind values.
 const (
@@ -94,9 +79,28 @@ const (
 	maxTypeKind
 )
 
-// Compatible implements Type.
-func (k TypeKind) Compatible(u Type) bool {
-	if k.Equal(u) {
+// Kind implements Type.
+func (t TypeKind) Kind() TypeKind { return t }
+
+// IsScalarType implements Type.
+func (t TypeKind) IsScalarType() bool {
+	switch t {
+	case
+		Char,
+		Int,
+		UChar,
+		ULong,
+		UShort:
+
+		return true
+	default:
+		panic(t)
+	}
+}
+
+// IsCompatible implements Type.
+func (t TypeKind) IsCompatible(u Type) bool {
+	if t.Equal(u) {
 		return true
 	}
 
@@ -104,21 +108,24 @@ func (k TypeKind) Compatible(u Type) bool {
 }
 
 // Equal implements Type.
-func (k TypeKind) Equal(u Type) bool {
-	switch k {
+func (t TypeKind) Equal(u Type) bool {
+	u = flat(u)
+	switch t {
 	case
 		Char,
+		Int,
 		UShort,
+		ULong,
 		Void:
 
-		return k == u.Kind()
+		return t == u.Kind()
 	default:
-		panic(k)
+		panic(t)
 	}
 }
 
-func (k TypeKind) String() string {
-	switch k {
+func (t TypeKind) String() string {
+	switch t {
 	case Bool:
 		return "bool"
 	case Char:
@@ -176,7 +183,7 @@ func (k TypeKind) String() string {
 	case Void:
 		return "void"
 	default:
-		return fmt.Sprintf("TypeKind(%v)", int(k))
+		return fmt.Sprintf("TypeKind(%v)", int(t))
 	}
 }
 
@@ -187,11 +194,14 @@ type ArrayType struct {
 	TypeQualifiers []*TypeQualifier // Eg. double a[restrict 3][5], see 6.7.5.3-21.
 }
 
-// Compatible implements Type.
-func (t *ArrayType) Compatible(u Type) bool { panic("TODO") }
+// IsCompatible implements Type.
+func (t *ArrayType) IsCompatible(u Type) bool { panic("TODO") }
 
 // Equal implements Type.
-func (t *ArrayType) Equal(u Type) bool { panic("TODO") }
+func (t *ArrayType) Equal(u Type) bool {
+	u = flat(u)
+	panic("TODO")
+}
 
 // Kind implements Type.
 func (t *ArrayType) Kind() TypeKind { return Array }
@@ -213,11 +223,14 @@ type EnumType struct {
 	Enums []*EnumerationConstant
 }
 
-// Compatible implements Type.
-func (t *EnumType) Compatible(u Type) bool { panic("TODO") }
+// IsCompatible implements Type.
+func (t *EnumType) IsCompatible(u Type) bool { panic("TODO") }
 
 // Equal implements Type.
-func (t *EnumType) Equal(u Type) bool { panic("TODO") }
+func (t *EnumType) Equal(u Type) bool {
+	u = flat(u)
+	panic("TODO")
+}
 
 // Kind implements Type.
 func (t *EnumType) Kind() TypeKind { return Enum }
@@ -235,16 +248,18 @@ type Field struct {
 
 // FunctionType represents a function type.
 type FunctionType struct {
-	Params   []Type
-	Result   Type
-	Variadic bool
+	Params    []Type
+	Prototype *FunctionType
+	Result    Type
+	Variadic  bool
 }
 
-// Compatible implements Type.
-func (t *FunctionType) Compatible(u Type) bool { panic("TODO") }
+// IsCompatible implements Type.
+func (t *FunctionType) IsCompatible(u Type) bool { panic("TODO") }
 
 // Equal implements Type.
 func (t *FunctionType) Equal(u Type) bool {
+	u = flat(u)
 	if u.Kind() != Function {
 		return false
 	}
@@ -287,11 +302,13 @@ type NamedType struct {
 	Type Type // The type Name refers to.
 }
 
-// Compatible implements Type.
-func (t *NamedType) Compatible(u Type) bool { panic("TODO") }
+// IsCompatible implements Type.
+func (t *NamedType) IsCompatible(u Type) bool { panic("TODO") }
 
 // Equal implements Type.
-func (t *NamedType) Equal(u Type) bool { panic("TODO") }
+func (t *NamedType) Equal(u Type) bool {
+	return t.Type.Equal(u)
+}
 
 // Kind implements Type.
 func (t *NamedType) Kind() TypeKind { return TypedefName }
@@ -299,18 +316,46 @@ func (t *NamedType) Kind() TypeKind { return TypedefName }
 // IsScalarType implements Type.
 func (t *NamedType) IsScalarType() bool { panic("TODO") }
 
-func (t *NamedType) String() string { panic("TODO169") }
+func (t *NamedType) String() string {
+	if t.Type == nil {
+		return string(dict.S(t.Name))
+	}
+
+	return t.Type.String()
+}
 
 // PointerType represents a pointer type.
 type PointerType struct {
 	Item Type
 }
 
-// Compatible implements Type.
-func (t *PointerType) Compatible(u Type) bool { panic("TODO") }
+// IsCompatible implements Type.
+func (t *PointerType) IsCompatible(u Type) bool {
+	if t.Equal(u) {
+		return true
+	}
+
+	if u = flat(u); u.Kind() != Ptr {
+		return false
+	}
+
+	v := u.(*PointerType)
+	// [0]6.3.2.3
+	//
+	// 1. A pointer to void may be converted to or from a pointer to any
+	// incomplete or object type. A pointer to any incomplete or object
+	// type may be converted to a pointer to void and back again; the
+	// result shall compare equal to the original pointer.
+	if t.Item == Void || v.Item == Void {
+		return true
+	}
+
+	panic("TODO")
+}
 
 // Equal implements Type.
 func (t *PointerType) Equal(u Type) bool {
+	u = flat(u)
 	return u.Kind() == Ptr && t.Item.Equal(u.(*PointerType).Item)
 }
 
@@ -327,11 +372,18 @@ type StructType struct {
 	Fields []Field
 }
 
-// Compatible implements Type.
-func (t *StructType) Compatible(u Type) bool { panic("TODO") }
+// IsCompatible implements Type.
+func (t *StructType) IsCompatible(u Type) bool { panic("TODO") }
 
 // Equal implements Type.
-func (t *StructType) Equal(u Type) bool { panic("TODO") }
+func (t *StructType) Equal(u Type) bool {
+	u = flat(u)
+	if u.Kind() != Struct {
+		return false
+	}
+
+	panic("TODO")
+}
 
 // Kind implements Type.
 func (t *StructType) Kind() TypeKind { return Struct }
@@ -352,36 +404,65 @@ func (t *StructType) String() string {
 	return buf.String()
 }
 
-// TaggedStruct represents a struct type described by a tag name.
-type TaggedStruct struct { //TODO rename to TaggedStructType
-	Tag int
-	Type
+// TaggedStructType represents a struct type described by a tag name.
+type TaggedStructType struct {
+	Tag   int
+	Type  Type
+	scope *scope
 }
 
-// Compatible implements Type.
-func (t *TaggedStruct) Compatible(u Type) bool { panic("TODO") }
+// IsCompatible implements Type.
+func (t *TaggedStructType) IsCompatible(u Type) bool { panic("TODO") }
 
 // Equal implements Type.
-func (t *TaggedStruct) Equal(u Type) bool { panic("TODO") }
+func (t *TaggedStructType) Equal(u Type) bool {
+	switch u = flat(u); u.(type) {
+	case TypeKind:
+		switch u {
+		case Void:
+			return false
+		default:
+			panic(u)
+		}
+	default:
+		panic(u)
+	}
+}
+
+func (t *TaggedStructType) getType() Type {
+	if t.Type != nil {
+		return t.Type
+	}
+
+	t.Type = Undefined
+	if s := t.scope.lookupStructTag(t.Tag); s != nil {
+		t.Type = s.typ
+	}
+
+	return t.Type
+}
 
 // Kind implements Type.
-func (t *TaggedStruct) Kind() TypeKind { return StructTag }
+func (t *TaggedStructType) Kind() TypeKind { return StructTag }
 
 // IsScalarType implements Type.
-func (t *TaggedStruct) IsScalarType() bool { panic("TODO") }
+func (t *TaggedStructType) IsScalarType() bool { panic("TODO") }
 
-func (t *TaggedStruct) String() string { return fmt.Sprintf("struct %s", dict.S(t.Tag)) }
+func (t *TaggedStructType) String() string { return fmt.Sprintf("struct %s", dict.S(t.Tag)) }
 
 // UnionType represents a union type.
 type UnionType struct {
 	Fields []Field
 }
 
-// Compatible implements Type.
-func (t *UnionType) Compatible(u Type) bool { panic("TODO") }
+// IsCompatible implements Type.
+func (t *UnionType) IsCompatible(u Type) bool { panic("TODO") }
 
 // Equal implements Type.
-func (t *UnionType) Equal(u Type) bool { panic("TODO") }
+func (t *UnionType) Equal(u Type) bool {
+	u = flat(u)
+	panic("TODO")
+}
 
 // Kind implements Type.
 func (t *UnionType) Kind() TypeKind { return Union }
@@ -400,4 +481,43 @@ func (t *UnionType) String() string {
 	}
 	buf.WriteByte('}')
 	return buf.String()
+}
+
+func flat(t Type) Type {
+	switch x := t.(type) {
+	case *ArrayType:
+		r := *x
+		r.Item = flat(r.Item)
+		return &r
+	case *FunctionType:
+		if x == nil {
+			return (*FunctionType)(nil)
+		}
+
+		r := *x
+		for i, v := range r.Params {
+			r.Params[i] = flat(v)
+		}
+		r.Prototype = flat(r.Prototype).(*FunctionType)
+		r.Result = flat(r.Result)
+		return &r
+	case *NamedType:
+		return x.Type
+	case *PointerType:
+		r := *x
+		r.Item = flat(r.Item)
+		return &r
+	case *StructType:
+		r := *x
+		for i, v := range r.Fields {
+			r.Fields[i].Type = flat(v.Type)
+		}
+		return &r
+	case *TaggedStructType:
+		return t
+	case TypeKind:
+		return t
+	default:
+		panic(x)
+	}
 }
