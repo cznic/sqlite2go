@@ -3336,6 +3336,7 @@ func (n TypeSpecifierCase) String() string {
 //	|       StructOrUnionSpecifier  // Case TypeSpecifierStruct
 //	|       TYPEDEF_NAME            // Case TypeSpecifierName
 type TypeSpecifier struct {
+	scope                  *scope
 	Case                   TypeSpecifierCase
 	EnumSpecifier          *EnumSpecifier
 	StructOrUnionSpecifier *StructOrUnionSpecifier

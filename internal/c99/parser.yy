@@ -386,6 +386,7 @@ import (
 				}
 
                         // [0]6.7.2
+			//yy:field	scope	*scope
 /*yy:case Bool       */ TypeSpecifier:
                         	"_Bool"
 /*yy:case Complex    */ |	"_Complex"
@@ -402,6 +403,9 @@ import (
 /*yy:case Struct     */ |	StructOrUnionSpecifier
 //yy:example "\U00100001 typedef int foo; foo bar;"
 /*yy:case Name       */ |	TYPEDEF_NAME
+				{
+					lhs.scope = lx.scope
+				}
 
                         // [0]6.7.2.1
 			//yy:field	scope	*scope	// Declare the struct tag in scope.parent.

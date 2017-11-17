@@ -3195,10 +3195,13 @@ yynewstate:
 		}
 	case 102:
 		{
-			yyVAL.node = &TypeSpecifier{
+			lx := yylex.(*lexer)
+			lhs := &TypeSpecifier{
 				Case:  TypeSpecifierName,
 				Token: yyS[yypt-0].Token,
 			}
+			yyVAL.node = lhs
+			lhs.scope = lx.scope
 		}
 	case 103:
 		{

@@ -54,7 +54,18 @@ func (d *DeclarationSpecifier) typ() Type {
 			return Long
 		case TypeSpecifierName:
 			ts := d.TypeSpecifiers[0]
-			return &NamedType{Name: ts.Token.Val}
+			r := &NamedType{Name: ts.Token.Val}
+			switch x := ts.scope.lookupIdent(ts.Token.Val).(type) {
+			case *Declarator:
+				if !x.DeclarationSpecifier.isTypedef() {
+					panic("internal error")
+				}
+
+				r.Type = x.Type
+			default:
+				panic(fmt.Errorf("%T", x))
+			}
+			return r
 		case TypeSpecifierStruct:
 			return d.TypeSpecifiers[0].StructOrUnionSpecifier.typ
 		case TypeSpecifierUnsigned:
@@ -330,7 +341,7 @@ func (n *Expr) eval(ctx *context) *Operand {
 		switch {
 		case
 			lhs.Type.Kind() == Ptr && rhs.isIntegerType(),
-			lhs.isArithmeticType() && rhs.isArithmeticType():
+			lhs.IsArithmeticType() && rhs.IsArithmeticType():
 
 			// ok
 		default:
@@ -351,7 +362,7 @@ func (n *Expr) eval(ctx *context) *Operand {
 		switch {
 		case
 			lhs.Type.Kind() == Ptr && rhs.isIntegerType(),
-			lhs.isArithmeticType() && rhs.isArithmeticType():
+			lhs.IsArithmeticType() && rhs.IsArithmeticType():
 
 			// ok
 		default:
@@ -467,7 +478,7 @@ func (n *Expr) eval(ctx *context) *Operand {
 		// 3. For subtraction, one of the following shall hold:
 		case
 			// both operands have arithmetic type;
-			lhs.isArithmeticType() && rhs.isArithmeticType():
+			lhs.IsArithmeticType() && rhs.IsArithmeticType():
 
 			n.Operand = n.Expr.eval(ctx).sub(ctx, n.Expr2.eval(ctx))
 		case
@@ -493,7 +504,7 @@ func (n *Expr) eval(ctx *context) *Operand {
 		case
 			// the left operand has qualified or unqualified
 			// arithmetic type and the right has arithmetic type;
-			lhs.isArithmeticType() && rhs.isArithmeticType():
+			lhs.IsArithmeticType() && rhs.IsArithmeticType():
 		case
 			// both operands are pointers to qualified or
 			// unqualified versions of compatible types, and the
@@ -521,7 +532,7 @@ func (n *Expr) eval(ctx *context) *Operand {
 		// operands:
 		case
 			// both operands have arithmetic type;
-			a.isArithmeticType() && b.isArithmeticType():
+			a.IsArithmeticType() && b.IsArithmeticType():
 
 			// 5. If both the second and third operands have
 			// arithmetic type, the result type that would be
@@ -669,59 +680,29 @@ func (n *Expr) evalSizeofOperand(ctx *context) *Operand {
 	}
 
 	switch n.Case {
-	//TODO case ExprPreInc: // "++" Expr
-	//TODO case ExprPreDec: // "--" Expr
-	//TODO case ExprSizeOfType: // "sizeof" '(' TypeName ')'
-	//TODO case ExprSizeofExpr: // "sizeof" Expr
-	//TODO case ExprNot: // '!' Expr
-	//TODO case ExprAddrof: // '&' Expr
 	case ExprPExprList: // '(' ExprList ')'
 		n.Operand = n.ExprList.evalSizeofOperand(ctx)
-	//TODO case ExprCompLit: // '(' TypeName ')' '{' InitializerList CommaOpt '}'
-	//TODO case ExprCast: // '(' TypeName ')' Expr
-	//TODO case ExprDeref: // '*' Expr
-	//TODO case ExprUnaryPlus: // '+' Expr
-	//TODO case ExprUnaryMinus: // '-' Expr
-	//TODO case ExprCpl: // '~' Expr
-	//TODO case ExprChar: // CHARCONST
-	//TODO case ExprNe: // Expr "!=" Expr
-	//TODO case ExprModAssign: // Expr "%=" Expr
-	//TODO case ExprLAnd: // Expr "&&" Expr
-	//TODO case ExprAndAssign: // Expr "&=" Expr
-	//TODO case ExprMulAssign: // Expr "*=" Expr
-	//TODO case ExprPostInt: // Expr "++"
-	//TODO case ExprAddAssign: // Expr "+=" Expr
-	//TODO case ExprPostDec: // Expr "--"
-	//TODO case ExprSubAssign: // Expr "-=" Expr
-	//TODO case ExprPSelect: // Expr "->" IDENTIFIER
-	//TODO case ExprDivAssign: // Expr "/=" Expr
-	//TODO case ExprLsh: // Expr "<<" Expr
-	//TODO case ExprLshAssign: // Expr "<<=" Expr
-	//TODO case ExprLe: // Expr "<=" Expr
-	//TODO case ExprEq: // Expr "==" Expr
-	//TODO case ExprGe: // Expr ">=" Expr
-	//TODO case ExprRsh: // Expr ">>" Expr
-	//TODO case ExprRshAssign: // Expr ">>=" Expr
-	//TODO case ExprXorAssign: // Expr "^=" Expr
-	//TODO case ExprOrAssign: // Expr "|=" Expr
-	//TODO case ExprLOr: // Expr "||" Expr
-	//TODO case ExprMod: // Expr '%' Expr
-	//TODO case ExprAnd: // Expr '&' Expr
-	//TODO case ExprCall: // Expr '(' ArgumentExprListOpt ')'
-	//TODO case ExprMul: // Expr '*' Expr
-	//TODO case ExprAdd: // Expr '+' Expr
-	//TODO case ExprSub: // Expr '-' Expr
-	//TODO case ExprSelect: // Expr '.' IDENTIFIER
-	//TODO case ExprDiv: // Expr '/' Expr
-	//TODO case ExprLt: // Expr '<' Expr
-	//TODO case ExprAssign: // Expr '=' Expr
-	//TODO case ExprGt: // Expr '>' Expr
-	//TODO case ExprCond: // Expr '?' ExprList ':' Expr
 	case ExprIndex: // Expr '[' ExprList ']'
-		return n.eval(ctx)
-	//TODO case ExprXor: // Expr '^' Expr
-	//TODO case ExprOr: // Expr '|' Expr
-	//TODO case ExprFloat: // FLOATCONST
+		// [0]6.5.2.1
+		op := n.Expr.evalSizeofOperand(ctx)
+		index := n.ExprList.eval(ctx)
+		if op.Type.Kind() != Array {
+			panic("TODO")
+		}
+		if !index.isIntegerType() {
+			panic("TODO")
+		}
+		at := op.Type.(*ArrayType)
+		n.Operand = newOperand(at.Item, nil, op.Addr)
+		if n.Operand.Addr != nil {
+			if index.Value == nil {
+				panic(ctx.position(n))
+			}
+
+			av := *op.Addr
+			av.Offset += uintptr(index.Value.(*ir.Int64Value).Value * ctx.model.Sizeof(at.Item))
+			n.Operand.Addr = &av
+		}
 	case ExprIdent: // IDENTIFIER
 		// [0]6.5.1
 		nm := n.Token.Val
@@ -744,6 +725,8 @@ func (n *Expr) evalSizeofOperand(ctx *context) *Operand {
 				n.Operand = newOperand(t, nil, nil)
 			case *PointerType:
 				n.Operand = newOperand(t, nil, nil)
+			case *StructType:
+				n.Operand = newOperand(t, nil, nil)
 			default:
 				panic(t)
 			}
@@ -753,10 +736,19 @@ func (n *Expr) evalSizeofOperand(ctx *context) *Operand {
 		default:
 			panic(fmt.Errorf("%v: %T", ctx.position(n), x))
 		}
-	//TODO case ExprInt: // INTCONST
-	//TODO case ExprLChar: // LONGCHARCONST
-	//TODO case ExprLString: // LONGSTRINGLITERAL
-	//TODO case ExprString: // STRINGLITERAL
+	case ExprSelect: // Expr '.' IDENTIFIER
+		op := n.Expr.evalSizeofOperand(ctx)
+		if op.Addr == nil {
+			panic("TODO")
+		}
+		switch t := op.Type.(type) {
+		case *StructType:
+			layout := ctx.model.Layout(t)
+			panic(layout)
+		default:
+			panic(t)
+		}
+		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	}
@@ -1086,116 +1078,134 @@ func (n *InitDeclarator) check(ctx *context, ds *DeclarationSpecifier) {
 }
 
 func (n *Initializer) check(ctx *context, t Type) ir.Value {
+	// [0]6.7.8
 	switch n.Case {
 	case InitializerCompLit: // '{' InitializerList CommaOpt '}'
-		switch t := t.(type) {
-		case *ArrayType:
-			v := n.InitializerList.check(ctx, t, 0)
-			if t.Size == nil {
-				t.Size = newIntConst(ctx, n, uint64(len(v.Values)), UInt, ULong, ULongLong)
-			}
-			return v
-		case *TaggedStructType:
-			u := t.getType()
-			if u == nil || u == Undefined {
-				panic("TODO")
-			}
-			return n.InitializerList.check(ctx, u, 0)
-		case *NamedType:
-			return n.InitializerList.check(ctx, t.Type, 0)
-		default:
-			panic(fmt.Errorf("%v: %T", ctx.position(n), t))
-		}
+		return n.InitializerList.check(ctx, t)
 	case InitializerExpr: // Expr
-		t = flat(t)
 		op := n.Expr.eval(ctx)
 		if op.Value == nil {
 			if op.Addr == nil {
-				panic(fmt.Errorf("%v: %v, %v", ctx.position(n), t, op))
+				panic(fmt.Errorf("%v: TODO", ctx.position(n)))
 			}
 
 			op.Value = op.Addr
 		}
-		switch t := t.(type) {
-		case *ArrayType:
-			if t.Size != nil {
-				panic(ctx.position(n))
-			}
-			switch x := op.Value.(type) {
-			case *ir.StringValue:
-				if t.Item != Char {
-					panic("TODO")
-				}
-				t.Size = newIntConst(ctx, n, uint64(len(dict.S(int(x.StringID)))), UInt, ULong, ULongLong)
-				return op.Value
-			default:
-				panic(fmt.Errorf("%v, %v", x, t.Item))
-			}
-		case *PointerType:
-			if !op.Type.Equal(t) {
-				if !(op.isIntegerType() && op.isZero()) {
-					panic(ctx.position(n))
-				}
+
+		//dbg("", ctx.position(n), t, op)
+		if t.IsScalarType() {
+			// 11. The initializer for a scalar shall be a single
+			// expression, optionally enclosed in braces. The
+			// initial value of the object is that of the
+			// expression (after conversion); the same type
+			// constraints and conversions as for simple assignment
+			// apply, taking the type of the scalar to be the
+			// unqualified version of its declared type.
+
+			// [0]6.5.16.1
+			switch {
+			// One of the following shall hold:
+			case
+				// the left operand has qualified or
+				// unqualified arithmetic type and the right
+				// has arithmetic type;
+				t.IsArithmeticType() && op.IsArithmeticType():
 				return op.convertTo(ctx, t).Value
+			case
+				// both operands are pointers to qualified or
+				// unqualified versions of compatible types,
+				// and the type pointed to by the left has all
+				// the qualifiers of the type pointed to by the
+				// right;
+				t.Kind() == Ptr && op.Type.Kind() == Ptr && t.IsCompatible(op.Type):
+				return op.Value
+			case
+				// the left operand is a pointer and the right is a null pointer constant;
+				t.Kind() == Ptr && op.isIntegerType() && op.isZero():
+				return null
+			default:
+				//dbg("", t, op)
+				panic(fmt.Errorf("%v: TODO", ctx.position(n)))
+			}
+		}
+
+		if t.Kind() == Array && t.(*ArrayType).Item == Char && op.Type.Kind() == Ptr && op.Type.(*PointerType).Item == Char {
+			// 14. An array of character type may be initialized by
+			// a character string literal, optionally enclosed in
+			// braces. Successive characters of the character
+			// string literal (including the terminating null
+			// character if there is room or if the array is of
+			// unknown size) initialize the elements of the array.
+			x := t.(*ArrayType)
+			if x.Size == nil {
+				switch y := op.Value.(type) {
+				case *ir.StringValue:
+					x.Size = newIntConst(ctx, n, uint64(len(dict.S(int(y.StringID)))+1), UInt, ULong, ULongLong)
+				default:
+					panic(fmt.Errorf("%v: TODO", ctx.position(n)))
+				}
 			}
 			return op.Value
-		case TypeKind:
-			switch t {
-			case
-				Int,
-				UChar,
-				UShort:
-				if !op.isIntegerType() {
-					panic("TODO")
-				}
-				if op.convertTo(ctx, t).eq(ctx, op).isZero() {
-					panic("TODO")
-				}
-				return op.Value
-			default:
-				panic(fmt.Errorf("%v: %v, %v", ctx.position(n), t, op))
-			}
-		default:
-			panic(fmt.Errorf("%v: %T", ctx.position(n), t))
 		}
+
+		panic(fmt.Errorf("%v: TODO", ctx.position(n)))
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	}
 }
 
-func (n *InitializerList) check(ctx *context, t Type, index int) *ir.CompositeValue {
+func (n *InitializerList) check(ctx *context, t Type) ir.Value {
+	// InitializerList:
+	//         /* empty */                                  // Case 0
+	// |       Initializer                                  // Case 1
+	// |       Designation Initializer                      // Case 2
+	// |       InitializerList ',' Initializer              // Case 3
+	// |       InitializerList ',' Designation Initializer  // Case 4
 	r := &ir.CompositeValue{}
-	for ; n != nil; n = n.InitializerList {
-		switch {
-		case n.Designation != nil:
-			panic(ctx.position(n.Initializer))
-		default:
-			var it Type
-			switch x := t.(type) {
-			case *ArrayType:
-				it = x.Item
-				if x.Size != nil && int64(index) >= x.Size.Value.(*ir.Int64Value).Value {
-					panic(ctx.position(n))
+	n0 := n
+	for {
+		switch x := t.(type) {
+		case *ArrayType:
+			var index, max int64
+			for ; n != nil; n = n.InitializerList {
+				if n.Designation != nil {
+					panic(fmt.Errorf("%v: TODO", ctx.position(n.Initializer)))
 				}
-			case *StructType:
-				if index >= len(x.Fields) {
-					panic("TODO")
+
+				r.Values = append(r.Values, n.Initializer.check(ctx, x.Item))
+				if index > max {
+					max = index
 				}
-				it = x.Fields[index].Type
-			case *TaggedStructType:
-				t := x.getType()
-				if t == nil || t == Undefined {
-					panic("TODO")
-				}
-				it = t.(*StructType).Fields[index].Type
-			default:
-				panic(fmt.Errorf("%T", x))
+				index++
 			}
-			r.Values = append(r.Values, n.Initializer.check(ctx, it))
-			index++
+			if x.Size == nil {
+				x.Size = newIntConst(ctx, n0, uint64(max), UInt, ULong, ULongLong)
+			}
+			return r
+		case *NamedType:
+			t = x.Type
+		case *StructType:
+			field := 0
+			for ; n != nil; n = n.InitializerList {
+				if n.Designation != nil {
+					panic(fmt.Errorf("%v: TODO", ctx.position(n.Initializer)))
+				}
+
+				switch {
+				case field < len(x.Fields):
+					r.Values = append(r.Values, n.Initializer.check(ctx, x.Fields[field].Type))
+					field++
+				default:
+					panic(fmt.Errorf("%v: TODO", ctx.position(n.Initializer)))
+				}
+			}
+			return r
+		case *TaggedStructType:
+			t = x.getType()
+		default:
+			panic(fmt.Errorf("%v: TODO %T", ctx.position(n), x))
 		}
 	}
-	return r
 }
 
 func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObject bool) Type {
@@ -1203,59 +1213,7 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 	n.DeclarationSpecifier = ds
 	t = n.PointerOpt.check(ctx, t, &n.TypeQualifiers)
 	n.Type = n.DirectDeclarator.check(ctx, t)
-	isFunction := false
-	switch x := n.Type.(type) {
-	case
-		*ArrayType,
-		*PointerType,
-		*StructType,
-		*TaggedStructType,
-		*UnionType:
-
-		// nop
-	case *FunctionType:
-		isFunction = !ds.isTypedef()
-	case *NamedType:
-		d0 := n.scope.lookupIdent(x.Name)
-		if d0 == nil {
-			panic("TODO") // undefined
-		}
-
-		d, ok := n.scope.lookupIdent(x.Name).(*Declarator)
-		if !ok {
-			panic("TODO")
-		}
-
-		if !d.DeclarationSpecifier.isTypedef() {
-			panic("internal error")
-		}
-
-		x.Type = d.Type
-	case TypeKind:
-		switch x {
-		case
-			Char,
-			Double,
-			Float,
-			Int,
-			Long,
-			LongLong,
-			SChar,
-			Short,
-			UChar,
-			UInt,
-			ULong,
-			ULongLong,
-			UShort,
-			Void:
-
-			// nop
-		default:
-			panic(ctx.position(n))
-		}
-	default:
-		panic(fmt.Errorf("%v: %T", ctx.position(n), x))
-	}
+	isFunction := n.Type.Kind() == Function && !ds.isTypedef()
 	if n.Embedded {
 		return n.Type
 	}

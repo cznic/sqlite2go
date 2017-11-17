@@ -75,6 +75,7 @@ func init() {
 
 var (
 	nopos xc.Token
+	null  = &ir.AddressValue{}
 
 	idDefine  = dict.SID("define")
 	idDefined = dict.SID("defined")

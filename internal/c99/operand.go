@@ -80,7 +80,7 @@ var (
 // same, and complex otherwise. This pattern is called the usual arithmetic
 // conversions:
 func usualArithmeticConversions(ctx *context, a, b *Operand) (*Operand, *Operand) {
-	if !a.isArithmeticType() || !b.isArithmeticType() {
+	if !a.IsArithmeticType() || !b.IsArithmeticType() {
 		panic("TODO")
 	}
 
@@ -186,7 +186,7 @@ func newIntConst(c *context, n Node, v uint64, t ...TypeKind) (r *Operand) {
 
 func (o *Operand) String() string         { return fmt.Sprintf("(%v, %v, %v)", o.Type, o.Value, o.Addr) }
 func (o *Operand) copy() *Operand         { r := *o; return &r }
-func (o *Operand) isArithmeticType() bool { return isArithmeticType[o.Type.Kind()] }
+func (o *Operand) IsArithmeticType() bool { return o.Type.IsArithmeticType() }
 func (o *Operand) isIntegerType() bool    { return intConvRank[o.Type.Kind()] != 0 }
 func (o *Operand) isScalarType() bool     { return o.Type.IsScalarType() } // [0]6.2.5-21
 func (o *Operand) isSigned() bool         { return isSigned[o.Type.Kind()] }
@@ -220,6 +220,7 @@ func (o *Operand) and(ctx *context, p *Operand) (r *Operand) {
 }
 
 func (o *Operand) convertTo(ctx *context, t Type) *Operand {
+	t = flat(t)
 	if o.Type == t {
 		return o
 	}
@@ -228,55 +229,51 @@ func (o *Operand) convertTo(ctx *context, t Type) *Operand {
 		return &Operand{Type: t}
 	}
 
-	switch x := o.Type.Kind(); x {
-	case Int:
-		switch t.Kind() {
-		case Long:
-			return newOperand(t, o.Value, nil)
-		case
-			UChar,
-			UInt,
-			UShort:
-
-			return newOperand(t, o.Value, nil).normalize(ctx)
-		case Ptr:
-			// [0]6.3.2.3
-
-			if o.isZero() {
-				// 3. An integer constant expression with the
-				// value 0, or such an expression cast to type
-				// void *, is called a null pointer constant.
-				// If a null pointer constant is converted to a
-				// pointer type, the resulting pointer, called
-				// a null pointer, is guaranteed to compare
-				// unequal to a pointer to any object or
-				// function.
-				return newOperand(t, o.Value, nil)
-			}
-
-			panic("TODO")
-		default:
-			panic(fmt.Errorf("%v -> %v", o, t))
-		}
-	case Ptr:
-		switch t.Kind() {
-		case Ptr:
-			return newOperand(t, o.Value, nil)
-		default:
-			panic(fmt.Errorf("%v -> %v", o, t))
-		}
-	case
-		UChar,
-		UShort:
-
-		switch t.Kind() {
+	switch x := o.Type.(type) {
+	case TypeKind:
+		switch x {
 		case Int:
-			return newOperand(t, o.Value, nil)
+			switch t.Kind() {
+			case LongLong:
+				return newOperand(t, o.Value, nil)
+			case
+				Char,
+				UChar,
+				UInt,
+				UShort:
+				return newOperand(t, o.Value, nil).normalize(ctx)
+			case Ptr:
+				// [0]6.3.2.3
+
+				if o.isZero() {
+					// 3. An integer constant expression
+					// with the value 0, or such an
+					// expression cast to type void *, is
+					// called a null pointer constant.  If
+					// a null pointer constant is converted
+					// to a pointer type, the resulting
+					// pointer, called a null pointer, is
+					// guaranteed to compare unequal to a
+					// pointer to any object or function.
+					return newOperand(t, null, nil)
+				}
+
+				panic(fmt.Errorf("%T(%v) -> %T(%v)", x, o, t, t))
+			default:
+				panic(fmt.Errorf("%T(%v) -> %T(%v)", x, o, t, t))
+			}
+		case UShort:
+			switch t.Kind() {
+			case Int:
+				return newOperand(t, o.Value, nil)
+			default:
+				panic(fmt.Errorf("%T(%v) -> %T(%v)", x, o, t, t))
+			}
 		default:
-			panic(fmt.Errorf("%v -> %v", o, t))
+			panic(fmt.Errorf("%T(%v) -> %T(%v)", x, o, t, t))
 		}
 	default:
-		panic(fmt.Errorf("%v -> %v", o, t))
+		panic(fmt.Errorf("%T(%v) -> %T(%v)", x, o, t, t))
 	}
 }
 
@@ -476,7 +473,12 @@ func (o *Operand) normalize(ctx *context) *Operand {
 		case 1:
 			switch {
 			case o.isSigned():
-				panic("TODO")
+				switch {
+				case val < 0:
+					x.Value = val | ^math.MaxUint8
+				default:
+					x.Value = val & math.MaxUint8
+				}
 			default:
 				x.Value = val & math.MaxUint8
 			}
@@ -537,7 +539,7 @@ func (o *Operand) sub(ctx *context, p *Operand) (r *Operand) {
 }
 
 func (o *Operand) unaryMinus(ctx *context) *Operand {
-	if !o.isArithmeticType() {
+	if !o.IsArithmeticType() {
 		panic("TODO")
 	}
 

@@ -30,8 +30,9 @@ type undefinedType struct {
 
 // Type represents a C type.
 type Type interface {
-	IsCompatible(Type) bool // [0]6.2.7
 	Equal(Type) bool
+	IsArithmeticType() bool
+	IsCompatible(Type) bool // [0]6.2.7
 	IsScalarType() bool
 	Kind() TypeKind
 	String() string
@@ -88,7 +89,9 @@ func (t TypeKind) IsScalarType() bool {
 	case
 		Char,
 		Int,
+		LongLong,
 		UChar,
+		UInt,
 		ULong,
 		UShort:
 
@@ -97,6 +100,9 @@ func (t TypeKind) IsScalarType() bool {
 		panic(t)
 	}
 }
+
+// IsArithmeticType implements Type.
+func (t TypeKind) IsArithmeticType() bool { return isArithmeticType[t] }
 
 // IsCompatible implements Type.
 func (t TypeKind) IsCompatible(u Type) bool {
@@ -114,6 +120,7 @@ func (t TypeKind) Equal(u Type) bool {
 	case
 		Char,
 		Int,
+		LongLong,
 		UShort,
 		ULong,
 		Void:
@@ -194,6 +201,11 @@ type ArrayType struct {
 	TypeQualifiers []*TypeQualifier // Eg. double a[restrict 3][5], see 6.7.5.3-21.
 }
 
+// IsArithmeticType implements Type.
+func (t *ArrayType) IsArithmeticType() bool {
+	panic("TODO")
+}
+
 // IsCompatible implements Type.
 func (t *ArrayType) IsCompatible(u Type) bool { panic("TODO") }
 
@@ -221,6 +233,11 @@ func (t *ArrayType) String() string {
 // EnumType represents an enum type.
 type EnumType struct {
 	Enums []*EnumerationConstant
+}
+
+// IsArithmeticType implements Type.
+func (t *EnumType) IsArithmeticType() bool {
+	panic("TODO")
 }
 
 // IsCompatible implements Type.
@@ -252,6 +269,11 @@ type FunctionType struct {
 	Prototype *FunctionType
 	Result    Type
 	Variadic  bool
+}
+
+// IsArithmeticType implements Type.
+func (t *FunctionType) IsArithmeticType() bool {
+	panic("TODO")
 }
 
 // IsCompatible implements Type.
@@ -302,6 +324,9 @@ type NamedType struct {
 	Type Type // The type Name refers to.
 }
 
+// IsArithmeticType implements Type.
+func (t *NamedType) IsArithmeticType() bool { return t.Type.IsArithmeticType() }
+
 // IsCompatible implements Type.
 func (t *NamedType) IsCompatible(u Type) bool { panic("TODO") }
 
@@ -314,20 +339,17 @@ func (t *NamedType) Equal(u Type) bool {
 func (t *NamedType) Kind() TypeKind { return TypedefName }
 
 // IsScalarType implements Type.
-func (t *NamedType) IsScalarType() bool { panic("TODO") }
+func (t *NamedType) IsScalarType() bool { return t.Type.IsScalarType() }
 
-func (t *NamedType) String() string {
-	if t.Type == nil {
-		return string(dict.S(t.Name))
-	}
-
-	return t.Type.String()
-}
+func (t *NamedType) String() string { return string(dict.S(t.Name)) }
 
 // PointerType represents a pointer type.
 type PointerType struct {
 	Item Type
 }
+
+// IsArithmeticType implements Type.
+func (t *PointerType) IsArithmeticType() bool { return false }
 
 // IsCompatible implements Type.
 func (t *PointerType) IsCompatible(u Type) bool {
@@ -372,6 +394,11 @@ type StructType struct {
 	Fields []Field
 }
 
+// IsArithmeticType implements Type.
+func (t *StructType) IsArithmeticType() bool {
+	panic("TODO")
+}
+
 // IsCompatible implements Type.
 func (t *StructType) IsCompatible(u Type) bool { panic("TODO") }
 
@@ -409,6 +436,11 @@ type TaggedStructType struct {
 	Tag   int
 	Type  Type
 	scope *scope
+}
+
+// IsArithmeticType implements Type.
+func (t *TaggedStructType) IsArithmeticType() bool {
+	panic("TODO")
 }
 
 // IsCompatible implements Type.
@@ -453,6 +485,11 @@ func (t *TaggedStructType) String() string { return fmt.Sprintf("struct %s", dic
 // UnionType represents a union type.
 type UnionType struct {
 	Fields []Field
+}
+
+// IsArithmeticType implements Type.
+func (t *UnionType) IsArithmeticType() bool {
+	panic("TODO")
 }
 
 // IsCompatible implements Type.
@@ -502,7 +539,7 @@ func flat(t Type) Type {
 		r.Result = flat(r.Result)
 		return &r
 	case *NamedType:
-		return x.Type
+		return flat(x.Type)
 	case *PointerType:
 		r := *x
 		r.Item = flat(r.Item)
