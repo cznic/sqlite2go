@@ -263,6 +263,8 @@ type Field struct {
 	Type Type
 }
 
+func (f Field) String() string { return fmt.Sprintf("%s %v", dict.S(f.Name), f.Type) }
+
 // FunctionType represents a function type.
 type FunctionType struct {
 	Params    []Type
@@ -392,6 +394,7 @@ func (t *PointerType) String() string { return fmt.Sprintf("pointer to %v", t.It
 // StructType represents a struct type.
 type StructType struct {
 	Fields []Field
+	scope  *scope
 }
 
 // IsArithmeticType implements Type.
@@ -485,6 +488,7 @@ func (t *TaggedStructType) String() string { return fmt.Sprintf("struct %s", dic
 // UnionType represents a union type.
 type UnionType struct {
 	Fields []Field
+	scope  *scope
 }
 
 // IsArithmeticType implements Type.

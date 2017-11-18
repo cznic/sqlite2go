@@ -506,7 +506,8 @@ import (
 			//yy:field	Type			Type			// Declared type.
 			//yy:field	TypeQualifiers		[]*TypeQualifier	// From the PointerOpt production, if any.
 			//yy:field	scope			*scope			// Declare the name in scope.
-			//yy:field	Bits			int			// StructDeclarator: bits.
+			//yy:field	Bits			int			// StructDeclarator: bit width when a bit field.
+			//yy:field	field			int			// Declaration order#.
 			//yy:field	Embedded		bool			// [0]6.7.5-3: Not a full declarator.
 			//yy:field	isFnDefinition		bool
 			//yy:field	isFnParamater		bool

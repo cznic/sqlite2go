@@ -240,6 +240,7 @@ func (o *Operand) convertTo(ctx *context, t Type) *Operand {
 				Char,
 				UChar,
 				UInt,
+				ULong,
 				UShort:
 				return newOperand(t, o.Value, nil).normalize(ctx)
 			case Ptr:
@@ -259,6 +260,13 @@ func (o *Operand) convertTo(ctx *context, t Type) *Operand {
 				}
 
 				panic(fmt.Errorf("%T(%v) -> %T(%v)", x, o, t, t))
+			default:
+				panic(fmt.Errorf("%T(%v) -> %T(%v)", x, o, t, t))
+			}
+		case ULong:
+			switch t.Kind() {
+			case Int:
+				return newOperand(t, o.Value, nil).normalize(ctx)
 			default:
 				panic(fmt.Errorf("%T(%v) -> %T(%v)", x, o, t, t))
 			}
@@ -500,6 +508,13 @@ func (o *Operand) normalize(ctx *context) *Operand {
 				}
 			default:
 				x.Value = val & math.MaxUint32
+			}
+		case 8:
+			switch {
+			case o.isSigned():
+				panic("TODO")
+			default:
+				x.Value = int64(uint64(val) & math.MaxUint64)
 			}
 		default:
 			panic(fmt.Errorf("TODO %v", sz))

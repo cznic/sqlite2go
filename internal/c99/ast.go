@@ -595,7 +595,8 @@ type Declarator struct {
 	Type                 Type                  // Declared type.
 	TypeQualifiers       []*TypeQualifier      // From the PointerOpt production, if any.
 	scope                *scope                // Declare the name in scope.
-	Bits                 int                   // StructDeclarator: bits.
+	Bits                 int                   // StructDeclarator: bit width when a bit field.
+	field                int                   // Declaration order#.
 	Embedded             bool                  // [0]6.7.5-3: Not a full declarator.
 	isFnDefinition       bool
 	isFnParamater        bool

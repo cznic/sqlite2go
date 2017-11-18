@@ -368,6 +368,8 @@ func (c *cpp) eval(r tokenReader, w tokenWriter) (err error) {
 			err = newPanicError(fmt.Errorf("%T: PANIC: %v\n%s", c, e, debugStack()))
 		}
 	}()
+	c.macros[idFile] = &macro{repl: []xc.Token{{Char: lex.NewChar(0, STRINGLITERAL)}}}
+	c.macros[idLine] = &macro{repl: []xc.Token{{Char: lex.NewChar(0, INTCONST)}}}
 	if cs := c.expand(r, w, conds(nil).push(condZero)); len(cs) != 1 || cs.tos() != condZero {
 		panic(cs)
 	}
@@ -425,6 +427,12 @@ func (c *cpp) expand(r tokenReader, w tokenWriter, cs conds) conds {
 
 			m := c.macros[nm]
 			if m != nil && !m.fnLike {
+				switch nm {
+				case idFile:
+					m.repl[0].Val = dict.SID(fmt.Sprintf("%q", c.position(t).Filename))
+				case idLine:
+					m.repl[0].Val = dict.SID(fmt.Sprint(c.position(t).Line))
+				}
 				// ------------------------------------------ C
 				t.Rune = SENTINEL
 				r.unget(t)
@@ -1109,6 +1117,9 @@ func (c *cpp) defineMacro(line []xc.Token) {
 	switch t := line[0]; t.Rune {
 	case IDENTIFIER:
 		nm := t.Val
+		if protectedMacro[nm] {
+			panic("TODO")
+		}
 		line := line[1:]
 		var repl []xc.Token
 		if len(line) != 0 {

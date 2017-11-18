@@ -199,6 +199,8 @@ func (n *Expr) eval(ctx *context) *Operand {
 			n.Operand = t.Size.mul(ctx, ctx.sizeof(t.Item))
 		case *PointerType:
 			n.Operand = ctx.sizeof(t)
+		case *NamedType:
+			n.Operand = ctx.sizeof(t.Type)
 		default:
 			panic(t)
 		}
@@ -622,6 +624,7 @@ func (n *Expr) eval(ctx *context) *Operand {
 		case *EnumerationConstant:
 			n.Operand = x.Operand
 		default:
+			//dbg("%s", dict.S(nm))
 			panic(fmt.Errorf("%v: %T", ctx.position(n), x))
 		}
 	case ExprInt: // INTCONST
@@ -671,7 +674,14 @@ func (n *ArgumentExprListOpt) eval(ctx *context) []*Operand {
 		return nil
 	}
 
-	panic(ctx.position(n))
+	return n.ArgumentExprList.eval(ctx)
+}
+
+func (n *ArgumentExprList) eval(ctx *context) (r []*Operand) {
+	for ; n != nil; n = n.ArgumentExprList {
+		r = append(r, n.Expr.eval(ctx))
+	}
+	return r
 }
 
 func (n *Expr) evalSizeofOperand(ctx *context) *Operand {
@@ -738,17 +748,25 @@ func (n *Expr) evalSizeofOperand(ctx *context) *Operand {
 		}
 	case ExprSelect: // Expr '.' IDENTIFIER
 		op := n.Expr.evalSizeofOperand(ctx)
-		if op.Addr == nil {
-			panic("TODO")
-		}
 		switch t := op.Type.(type) {
 		case *StructType:
+			nm := n.Token2.Val
+			d0, ok := t.scope.idents[nm]
+			if !ok {
+				panic(ctx.position(n))
+			}
+			d := d0.(*Declarator)
+			n.Operand = newOperand(t.Fields[d.field].Type, nil, nil)
+			if op.Addr == nil {
+				panic(ctx.position(n))
+			}
 			layout := ctx.model.Layout(t)
-			panic(layout)
+			av := *op.Addr
+			av.Offset += uintptr(layout[d.field].Offset)
+			n.Operand.Addr = &av
 		default:
 			panic(t)
 		}
-		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	}
@@ -1656,9 +1674,9 @@ func (n *StructOrUnionSpecifier) check(ctx *context) {
 	case StructOrUnionSpecifierDefine: // StructOrUnion IdentifierOpt '{' StructDeclarationList '}'
 		switch n.StructOrUnion.Case {
 		case StructOrUnionStruct:
-			n.typ = &StructType{Fields: n.StructDeclarationList.check(ctx)}
+			n.typ = &StructType{Fields: n.StructDeclarationList.check(ctx), scope: n.scope}
 		default:
-			n.typ = &UnionType{Fields: n.StructDeclarationList.check(ctx)}
+			n.typ = &UnionType{Fields: n.StructDeclarationList.check(ctx), scope: n.scope}
 		}
 		if n.IdentifierOpt != nil {
 			n.scope.parent.insertStructTag(ctx, n)
@@ -1669,36 +1687,43 @@ func (n *StructOrUnionSpecifier) check(ctx *context) {
 }
 
 func (n *StructDeclarationList) check(ctx *context) (r []Field) {
+	field := 0
 	for ; n != nil; n = n.StructDeclarationList {
-		r = append(r, n.StructDeclaration.check(ctx)...)
+		r = append(r, n.StructDeclaration.check(ctx, &field)...)
 	}
 	return r
 }
 
-func (n *StructDeclaration) check(ctx *context) []Field {
+func (n *StructDeclaration) check(ctx *context, field *int) []Field {
 	// SpecifierQualifierList StructDeclaratorList ';'
 	ds := &DeclarationSpecifier{}
 	n.SpecifierQualifierList.check(ctx, ds)
-	return n.StructDeclaratorList.check(ctx, ds)
+	return n.StructDeclaratorList.check(ctx, ds, field)
 }
 
-func (n *StructDeclaratorList) check(ctx *context, ds *DeclarationSpecifier) (r []Field) {
+func (n *StructDeclaratorList) check(ctx *context, ds *DeclarationSpecifier, field *int) (r []Field) {
 	for ; n != nil; n = n.StructDeclaratorList {
-		r = append(r, n.StructDeclarator.check(ctx, ds))
+		r = append(r, n.StructDeclarator.check(ctx, ds, *field))
+		*field++
 	}
 	return r
 }
 
-func (n *StructDeclarator) check(ctx *context, ds *DeclarationSpecifier) Field {
+func (n *StructDeclarator) check(ctx *context, ds *DeclarationSpecifier, field int) Field {
 	switch n.Case {
 	case StructDeclaratorBase: // Declarator
-		return Field{Type: n.Declarator.check(ctx, ds, ds.typ(), false), Name: n.Declarator.nm()}
+		f := Field{Type: n.Declarator.check(ctx, ds, ds.typ(), false), Name: n.Declarator.nm()}
+		n.Declarator.field = field
+		return f
 	case StructDeclaratorBits: // DeclaratorOpt ':' ConstExpr
 		var d *Declarator
 		t := ds.typ()
 		if n.DeclaratorOpt != nil {
 			d = n.DeclaratorOpt.Declarator
+			d.field = field
 			t = d.check(ctx, ds, t, false)
+		} else {
+			panic(ctx.position(n))
 		}
 		op := n.ConstExpr.eval(ctx)
 		if op.Value == nil {

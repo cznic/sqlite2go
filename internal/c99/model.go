@@ -80,6 +80,7 @@ func (m Model) Sizeof(t Type) int64 {
 }
 
 func (m Model) Layout(t Type) []ir.FieldProperties {
+	//TODO bit fields
 	for {
 		switch x := t.(type) {
 		case *StructType:

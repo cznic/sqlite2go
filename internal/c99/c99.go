@@ -36,6 +36,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/cznic/ir"
 )
 
 type tweaks struct {
@@ -143,11 +145,11 @@ func (c *context) sizeof(t Type) *Operand {
 		return newIntConst(c, nopos, uint64(sz), UInt, ULong, ULongLong)
 	}
 
-	if d.Type.Kind() != TypedefName {
+	if !d.DeclarationSpecifier.isTypedef() {
 		panic(d.Type)
 	}
 
-	panic(d.Type.(*NamedType).Type)
+	return newOperand(d.Type, &ir.Int64Value{Value: sz}, nil)
 }
 
 func (c *context) toC(ch rune, val int) rune {
@@ -338,6 +340,8 @@ func (s *scope) String() string {
 	var a []string
 	for _, v := range s.idents {
 		switch x := v.(type) {
+		case *Declarator:
+			a = append(a, string(dict.S(x.nm())))
 		default:
 			panic(fmt.Errorf("%T", x))
 		}

@@ -83,10 +83,12 @@ var (
 	idElse    = dict.SID("else")
 	idEndif   = dict.SID("endif")
 	idError   = dict.SID("error")
+	idFile    = dict.SID("__FILE__")
 	idIf      = dict.SID("if")
 	idIfdef   = dict.SID("ifdef")
 	idIfndef  = dict.SID("ifndef")
 	idInclude = dict.SID("include")
+	idLine    = dict.SID("__LINE__")
 	idOne     = dict.SID("1")
 	idPragma  = dict.SID("pragma")
 	idSizeT   = dict.SID("size_t")
@@ -94,6 +96,11 @@ var (
 	idVaArgs  = dict.SID("__VA_ARGS__")
 	idWarning = dict.SID("warning")
 	idZero    = dict.SID("0")
+
+	protectedMacro = map[int]bool{
+		idFile: true,
+		idLine: true,
+	}
 
 	keywords = map[int]rune{
 		dict.SID("_Bool"):    BOOL,
