@@ -33,6 +33,7 @@ type Type interface {
 	Equal(Type) bool
 	IsArithmeticType() bool
 	IsCompatible(Type) bool // [0]6.2.7
+	IsPointerType() bool
 	IsScalarType() bool
 	Kind() TypeKind
 	String() string
@@ -83,6 +84,9 @@ const (
 // Kind implements Type.
 func (t TypeKind) Kind() TypeKind { return t }
 
+// IsPointerType implements Type.
+func (t TypeKind) IsPointerType() bool { panic("TODO") }
+
 // IsScalarType implements Type.
 func (t TypeKind) IsScalarType() bool {
 	switch t {
@@ -115,19 +119,25 @@ func (t TypeKind) IsCompatible(u Type) bool {
 
 // Equal implements Type.
 func (t TypeKind) Equal(u Type) bool {
-	u = flat(u)
-	switch t {
-	case
-		Char,
-		Int,
-		LongLong,
-		UShort,
-		ULong,
-		Void:
+	switch x := u.(type) {
+	case *NamedType:
+		return t.Equal(x.Type)
+	case TypeKind:
+		switch x {
+		case
+			Char,
+			Int,
+			LongLong,
+			ULong,
+			UShort,
+			Void:
 
-		return t == u.Kind()
+			return t == x
+		default:
+			panic(x)
+		}
 	default:
-		panic(t)
+		panic(fmt.Errorf("%T", x))
 	}
 }
 
@@ -211,12 +221,18 @@ func (t *ArrayType) IsCompatible(u Type) bool { panic("TODO") }
 
 // Equal implements Type.
 func (t *ArrayType) Equal(u Type) bool {
-	u = flat(u)
+	if t == u {
+		return true
+	}
+
 	panic("TODO")
 }
 
 // Kind implements Type.
 func (t *ArrayType) Kind() TypeKind { return Array }
+
+// IsPointerType implements Type.
+func (t *ArrayType) IsPointerType() bool { panic("TODO") }
 
 // IsScalarType implements Type.
 func (t *ArrayType) IsScalarType() bool { return false }
@@ -245,12 +261,18 @@ func (t *EnumType) IsCompatible(u Type) bool { panic("TODO") }
 
 // Equal implements Type.
 func (t *EnumType) Equal(u Type) bool {
-	u = flat(u)
+	if t == u {
+		return true
+	}
+
 	panic("TODO")
 }
 
 // Kind implements Type.
 func (t *EnumType) Kind() TypeKind { return Enum }
+
+// IsPointerType implements Type.
+func (t *EnumType) IsPointerType() bool { panic("TODO") }
 
 // IsScalarType implements Type.
 func (t *EnumType) IsScalarType() bool { panic("TODO") }
@@ -283,26 +305,32 @@ func (t *FunctionType) IsCompatible(u Type) bool { panic("TODO") }
 
 // Equal implements Type.
 func (t *FunctionType) Equal(u Type) bool {
-	u = flat(u)
-	if u.Kind() != Function {
-		return false
+	if t == u {
+		return true
 	}
 
-	v := u.(*FunctionType)
-	if len(t.Params) != len(v.Params) || t.Variadic != v.Variadic || !t.Result.Equal(v.Result) {
-		return false
-	}
-
-	for i, t := range t.Params {
-		if !t.Equal(v.Params[i]) {
+	switch x := u.(type) {
+	case *FunctionType:
+		if len(t.Params) != len(x.Params) || t.Variadic != x.Variadic || !t.Result.Equal(x.Result) {
 			return false
 		}
+
+		for i, t := range t.Params {
+			if !t.Equal(x.Params[i]) {
+				return false
+			}
+		}
+		return true
+	default:
+		panic(fmt.Errorf("%T", x))
 	}
-	return true
 }
 
 // Kind implements Type.
 func (t *FunctionType) Kind() TypeKind { return Function }
+
+// IsPointerType implements Type.
+func (t *FunctionType) IsPointerType() bool { return false }
 
 // IsScalarType implements Type.
 func (t *FunctionType) IsScalarType() bool { panic("TODO") }
@@ -330,15 +358,22 @@ type NamedType struct {
 func (t *NamedType) IsArithmeticType() bool { return t.Type.IsArithmeticType() }
 
 // IsCompatible implements Type.
-func (t *NamedType) IsCompatible(u Type) bool { panic("TODO") }
+func (t *NamedType) IsCompatible(u Type) bool { return t.Type.IsCompatible(u) }
 
 // Equal implements Type.
 func (t *NamedType) Equal(u Type) bool {
+	if t == u {
+		return true
+	}
+
 	return t.Type.Equal(u)
 }
 
 // Kind implements Type.
 func (t *NamedType) Kind() TypeKind { return TypedefName }
+
+// IsPointerType implements Type.
+func (t *NamedType) IsPointerType() bool { return t.Type.IsPointerType() }
 
 // IsScalarType implements Type.
 func (t *NamedType) IsScalarType() bool { return t.Type.IsScalarType() }
@@ -359,32 +394,47 @@ func (t *PointerType) IsCompatible(u Type) bool {
 		return true
 	}
 
-	if u = flat(u); u.Kind() != Ptr {
-		return false
-	}
+	switch x := u.(type) {
+	case *NamedType:
+		return t.IsCompatible(x.Type)
+	case *PointerType:
+		// [0]6.3.2.3
+		//
+		// 1. A pointer to void may be converted to or from a pointer to any
+		// incomplete or object type. A pointer to any incomplete or object
+		// type may be converted to a pointer to void and back again; the
+		// result shall compare equal to the original pointer.
+		if t.Item == Void || x.Item == Void {
+			return true
+		}
 
-	v := u.(*PointerType)
-	// [0]6.3.2.3
-	//
-	// 1. A pointer to void may be converted to or from a pointer to any
-	// incomplete or object type. A pointer to any incomplete or object
-	// type may be converted to a pointer to void and back again; the
-	// result shall compare equal to the original pointer.
-	if t.Item == Void || v.Item == Void {
-		return true
+		panic("TODO")
+	default:
+		panic(fmt.Errorf("%T", x))
 	}
-
-	panic("TODO")
 }
 
 // Equal implements Type.
 func (t *PointerType) Equal(u Type) bool {
-	u = flat(u)
-	return u.Kind() == Ptr && t.Item.Equal(u.(*PointerType).Item)
+	if t == u {
+		return true
+	}
+
+	switch x := u.(type) {
+	case *NamedType:
+		return t.Equal(x.Type)
+	case *PointerType:
+		return t.Item.Equal(x.Item)
+	default:
+		panic(fmt.Errorf("%T", x))
+	}
 }
 
 // Kind implements Type.
 func (t *PointerType) Kind() TypeKind { return Ptr }
+
+// IsPointerType implements Type.
+func (t *PointerType) IsPointerType() bool { return true }
 
 // IsScalarType implements Type.
 func (t *PointerType) IsScalarType() bool { return true }
@@ -407,16 +457,34 @@ func (t *StructType) IsCompatible(u Type) bool { panic("TODO") }
 
 // Equal implements Type.
 func (t *StructType) Equal(u Type) bool {
-	u = flat(u)
-	if u.Kind() != Struct {
-		return false
+	if t == u {
+		return true
 	}
 
-	panic("TODO")
+	switch x := u.(type) {
+	case *StructType:
+		if len(t.Fields) != len(x.Fields) {
+			return false
+		}
+
+		for i, v := range t.Fields {
+			if !v.Type.Equal(x.Fields[i].Type) {
+				return false
+			}
+		}
+		return false
+	case TypeKind:
+		return false
+	default:
+		panic(fmt.Errorf("%T", x))
+	}
 }
 
 // Kind implements Type.
 func (t *StructType) Kind() TypeKind { return Struct }
+
+// IsPointerType implements Type.
+func (t *StructType) IsPointerType() bool { panic("TODO") }
 
 // IsScalarType implements Type.
 func (t *StructType) IsScalarType() bool { panic("TODO") }
@@ -447,20 +515,30 @@ func (t *TaggedStructType) IsArithmeticType() bool {
 }
 
 // IsCompatible implements Type.
-func (t *TaggedStructType) IsCompatible(u Type) bool { panic("TODO") }
+func (t *TaggedStructType) IsCompatible(u Type) bool { return t.Equal(u) }
 
 // Equal implements Type.
 func (t *TaggedStructType) Equal(u Type) bool {
-	switch u = flat(u); u.(type) {
-	case TypeKind:
-		switch u {
-		case Void:
-			return false
-		default:
-			panic(u)
+	if t == u {
+		return true
+	}
+
+	switch x := t.getType().(type) {
+	case *StructType:
+		return x.Equal(u)
+	case *TaggedStructType:
+		if x == t {
+			switch y := u.(type) {
+			case *NamedType:
+				return x.Equal(y.Type)
+			default:
+				panic(fmt.Errorf("%T", y))
+			}
 		}
+
+		panic("TODO")
 	default:
-		panic(u)
+		panic(fmt.Errorf("%T", x))
 	}
 }
 
@@ -469,16 +547,20 @@ func (t *TaggedStructType) getType() Type {
 		return t.Type
 	}
 
-	t.Type = Undefined
-	if s := t.scope.lookupStructTag(t.Tag); s != nil {
-		t.Type = s.typ
+	s := t.scope.lookupStructTag(t.Tag)
+	if s == nil {
+		return t
 	}
 
+	t.Type = s.typ
 	return t.Type
 }
 
 // Kind implements Type.
 func (t *TaggedStructType) Kind() TypeKind { return StructTag }
+
+// IsPointerType implements Type.
+func (t *TaggedStructType) IsPointerType() bool { panic("TODO") }
 
 // IsScalarType implements Type.
 func (t *TaggedStructType) IsScalarType() bool { panic("TODO") }
@@ -501,12 +583,18 @@ func (t *UnionType) IsCompatible(u Type) bool { panic("TODO") }
 
 // Equal implements Type.
 func (t *UnionType) Equal(u Type) bool {
-	u = flat(u)
+	if t == u {
+		return true
+	}
+
 	panic("TODO")
 }
 
 // Kind implements Type.
 func (t *UnionType) Kind() TypeKind { return Union }
+
+// IsPointerType implements Type.
+func (t *UnionType) IsPointerType() bool { panic("TODO") }
 
 // IsScalarType implements Type.
 func (t *UnionType) IsScalarType() bool { panic("TODO") }
@@ -522,43 +610,4 @@ func (t *UnionType) String() string {
 	}
 	buf.WriteByte('}')
 	return buf.String()
-}
-
-func flat(t Type) Type {
-	switch x := t.(type) {
-	case *ArrayType:
-		r := *x
-		r.Item = flat(r.Item)
-		return &r
-	case *FunctionType:
-		if x == nil {
-			return (*FunctionType)(nil)
-		}
-
-		r := *x
-		for i, v := range r.Params {
-			r.Params[i] = flat(v)
-		}
-		r.Prototype = flat(r.Prototype).(*FunctionType)
-		r.Result = flat(r.Result)
-		return &r
-	case *NamedType:
-		return flat(x.Type)
-	case *PointerType:
-		r := *x
-		r.Item = flat(r.Item)
-		return &r
-	case *StructType:
-		r := *x
-		for i, v := range r.Fields {
-			r.Fields[i].Type = flat(v.Type)
-		}
-		return &r
-	case *TaggedStructType:
-		return t
-	case TypeKind:
-		return t
-	default:
-		panic(x)
-	}
 }

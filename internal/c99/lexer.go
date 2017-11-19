@@ -69,7 +69,7 @@ func newTrigraphs(ctx *context, file *token.File, r io.Reader) (*trigraphs, erro
 	return t, nil
 }
 
-func (t *trigraphs) ReadRune() (rune, int, error) { panic("internal error") }
+func (t *trigraphs) ReadRune() (rune, int, error) { panic("internal error 9") }
 
 func (t *trigraphs) ReadChar() (c lex.Char, size int, err error) {
 	size = 1
@@ -113,6 +113,7 @@ type lexer struct {
 	sc          int
 	t           *trigraphs
 	tc          *tokenPipe
+	currFn      int // [0]6.4.2.2
 	ungetBuffer
 }
 
@@ -143,7 +144,7 @@ func newLexer(ctx *context, nm string, sz int, r io.Reader) (*lexer, error) {
 }
 
 func (l *lexer) Error(msg string)             { l.err(l.First, "%v", msg) }
-func (l *lexer) ReadRune() (rune, int, error) { panic("internal error") }
+func (l *lexer) ReadRune() (rune, int, error) { panic("internal error 10") }
 func (l *lexer) comment(general bool)         { /*TODO*/ }
 func (l *lexer) lastPosition() token.Position { return l.fset.PositionFor(l.last.Pos(), true) }
 func (l *lexer) parseExpr() bool              { return l.parse(CONSTANT_EXPRESSION) }
@@ -294,6 +295,22 @@ func (l *lexer) lex(lval *yySymType) {
 	if _, ok := tokHasVal[ch.Rune]; ok {
 		lval.Token = xc.Token{Char: ch, Val: dict.ID(l.TokenBytes(nil))}
 	}
+}
+
+// static const char __func__[] = "function-name"; // [0], 6.4.2.2.
+func (l *lexer) declareFuncName() {
+	pos := l.First.Pos() // '{'
+	l.ungets(
+		xc.Token{Char: lex.NewChar(pos, STATIC), Val: idStatic},
+		xc.Token{Char: lex.NewChar(pos, CONST), Val: idConst},
+		xc.Token{Char: lex.NewChar(pos, CHAR), Val: idChar},
+		xc.Token{Char: lex.NewChar(pos, IDENTIFIER), Val: idFuncName},
+		xc.Token{Char: lex.NewChar(pos, '[')},
+		xc.Token{Char: lex.NewChar(pos, ']')},
+		xc.Token{Char: lex.NewChar(pos, '=')},
+		xc.Token{Char: lex.NewChar(pos, STRINGLITERAL), Val: l.currFn},
+		xc.Token{Char: lex.NewChar(pos, ';')},
+	)
 }
 
 func (l *lexer) parse(mode int) bool {

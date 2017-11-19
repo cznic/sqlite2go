@@ -751,10 +751,14 @@ import (
 				DeclarationSpecifiers Declarator
 				{
 					lx.scope.typedef = false
+					lx.currFn = $2.(*Declarator).nm()
 				}
 				DeclarationListOpt FunctionBody
 
 			FunctionBody:
+				{
+					lx.declareFuncName() // [0], 6.4.2.2.
+				}
 				CompoundStmt
 
                         // [0]6.9.1

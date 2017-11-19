@@ -107,8 +107,54 @@ func ExampleBlockItem_decl() {
 	// · Declaration: &c99.Declaration{
 	// · · DeclarationSpecifiers: &c99.DeclarationSpecifiers{
 	// · · · Case: 1,
+	// · · · DeclarationSpecifiersOpt: &c99.DeclarationSpecifiersOpt{
+	// · · · · DeclarationSpecifiers: &c99.DeclarationSpecifiers{
+	// · · · · · Case: 2,
+	// · · · · · DeclarationSpecifiersOpt: &c99.DeclarationSpecifiersOpt{
+	// · · · · · · DeclarationSpecifiers: &c99.DeclarationSpecifiers{
+	// · · · · · · · Case: 3,
+	// · · · · · · · TypeSpecifier: &c99.TypeSpecifier{
+	// · · · · · · · · Case: 2,
+	// · · · · · · · · Token: CHAR "char",
+	// · · · · · · · },
+	// · · · · · · },
+	// · · · · · },
+	// · · · · · TypeQualifier: &c99.TypeQualifier{
+	// · · · · · · Token: CONST "const",
+	// · · · · · },
+	// · · · · },
+	// · · · },
 	// · · · StorageClassSpecifier: &c99.StorageClassSpecifier{
-	// · · · · Token: AUTO "auto",
+	// · · · · Case: 3,
+	// · · · · Token: STATIC "static",
+	// · · · },
+	// · · },
+	// · · InitDeclaratorListOpt: &c99.InitDeclaratorListOpt{
+	// · · · InitDeclaratorList: &c99.InitDeclaratorList{
+	// · · · · InitDeclarator: &c99.InitDeclarator{
+	// · · · · · Case: 1,
+	// · · · · · Declarator: &c99.Declarator{
+	// · · · · · · Linkage: LinkageNone,
+	// · · · · · · StorageDuration: StorageDurationAutomatic,
+	// · · · · · · DirectDeclarator: &c99.DirectDeclarator{
+	// · · · · · · · Case: DirectDeclaratorArray,
+	// · · · · · · · DirectDeclarator: &c99.DirectDeclarator{
+	// · · · · · · · · Case: DirectDeclaratorIdent,
+	// · · · · · · · · Token: IDENTIFIER "__func__",
+	// · · · · · · · },
+	// · · · · · · · Token: '[',
+	// · · · · · · · Token2: ']',
+	// · · · · · · },
+	// · · · · · },
+	// · · · · · Initializer: &c99.Initializer{
+	// · · · · · · Case: 1,
+	// · · · · · · Expr: &c99.Expr{
+	// · · · · · · · Case: ExprString,
+	// · · · · · · · Token: STRINGLITERAL "a",
+	// · · · · · · },
+	// · · · · · },
+	// · · · · · Token: '=',
+	// · · · · },
 	// · · · },
 	// · · },
 	// · · Token: ';',
@@ -135,12 +181,60 @@ func ExampleBlockItemList_case0() {
 	// Output:
 	// &c99.BlockItemList{
 	// · BlockItem: &c99.BlockItem{
-	// · · Case: 1,
-	// · · Stmt: &c99.Stmt{
-	// · · · Case: 1,
-	// · · · ExprStmt: &c99.ExprStmt{
-	// · · · · Token: ';',
+	// · · Declaration: &c99.Declaration{
+	// · · · DeclarationSpecifiers: &c99.DeclarationSpecifiers{
+	// · · · · Case: 1,
+	// · · · · DeclarationSpecifiersOpt: &c99.DeclarationSpecifiersOpt{
+	// · · · · · DeclarationSpecifiers: &c99.DeclarationSpecifiers{
+	// · · · · · · Case: 2,
+	// · · · · · · DeclarationSpecifiersOpt: &c99.DeclarationSpecifiersOpt{
+	// · · · · · · · DeclarationSpecifiers: &c99.DeclarationSpecifiers{
+	// · · · · · · · · Case: 3,
+	// · · · · · · · · TypeSpecifier: &c99.TypeSpecifier{
+	// · · · · · · · · · Case: 2,
+	// · · · · · · · · · Token: CHAR "char",
+	// · · · · · · · · },
+	// · · · · · · · },
+	// · · · · · · },
+	// · · · · · · TypeQualifier: &c99.TypeQualifier{
+	// · · · · · · · Token: CONST "const",
+	// · · · · · · },
+	// · · · · · },
+	// · · · · },
+	// · · · · StorageClassSpecifier: &c99.StorageClassSpecifier{
+	// · · · · · Case: 3,
+	// · · · · · Token: STATIC "static",
+	// · · · · },
 	// · · · },
+	// · · · InitDeclaratorListOpt: &c99.InitDeclaratorListOpt{
+	// · · · · InitDeclaratorList: &c99.InitDeclaratorList{
+	// · · · · · InitDeclarator: &c99.InitDeclarator{
+	// · · · · · · Case: 1,
+	// · · · · · · Declarator: &c99.Declarator{
+	// · · · · · · · Linkage: LinkageNone,
+	// · · · · · · · StorageDuration: StorageDurationAutomatic,
+	// · · · · · · · DirectDeclarator: &c99.DirectDeclarator{
+	// · · · · · · · · Case: DirectDeclaratorArray,
+	// · · · · · · · · DirectDeclarator: &c99.DirectDeclarator{
+	// · · · · · · · · · Case: DirectDeclaratorIdent,
+	// · · · · · · · · · Token: IDENTIFIER "__func__",
+	// · · · · · · · · },
+	// · · · · · · · · Token: '[',
+	// · · · · · · · · Token2: ']',
+	// · · · · · · · },
+	// · · · · · · },
+	// · · · · · · Initializer: &c99.Initializer{
+	// · · · · · · · Case: 1,
+	// · · · · · · · Expr: &c99.Expr{
+	// · · · · · · · · Case: ExprString,
+	// · · · · · · · · Token: STRINGLITERAL "a",
+	// · · · · · · · },
+	// · · · · · · },
+	// · · · · · · Token: '=',
+	// · · · · · },
+	// · · · · },
+	// · · · },
+	// · · · Token: ';',
 	// · · },
 	// · },
 	// }
@@ -151,12 +245,60 @@ func ExampleBlockItemList_case1() {
 	// Output:
 	// &c99.BlockItemList{
 	// · BlockItem: &c99.BlockItem{
-	// · · Case: 1,
-	// · · Stmt: &c99.Stmt{
-	// · · · Case: 1,
-	// · · · ExprStmt: &c99.ExprStmt{
-	// · · · · Token: ';',
+	// · · Declaration: &c99.Declaration{
+	// · · · DeclarationSpecifiers: &c99.DeclarationSpecifiers{
+	// · · · · Case: 1,
+	// · · · · DeclarationSpecifiersOpt: &c99.DeclarationSpecifiersOpt{
+	// · · · · · DeclarationSpecifiers: &c99.DeclarationSpecifiers{
+	// · · · · · · Case: 2,
+	// · · · · · · DeclarationSpecifiersOpt: &c99.DeclarationSpecifiersOpt{
+	// · · · · · · · DeclarationSpecifiers: &c99.DeclarationSpecifiers{
+	// · · · · · · · · Case: 3,
+	// · · · · · · · · TypeSpecifier: &c99.TypeSpecifier{
+	// · · · · · · · · · Case: 2,
+	// · · · · · · · · · Token: CHAR "char",
+	// · · · · · · · · },
+	// · · · · · · · },
+	// · · · · · · },
+	// · · · · · · TypeQualifier: &c99.TypeQualifier{
+	// · · · · · · · Token: CONST "const",
+	// · · · · · · },
+	// · · · · · },
+	// · · · · },
+	// · · · · StorageClassSpecifier: &c99.StorageClassSpecifier{
+	// · · · · · Case: 3,
+	// · · · · · Token: STATIC "static",
+	// · · · · },
 	// · · · },
+	// · · · InitDeclaratorListOpt: &c99.InitDeclaratorListOpt{
+	// · · · · InitDeclaratorList: &c99.InitDeclaratorList{
+	// · · · · · InitDeclarator: &c99.InitDeclarator{
+	// · · · · · · Case: 1,
+	// · · · · · · Declarator: &c99.Declarator{
+	// · · · · · · · Linkage: LinkageNone,
+	// · · · · · · · StorageDuration: StorageDurationAutomatic,
+	// · · · · · · · DirectDeclarator: &c99.DirectDeclarator{
+	// · · · · · · · · Case: DirectDeclaratorArray,
+	// · · · · · · · · DirectDeclarator: &c99.DirectDeclarator{
+	// · · · · · · · · · Case: DirectDeclaratorIdent,
+	// · · · · · · · · · Token: IDENTIFIER "__func__",
+	// · · · · · · · · },
+	// · · · · · · · · Token: '[',
+	// · · · · · · · · Token2: ']',
+	// · · · · · · · },
+	// · · · · · · },
+	// · · · · · · Initializer: &c99.Initializer{
+	// · · · · · · · Case: 1,
+	// · · · · · · · Expr: &c99.Expr{
+	// · · · · · · · · Case: ExprString,
+	// · · · · · · · · Token: STRINGLITERAL "a",
+	// · · · · · · · },
+	// · · · · · · },
+	// · · · · · · Token: '=',
+	// · · · · · },
+	// · · · · },
+	// · · · },
+	// · · · Token: ';',
 	// · · },
 	// · },
 	// · BlockItemList: &c99.BlockItemList{
@@ -177,7 +319,7 @@ func ExampleBlockItemList_case1() {
 func ExampleBlockItemListOpt_case0() {
 	fmt.Println(exampleAST(207, "\U00100001 auto a { }") == (*BlockItemListOpt)(nil))
 	// Output:
-	// true
+	// false
 }
 
 func ExampleBlockItemListOpt_case1() {
@@ -186,13 +328,73 @@ func ExampleBlockItemListOpt_case1() {
 	// &c99.BlockItemListOpt{
 	// · BlockItemList: &c99.BlockItemList{
 	// · · BlockItem: &c99.BlockItem{
-	// · · · Case: 1,
-	// · · · Stmt: &c99.Stmt{
+	// · · · Declaration: &c99.Declaration{
+	// · · · · DeclarationSpecifiers: &c99.DeclarationSpecifiers{
+	// · · · · · Case: 1,
+	// · · · · · DeclarationSpecifiersOpt: &c99.DeclarationSpecifiersOpt{
+	// · · · · · · DeclarationSpecifiers: &c99.DeclarationSpecifiers{
+	// · · · · · · · Case: 2,
+	// · · · · · · · DeclarationSpecifiersOpt: &c99.DeclarationSpecifiersOpt{
+	// · · · · · · · · DeclarationSpecifiers: &c99.DeclarationSpecifiers{
+	// · · · · · · · · · Case: 3,
+	// · · · · · · · · · TypeSpecifier: &c99.TypeSpecifier{
+	// · · · · · · · · · · Case: 2,
+	// · · · · · · · · · · Token: CHAR "char",
+	// · · · · · · · · · },
+	// · · · · · · · · },
+	// · · · · · · · },
+	// · · · · · · · TypeQualifier: &c99.TypeQualifier{
+	// · · · · · · · · Token: CONST "const",
+	// · · · · · · · },
+	// · · · · · · },
+	// · · · · · },
+	// · · · · · StorageClassSpecifier: &c99.StorageClassSpecifier{
+	// · · · · · · Case: 3,
+	// · · · · · · Token: STATIC "static",
+	// · · · · · },
+	// · · · · },
+	// · · · · InitDeclaratorListOpt: &c99.InitDeclaratorListOpt{
+	// · · · · · InitDeclaratorList: &c99.InitDeclaratorList{
+	// · · · · · · InitDeclarator: &c99.InitDeclarator{
+	// · · · · · · · Case: 1,
+	// · · · · · · · Declarator: &c99.Declarator{
+	// · · · · · · · · Linkage: LinkageNone,
+	// · · · · · · · · StorageDuration: StorageDurationAutomatic,
+	// · · · · · · · · DirectDeclarator: &c99.DirectDeclarator{
+	// · · · · · · · · · Case: DirectDeclaratorArray,
+	// · · · · · · · · · DirectDeclarator: &c99.DirectDeclarator{
+	// · · · · · · · · · · Case: DirectDeclaratorIdent,
+	// · · · · · · · · · · Token: IDENTIFIER "__func__",
+	// · · · · · · · · · },
+	// · · · · · · · · · Token: '[',
+	// · · · · · · · · · Token2: ']',
+	// · · · · · · · · },
+	// · · · · · · · },
+	// · · · · · · · Initializer: &c99.Initializer{
+	// · · · · · · · · Case: 1,
+	// · · · · · · · · Expr: &c99.Expr{
+	// · · · · · · · · · Case: ExprString,
+	// · · · · · · · · · Token: STRINGLITERAL "a",
+	// · · · · · · · · },
+	// · · · · · · · },
+	// · · · · · · · Token: '=',
+	// · · · · · · },
+	// · · · · · },
+	// · · · · },
+	// · · · · Token: ';',
+	// · · · },
+	// · · },
+	// · · BlockItemList: &c99.BlockItemList{
+	// · · · BlockItem: &c99.BlockItem{
 	// · · · · Case: 1,
-	// · · · · ExprStmt: &c99.ExprStmt{
-	// · · · · · Token: ';',
+	// · · · · Stmt: &c99.Stmt{
+	// · · · · · Case: 1,
+	// · · · · · ExprStmt: &c99.ExprStmt{
+	// · · · · · · Token: ';',
+	// · · · · · },
 	// · · · · },
 	// · · · },
+	// · · · Case: 1,
 	// · · },
 	// · },
 	// }
@@ -216,6 +418,67 @@ func ExampleCompoundStmt_case0() {
 	fmt.Println(exampleAST(204, "\U00100001 auto a { }"))
 	// Output:
 	// &c99.CompoundStmt{
+	// · BlockItemListOpt: &c99.BlockItemListOpt{
+	// · · BlockItemList: &c99.BlockItemList{
+	// · · · BlockItem: &c99.BlockItem{
+	// · · · · Declaration: &c99.Declaration{
+	// · · · · · DeclarationSpecifiers: &c99.DeclarationSpecifiers{
+	// · · · · · · Case: 1,
+	// · · · · · · DeclarationSpecifiersOpt: &c99.DeclarationSpecifiersOpt{
+	// · · · · · · · DeclarationSpecifiers: &c99.DeclarationSpecifiers{
+	// · · · · · · · · Case: 2,
+	// · · · · · · · · DeclarationSpecifiersOpt: &c99.DeclarationSpecifiersOpt{
+	// · · · · · · · · · DeclarationSpecifiers: &c99.DeclarationSpecifiers{
+	// · · · · · · · · · · Case: 3,
+	// · · · · · · · · · · TypeSpecifier: &c99.TypeSpecifier{
+	// · · · · · · · · · · · Case: 2,
+	// · · · · · · · · · · · Token: CHAR "char",
+	// · · · · · · · · · · },
+	// · · · · · · · · · },
+	// · · · · · · · · },
+	// · · · · · · · · TypeQualifier: &c99.TypeQualifier{
+	// · · · · · · · · · Token: CONST "const",
+	// · · · · · · · · },
+	// · · · · · · · },
+	// · · · · · · },
+	// · · · · · · StorageClassSpecifier: &c99.StorageClassSpecifier{
+	// · · · · · · · Case: 3,
+	// · · · · · · · Token: STATIC "static",
+	// · · · · · · },
+	// · · · · · },
+	// · · · · · InitDeclaratorListOpt: &c99.InitDeclaratorListOpt{
+	// · · · · · · InitDeclaratorList: &c99.InitDeclaratorList{
+	// · · · · · · · InitDeclarator: &c99.InitDeclarator{
+	// · · · · · · · · Case: 1,
+	// · · · · · · · · Declarator: &c99.Declarator{
+	// · · · · · · · · · Linkage: LinkageNone,
+	// · · · · · · · · · StorageDuration: StorageDurationAutomatic,
+	// · · · · · · · · · DirectDeclarator: &c99.DirectDeclarator{
+	// · · · · · · · · · · Case: DirectDeclaratorArray,
+	// · · · · · · · · · · DirectDeclarator: &c99.DirectDeclarator{
+	// · · · · · · · · · · · Case: DirectDeclaratorIdent,
+	// · · · · · · · · · · · Token: IDENTIFIER "__func__",
+	// · · · · · · · · · · },
+	// · · · · · · · · · · Token: '[',
+	// · · · · · · · · · · Token2: ']',
+	// · · · · · · · · · },
+	// · · · · · · · · },
+	// · · · · · · · · Initializer: &c99.Initializer{
+	// · · · · · · · · · Case: 1,
+	// · · · · · · · · · Expr: &c99.Expr{
+	// · · · · · · · · · · Case: ExprString,
+	// · · · · · · · · · · Token: STRINGLITERAL "a",
+	// · · · · · · · · · },
+	// · · · · · · · · },
+	// · · · · · · · · Token: '=',
+	// · · · · · · · },
+	// · · · · · · },
+	// · · · · · },
+	// · · · · · Token: ';',
+	// · · · · },
+	// · · · },
+	// · · },
+	// · },
 	// · Token: '{',
 	// · Token2: '}',
 	// }
@@ -247,7 +510,7 @@ func ExampleDeclaration_case0() {
 }
 
 func ExampleDeclarationList_case0() {
-	fmt.Println(exampleAST(230, "\U00100001 auto a auto ; {"))
+	fmt.Println(exampleAST(231, "\U00100001 auto a auto ; {"))
 	// Output:
 	// &c99.DeclarationList{
 	// · Declaration: &c99.Declaration{
@@ -263,7 +526,7 @@ func ExampleDeclarationList_case0() {
 }
 
 func ExampleDeclarationList_case1() {
-	fmt.Println(exampleAST(231, "\U00100001 auto a auto ; auto ; {"))
+	fmt.Println(exampleAST(232, "\U00100001 auto a auto ; auto ; {"))
 	// Output:
 	// &c99.DeclarationList{
 	// · Declaration: &c99.Declaration{
@@ -291,13 +554,13 @@ func ExampleDeclarationList_case1() {
 }
 
 func ExampleDeclarationListOpt_case0() {
-	fmt.Println(exampleAST(232, "\U00100001 auto a {") == (*DeclarationListOpt)(nil))
+	fmt.Println(exampleAST(233, "\U00100001 auto a {") == (*DeclarationListOpt)(nil))
 	// Output:
 	// true
 }
 
 func ExampleDeclarationListOpt_case1() {
-	fmt.Println(exampleAST(233, "\U00100001 auto a auto ; {"))
+	fmt.Println(exampleAST(234, "\U00100001 auto a auto ; {"))
 	// Output:
 	// &c99.DeclarationListOpt{
 	// · DeclarationList: &c99.DeclarationList{
@@ -450,12 +713,12 @@ func ExampleDesignator_index() {
 }
 
 func ExampleDesignatorList_case0() {
-	fmt.Println(exampleAST(190, "\U00100000 ( _Bool ) { . a ."))
+	fmt.Println(exampleAST(190, "\U00100001 auto a = { . b ."))
 	// Output:
 	// &c99.DesignatorList{
 	// · Designator: &c99.Designator{
 	// · · Token: '.',
-	// · · Token2: IDENTIFIER "a",
+	// · · Token2: IDENTIFIER "b",
 	// · },
 	// }
 }
@@ -1816,6 +2079,67 @@ func ExampleExternalDeclaration_func() {
 	// · · },
 	// · · FunctionBody: &c99.FunctionBody{
 	// · · · CompoundStmt: &c99.CompoundStmt{
+	// · · · · BlockItemListOpt: &c99.BlockItemListOpt{
+	// · · · · · BlockItemList: &c99.BlockItemList{
+	// · · · · · · BlockItem: &c99.BlockItem{
+	// · · · · · · · Declaration: &c99.Declaration{
+	// · · · · · · · · DeclarationSpecifiers: &c99.DeclarationSpecifiers{
+	// · · · · · · · · · Case: 1,
+	// · · · · · · · · · DeclarationSpecifiersOpt: &c99.DeclarationSpecifiersOpt{
+	// · · · · · · · · · · DeclarationSpecifiers: &c99.DeclarationSpecifiers{
+	// · · · · · · · · · · · Case: 2,
+	// · · · · · · · · · · · DeclarationSpecifiersOpt: &c99.DeclarationSpecifiersOpt{
+	// · · · · · · · · · · · · DeclarationSpecifiers: &c99.DeclarationSpecifiers{
+	// · · · · · · · · · · · · · Case: 3,
+	// · · · · · · · · · · · · · TypeSpecifier: &c99.TypeSpecifier{
+	// · · · · · · · · · · · · · · Case: 2,
+	// · · · · · · · · · · · · · · Token: CHAR "char",
+	// · · · · · · · · · · · · · },
+	// · · · · · · · · · · · · },
+	// · · · · · · · · · · · },
+	// · · · · · · · · · · · TypeQualifier: &c99.TypeQualifier{
+	// · · · · · · · · · · · · Token: CONST "const",
+	// · · · · · · · · · · · },
+	// · · · · · · · · · · },
+	// · · · · · · · · · },
+	// · · · · · · · · · StorageClassSpecifier: &c99.StorageClassSpecifier{
+	// · · · · · · · · · · Case: 3,
+	// · · · · · · · · · · Token: STATIC "static",
+	// · · · · · · · · · },
+	// · · · · · · · · },
+	// · · · · · · · · InitDeclaratorListOpt: &c99.InitDeclaratorListOpt{
+	// · · · · · · · · · InitDeclaratorList: &c99.InitDeclaratorList{
+	// · · · · · · · · · · InitDeclarator: &c99.InitDeclarator{
+	// · · · · · · · · · · · Case: 1,
+	// · · · · · · · · · · · Declarator: &c99.Declarator{
+	// · · · · · · · · · · · · Linkage: LinkageNone,
+	// · · · · · · · · · · · · StorageDuration: StorageDurationAutomatic,
+	// · · · · · · · · · · · · DirectDeclarator: &c99.DirectDeclarator{
+	// · · · · · · · · · · · · · Case: DirectDeclaratorArray,
+	// · · · · · · · · · · · · · DirectDeclarator: &c99.DirectDeclarator{
+	// · · · · · · · · · · · · · · Case: DirectDeclaratorIdent,
+	// · · · · · · · · · · · · · · Token: IDENTIFIER "__func__",
+	// · · · · · · · · · · · · · },
+	// · · · · · · · · · · · · · Token: '[',
+	// · · · · · · · · · · · · · Token2: ']',
+	// · · · · · · · · · · · · },
+	// · · · · · · · · · · · },
+	// · · · · · · · · · · · Initializer: &c99.Initializer{
+	// · · · · · · · · · · · · Case: 1,
+	// · · · · · · · · · · · · Expr: &c99.Expr{
+	// · · · · · · · · · · · · · Case: ExprString,
+	// · · · · · · · · · · · · · Token: STRINGLITERAL "a",
+	// · · · · · · · · · · · · },
+	// · · · · · · · · · · · },
+	// · · · · · · · · · · · Token: '=',
+	// · · · · · · · · · · },
+	// · · · · · · · · · },
+	// · · · · · · · · },
+	// · · · · · · · · Token: ';',
+	// · · · · · · · },
+	// · · · · · · },
+	// · · · · · },
+	// · · · · },
 	// · · · · Token: '{',
 	// · · · · Token2: '}',
 	// · · · },
@@ -1825,10 +2149,71 @@ func ExampleExternalDeclaration_func() {
 }
 
 func ExampleFunctionBody_case0() {
-	fmt.Println(exampleAST(229, "\U00100001 auto a { }"))
+	fmt.Println(exampleAST(230, "\U00100001 auto a { }"))
 	// Output:
 	// &c99.FunctionBody{
 	// · CompoundStmt: &c99.CompoundStmt{
+	// · · BlockItemListOpt: &c99.BlockItemListOpt{
+	// · · · BlockItemList: &c99.BlockItemList{
+	// · · · · BlockItem: &c99.BlockItem{
+	// · · · · · Declaration: &c99.Declaration{
+	// · · · · · · DeclarationSpecifiers: &c99.DeclarationSpecifiers{
+	// · · · · · · · Case: 1,
+	// · · · · · · · DeclarationSpecifiersOpt: &c99.DeclarationSpecifiersOpt{
+	// · · · · · · · · DeclarationSpecifiers: &c99.DeclarationSpecifiers{
+	// · · · · · · · · · Case: 2,
+	// · · · · · · · · · DeclarationSpecifiersOpt: &c99.DeclarationSpecifiersOpt{
+	// · · · · · · · · · · DeclarationSpecifiers: &c99.DeclarationSpecifiers{
+	// · · · · · · · · · · · Case: 3,
+	// · · · · · · · · · · · TypeSpecifier: &c99.TypeSpecifier{
+	// · · · · · · · · · · · · Case: 2,
+	// · · · · · · · · · · · · Token: CHAR "char",
+	// · · · · · · · · · · · },
+	// · · · · · · · · · · },
+	// · · · · · · · · · },
+	// · · · · · · · · · TypeQualifier: &c99.TypeQualifier{
+	// · · · · · · · · · · Token: CONST "const",
+	// · · · · · · · · · },
+	// · · · · · · · · },
+	// · · · · · · · },
+	// · · · · · · · StorageClassSpecifier: &c99.StorageClassSpecifier{
+	// · · · · · · · · Case: 3,
+	// · · · · · · · · Token: STATIC "static",
+	// · · · · · · · },
+	// · · · · · · },
+	// · · · · · · InitDeclaratorListOpt: &c99.InitDeclaratorListOpt{
+	// · · · · · · · InitDeclaratorList: &c99.InitDeclaratorList{
+	// · · · · · · · · InitDeclarator: &c99.InitDeclarator{
+	// · · · · · · · · · Case: 1,
+	// · · · · · · · · · Declarator: &c99.Declarator{
+	// · · · · · · · · · · Linkage: LinkageNone,
+	// · · · · · · · · · · StorageDuration: StorageDurationAutomatic,
+	// · · · · · · · · · · DirectDeclarator: &c99.DirectDeclarator{
+	// · · · · · · · · · · · Case: DirectDeclaratorArray,
+	// · · · · · · · · · · · DirectDeclarator: &c99.DirectDeclarator{
+	// · · · · · · · · · · · · Case: DirectDeclaratorIdent,
+	// · · · · · · · · · · · · Token: IDENTIFIER "__func__",
+	// · · · · · · · · · · · },
+	// · · · · · · · · · · · Token: '[',
+	// · · · · · · · · · · · Token2: ']',
+	// · · · · · · · · · · },
+	// · · · · · · · · · },
+	// · · · · · · · · · Initializer: &c99.Initializer{
+	// · · · · · · · · · · Case: 1,
+	// · · · · · · · · · · Expr: &c99.Expr{
+	// · · · · · · · · · · · Case: ExprString,
+	// · · · · · · · · · · · Token: STRINGLITERAL "a",
+	// · · · · · · · · · · },
+	// · · · · · · · · · },
+	// · · · · · · · · · Token: '=',
+	// · · · · · · · · },
+	// · · · · · · · },
+	// · · · · · · },
+	// · · · · · · Token: ';',
+	// · · · · · },
+	// · · · · },
+	// · · · },
+	// · · },
 	// · · Token: '{',
 	// · · Token2: '}',
 	// · },
@@ -1855,6 +2240,67 @@ func ExampleFunctionDefinition_case0() {
 	// · },
 	// · FunctionBody: &c99.FunctionBody{
 	// · · CompoundStmt: &c99.CompoundStmt{
+	// · · · BlockItemListOpt: &c99.BlockItemListOpt{
+	// · · · · BlockItemList: &c99.BlockItemList{
+	// · · · · · BlockItem: &c99.BlockItem{
+	// · · · · · · Declaration: &c99.Declaration{
+	// · · · · · · · DeclarationSpecifiers: &c99.DeclarationSpecifiers{
+	// · · · · · · · · Case: 1,
+	// · · · · · · · · DeclarationSpecifiersOpt: &c99.DeclarationSpecifiersOpt{
+	// · · · · · · · · · DeclarationSpecifiers: &c99.DeclarationSpecifiers{
+	// · · · · · · · · · · Case: 2,
+	// · · · · · · · · · · DeclarationSpecifiersOpt: &c99.DeclarationSpecifiersOpt{
+	// · · · · · · · · · · · DeclarationSpecifiers: &c99.DeclarationSpecifiers{
+	// · · · · · · · · · · · · Case: 3,
+	// · · · · · · · · · · · · TypeSpecifier: &c99.TypeSpecifier{
+	// · · · · · · · · · · · · · Case: 2,
+	// · · · · · · · · · · · · · Token: CHAR "char",
+	// · · · · · · · · · · · · },
+	// · · · · · · · · · · · },
+	// · · · · · · · · · · },
+	// · · · · · · · · · · TypeQualifier: &c99.TypeQualifier{
+	// · · · · · · · · · · · Token: CONST "const",
+	// · · · · · · · · · · },
+	// · · · · · · · · · },
+	// · · · · · · · · },
+	// · · · · · · · · StorageClassSpecifier: &c99.StorageClassSpecifier{
+	// · · · · · · · · · Case: 3,
+	// · · · · · · · · · Token: STATIC "static",
+	// · · · · · · · · },
+	// · · · · · · · },
+	// · · · · · · · InitDeclaratorListOpt: &c99.InitDeclaratorListOpt{
+	// · · · · · · · · InitDeclaratorList: &c99.InitDeclaratorList{
+	// · · · · · · · · · InitDeclarator: &c99.InitDeclarator{
+	// · · · · · · · · · · Case: 1,
+	// · · · · · · · · · · Declarator: &c99.Declarator{
+	// · · · · · · · · · · · Linkage: LinkageNone,
+	// · · · · · · · · · · · StorageDuration: StorageDurationAutomatic,
+	// · · · · · · · · · · · DirectDeclarator: &c99.DirectDeclarator{
+	// · · · · · · · · · · · · Case: DirectDeclaratorArray,
+	// · · · · · · · · · · · · DirectDeclarator: &c99.DirectDeclarator{
+	// · · · · · · · · · · · · · Case: DirectDeclaratorIdent,
+	// · · · · · · · · · · · · · Token: IDENTIFIER "__func__",
+	// · · · · · · · · · · · · },
+	// · · · · · · · · · · · · Token: '[',
+	// · · · · · · · · · · · · Token2: ']',
+	// · · · · · · · · · · · },
+	// · · · · · · · · · · },
+	// · · · · · · · · · · Initializer: &c99.Initializer{
+	// · · · · · · · · · · · Case: 1,
+	// · · · · · · · · · · · Expr: &c99.Expr{
+	// · · · · · · · · · · · · Case: ExprString,
+	// · · · · · · · · · · · · Token: STRINGLITERAL "a",
+	// · · · · · · · · · · · },
+	// · · · · · · · · · · },
+	// · · · · · · · · · · Token: '=',
+	// · · · · · · · · · },
+	// · · · · · · · · },
+	// · · · · · · · },
+	// · · · · · · · Token: ';',
+	// · · · · · · },
+	// · · · · · },
+	// · · · · },
+	// · · · },
 	// · · · Token: '{',
 	// · · · Token2: '}',
 	// · · },

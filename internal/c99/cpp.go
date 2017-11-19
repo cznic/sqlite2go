@@ -53,8 +53,8 @@ type tokenPipe struct {
 
 func newTokenPipe(n int) *tokenPipe { return &tokenPipe{ch: make(chan xc.Token, n)} }
 
-func (*tokenPipe) unget(xc.Token)     { panic("internal error") }
-func (*tokenPipe) ungets(...xc.Token) { panic("internal error") }
+func (*tokenPipe) unget(xc.Token)     { panic("internal error 2") }
+func (*tokenPipe) ungets(...xc.Token) { panic("internal error 3") }
 
 func (p *tokenPipe) close() {
 	if len(p.s) != 0 {
@@ -344,7 +344,7 @@ func (c *cpp) parse(src ...Source) (tokenReader, error) {
 				}
 				id := dict.ID(encBuf)
 				if id > math.MaxUint32 {
-					panic("internal error")
+					panic("internal error 4")
 				}
 
 				pf = append(pf, uint32(id))
@@ -483,7 +483,7 @@ func (c *cpp) expand(r tokenReader, w tokenWriter, cs conds) conds {
 			w.write(t)
 		case SENTINEL:
 			if !cs.on() {
-				panic("internal error")
+				panic("internal error 5")
 			}
 
 			c.hideSet[t.Val]--
@@ -1107,7 +1107,7 @@ func (c *cpp) define(line []xc.Token) {
 
 func (c *cpp) defineMacro(line []xc.Token) {
 	if len(line) == 0 {
-		panic("internal error")
+		panic("internal error 6")
 	}
 
 	if line[0].Rune == ' ' {

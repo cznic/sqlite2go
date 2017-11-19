@@ -126,7 +126,7 @@ func (c *context) parse(in []Source) (*TranslationUnit, error) {
 	}
 
 	if c.scope.parent != nil {
-		panic("internal error")
+		panic("internal error 7")
 	}
 
 	return lx.ast.(*TranslationUnit), nil
@@ -258,7 +258,7 @@ func (s *scope) insertDeclarator(ctx *context, d *Declarator) {
 	}
 	nm := d.nm()
 	if ex := s.idents[nm]; ex != nil {
-		panic("internal error")
+		panic("internal error 8")
 	}
 
 	s.idents[nm] = d

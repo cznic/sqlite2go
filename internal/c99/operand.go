@@ -220,7 +220,30 @@ func (o *Operand) and(ctx *context, p *Operand) (r *Operand) {
 }
 
 func (o *Operand) convertTo(ctx *context, t Type) *Operand {
-	t = flat(t)
+	switch x := t.(type) {
+	case *PointerType:
+		// ok
+	case TypeKind:
+		switch x {
+		case
+			Char,
+			Int,
+			LongLong,
+			UChar,
+			UInt,
+			ULong,
+			UShort:
+
+			// ok
+		default:
+			panic(x)
+		}
+	case *NamedType:
+		return o.convertTo(ctx, x.Type)
+	default:
+		panic(fmt.Errorf("%T", x))
+	}
+
 	if o.Type == t {
 		return o
 	}
@@ -262,6 +285,11 @@ func (o *Operand) convertTo(ctx *context, t Type) *Operand {
 				panic(fmt.Errorf("%T(%v) -> %T(%v)", x, o, t, t))
 			default:
 				panic(fmt.Errorf("%T(%v) -> %T(%v)", x, o, t, t))
+			}
+		case UInt:
+			switch t.Kind() {
+			default:
+				return newOperand(t, o.Value, nil)
 			}
 		case ULong:
 			switch t.Kind() {
