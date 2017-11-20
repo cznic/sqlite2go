@@ -2465,7 +2465,7 @@ yynewstate:
 	case 10:
 		{
 			yyVAL.node = &Expr{
-				Case:     ExprSizeOfType,
+				Case:     ExprSizeofType,
 				Token:    yyS[yypt-3].Token,
 				Token2:   yyS[yypt-2].Token,
 				TypeName: yyS[yypt-1].node.(*TypeName),
@@ -3990,12 +3990,15 @@ yynewstate:
 		}
 	case 202:
 		{
-			yyVAL.node = &LabeledStmt{
+			lx := yylex.(*lexer)
+			lhs := &LabeledStmt{
 				Case:   LabeledStmtLabel,
 				Token:  yyS[yypt-2].Token,
 				Token2: yyS[yypt-1].Token,
 				Stmt:   yyS[yypt-0].node.(*Stmt),
 			}
+			yyVAL.node = lhs
+			lx.scope.insertLabel(lx.context, lhs)
 		}
 	case 203:
 		{
@@ -4164,12 +4167,15 @@ yynewstate:
 		}
 	case 221:
 		{
-			yyVAL.node = &JumpStmt{
+			lx := yylex.(*lexer)
+			lhs := &JumpStmt{
 				Case:   JumpStmtGoto,
 				Token:  yyS[yypt-2].Token,
 				Token2: yyS[yypt-1].Token,
 				Token3: yyS[yypt-0].Token,
 			}
+			yyVAL.node = lhs
+			lhs.scope = lx.scope
 		}
 	case 222:
 		{

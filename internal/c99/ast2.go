@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"fmt"
 	"go/token"
+	"math/big"
 	"sort"
 	"strconv"
 	"strings"
@@ -191,7 +192,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) *Operand {
 	switch n.Case {
 	//TODO case ExprPreInc: // "++" Expr
 	//TODO case ExprPreDec: // "--" Expr
-	//TODO case ExprSizeOfType: // "sizeof" '(' TypeName ')'
+	case ExprSizeofType: // "sizeof" '(' TypeName ')'
+		t := n.TypeName.check(ctx)
+		n.Operand = ctx.sizeof(t)
 	case ExprSizeofExpr: // "sizeof" Expr
 		// [0]6.5.3.4
 		switch t := n.Expr.eval(ctx, false).Type.(type) { // [0]6.3.2.1-3
@@ -281,7 +284,15 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) *Operand {
 		default:
 			panic(ctx.position(n))
 		}
-	//TODO case ExprUnaryPlus: // '+' Expr
+	case ExprUnaryPlus: // '+' Expr
+		// [0]6.5.3.3
+		// The operand of the unary + or - operator shall have
+		// arithmetic type; of the ~ operator, integer type; of the !
+		// operator, scalar type.
+		n.Operand = n.Expr.eval(ctx, arr2ptr)
+		if !n.Operand.IsArithmeticType() {
+			panic(ctx.position(n))
+		}
 	case ExprUnaryMinus: // '-' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr).unaryMinus(ctx)
 	//TODO case ExprCpl: // '~' Expr
@@ -339,7 +350,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) *Operand {
 		rhs := n.Expr2.eval(ctx, arr2ptr)
 		switch {
 		case
-			lhs.Type.Kind() == Ptr && rhs.isIntegerType(),
+			lhs.isPointerType() && rhs.isIntegerType(),
 			lhs.IsArithmeticType() && rhs.IsArithmeticType():
 
 			// ok
@@ -347,7 +358,13 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) *Operand {
 			panic(ctx.position(n))
 		}
 		n.Operand = lhs
-	//TODO case ExprPostDec: // Expr "--"
+	case ExprPostDec: // Expr "--"
+		// [0]6.5.2.4
+		op := n.Expr.eval(ctx, arr2ptr)
+		if op.Value != nil {
+			panic("TODO")
+		}
+		n.Operand = op
 	case ExprSubAssign: // Expr "-=" Expr
 		// [0]6.5.16.2
 		//
@@ -360,7 +377,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) *Operand {
 		rhs := n.Expr2.eval(ctx, arr2ptr)
 		switch {
 		case
-			lhs.Type.Kind() == Ptr && rhs.isIntegerType(),
+			lhs.isPointerType() && rhs.isIntegerType(),
 			lhs.IsArithmeticType() && rhs.IsArithmeticType():
 
 			// ok
@@ -368,9 +385,47 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) *Operand {
 			panic(ctx.position(n))
 		}
 		n.Operand = lhs
-	//TODO case ExprPSelect: // Expr "->" IDENTIFIER
-	//TODO case ExprDivAssign: // Expr "/=" Expr
-	//TODO case ExprLsh: // Expr "<<" Expr
+	case ExprPSelect: // Expr "->" IDENTIFIER
+		op := n.Expr.eval(ctx, arr2ptr)
+		t := op.Type
+		switch x := t.(type) {
+		case *PointerType:
+			t = x.Item
+		default:
+			panic(x)
+		}
+	out:
+		for {
+			switch x := t.(type) {
+			case *NamedType:
+				t = x.Type
+			case *StructType:
+				nm := n.Token2.Val
+				d0, ok := x.scope.idents[nm]
+				if !ok {
+					panic(ctx.position(n))
+				}
+				d := d0.(*Declarator)
+				n.Operand = newOperand(x.Fields[d.field].Type, nil, nil)
+				if op.Addr != nil {
+					panic("TODO")
+				}
+				break out
+			case *TaggedStructType:
+				t = x.getType()
+				if t == x {
+					panic("TODO")
+				}
+			default:
+				panic(x)
+			}
+		}
+	case ExprDivAssign: // Expr "/=" Expr
+		// [0]6.5.16.2
+		n.Expr.eval(ctx, arr2ptr).div(ctx, n.Expr2.eval(ctx, arr2ptr))
+		n.Operand = n.Expr.Operand
+	case ExprLsh: // Expr "<<" Expr
+		n.Operand = n.Expr.eval(ctx, arr2ptr).lsh(ctx, n.Expr2.eval(ctx, arr2ptr))
 	//TODO case ExprLshAssign: // Expr "<<=" Expr
 	case ExprLe: // Expr "<=" Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr).le(ctx, n.Expr2.eval(ctx, arr2ptr))
@@ -433,7 +488,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) *Operand {
 		// object with the unqualified version of the type of its
 		// corresponding parameter.
 		if t.Prototype != nil {
-		out:
+		out2:
 			switch {
 			case t.Variadic:
 				panic(ctx.position(n))
@@ -446,8 +501,8 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) *Operand {
 				default:
 					panic(ctx.position(n))
 				}
-				for i, v := range args {
-					p := t.Params[i]
+				for i, rhs := range args {
+					lhs := t.Params[i]
 					// [0]6.5.16.1
 					switch {
 					// One of the following shall hold:
@@ -456,7 +511,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) *Operand {
 						// qualified or unqualified
 						// arithmetic type and the
 						// right has arithmetic type;
-						v.IsArithmeticType() && p.IsArithmeticType():
+						rhs.IsArithmeticType() && lhs.IsArithmeticType():
 					case
 						// both operands are pointers
 						// to qualified or unqualified
@@ -465,21 +520,59 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) *Operand {
 						// to by the left has all the
 						// qualifiers of the type
 						// pointed to by the right;
-						v.Type.Kind() == Ptr && p.Kind() == Ptr &&
-							v.Type.IsCompatible(p):
+						rhs.isPointerType() && lhs.IsPointerType() && rhs.Type.IsCompatible(lhs):
 					default:
 						//dbg("", v.Type, t.Params[i])
 						panic(ctx.position(n))
 					}
 				}
 				n.Operand = newOperand(t.Result, nil, nil)
-				break out
+				break out2
 			}
 		}
 
 		switch {
 		case t.Variadic:
-			panic(ctx.position(n))
+			switch {
+			case len(args) >= len(t.Params):
+				// ok
+			default:
+				panic(ctx.position(n))
+			}
+			for i, rhs := range args {
+				switch {
+				case rhs.isIntegerType():
+					rhs = newOperand(rhs.Type, rhs.Value, rhs.Addr).integerPromotion(ctx)
+				case rhs.Type.Kind() == Float:
+					rhs = rhs.convertTo(ctx, Double)
+				}
+				if i >= len(t.Params) {
+					continue
+				}
+
+				lhs := t.Params[i]
+				// [0]6.5.16.1
+				switch {
+				// One of the following shall hold:
+				// case
+				// 	// the left operand has qualified or
+				// 	// unqualified arithmetic type and the
+				// 	// right has arithmetic type;
+				// 	rhs.IsArithmeticType() && lhs.IsArithmeticType():
+				case
+					// both operands are pointers to
+					// qualified or unqualified versions of
+					// compatible types, and the type
+					// pointed to by the left has all the
+					// qualifiers of the type pointed to by
+					// the right;
+					lhs.IsPointerType() && rhs.isPointerType() && lhs.IsCompatible(rhs.Type):
+				default:
+					//dbg("", lhs, rhs)
+					panic(ctx.position(n))
+				}
+			}
+			n.Operand = newOperand(t.Result, nil, nil)
 		default:
 			switch {
 			case len(args) == len(t.Params):
@@ -489,20 +582,41 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) *Operand {
 			default:
 				panic(ctx.position(n))
 			}
+
 			// 6. If the expression that denotes the called
 			// function has a type that does not include a
 			// prototype, the integer promotions are performed on
 			// each argument, and arguments that have type float
 			// are promoted to double.
-			for i, v := range args {
+			for i, rhs := range args {
+				lhs := t.Params[i]
 				switch {
-				case v.isIntegerType():
-					v = newOperand(v.Type, v.Value, v.Addr).integerPromotion(ctx)
-				case v.Type.Kind() == Float:
-					v = v.convertTo(ctx, Double)
+				case rhs.isIntegerType():
+					rhs = newOperand(rhs.Type, rhs.Value, rhs.Addr).integerPromotion(ctx)
+				case rhs.Type.Kind() == Float:
+					rhs = rhs.convertTo(ctx, Double)
 				}
-				if !v.Type.IsCompatible(t.Params[i]) {
-					panic("TODO")
+				//dbg("==== %v", lhs)
+				//dbg("     %v", rhs)
+				// [0]6.5.16.1
+				switch {
+				// One of the following shall hold:
+				case
+					// the left operand has qualified or
+					// unqualified arithmetic type and the
+					// right has arithmetic type;
+					rhs.IsArithmeticType() && lhs.IsArithmeticType():
+				case
+					// both operands are pointers to
+					// qualified or unqualified versions of
+					// compatible types, and the type
+					// pointed to by the left has all the
+					// qualifiers of the type pointed to by
+					// the right;
+					lhs.IsPointerType() && rhs.isPointerType() && lhs.IsCompatible(rhs.Type):
+				default:
+					//dbg("", lhs, rhs)
+					panic(ctx.position(n))
 				}
 			}
 			n.Operand = newOperand(t.Result, nil, nil)
@@ -525,7 +639,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) *Operand {
 		case
 			// the left operand is a pointer to an object type and
 			// the right operand has integer type.
-			lhs.Type.Kind() == Ptr && rhs.isIntegerType():
+			lhs.isPointerType() && rhs.isIntegerType():
 
 			n.Operand = lhs
 		default:
@@ -533,23 +647,37 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) *Operand {
 		}
 	case ExprSelect: // Expr '.' IDENTIFIER
 		op := n.Expr.eval(ctx, arr2ptr)
-		switch t := op.Type.(type) {
-		case *StructType:
-			nm := n.Token2.Val
-			d0, ok := t.scope.idents[nm]
-			if !ok {
-				panic(ctx.position(n))
+		t := op.Type
+	out3:
+		for {
+			switch x := t.(type) {
+			case *NamedType:
+				t = x.Type
+			case *StructType:
+				nm := n.Token2.Val
+				d0, ok := x.scope.idents[nm]
+				if !ok {
+					panic(ctx.position(n))
+				}
+				d := d0.(*Declarator)
+				n.Operand = newOperand(x.Fields[d.field].Type, nil, nil)
+				if op.Addr != nil {
+					layout := ctx.model.Layout(x)
+					av := *op.Addr
+					av.Offset += uintptr(layout[d.field].Offset)
+					n.Operand.Addr = &av
+				}
+				break out3
+			case *TaggedStructType:
+				y := x.getType()
+				if x == y {
+					panic("TODO")
+				}
+				t = y
+			default:
+				//dbg("%v: %T", ctx.position(n), x)
+				panic(x)
 			}
-			d := d0.(*Declarator)
-			n.Operand = newOperand(t.Fields[d.field].Type, nil, nil)
-			if op.Addr != nil {
-				layout := ctx.model.Layout(t)
-				av := *op.Addr
-				av.Offset += uintptr(layout[d.field].Offset)
-				n.Operand.Addr = &av
-			}
-		default:
-			panic(t)
 		}
 	case ExprDiv: // Expr '/' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr).div(ctx, n.Expr2.eval(ctx, arr2ptr)) // [0]6.5.5
@@ -570,9 +698,14 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) *Operand {
 			// unqualified versions of compatible types, and the
 			// type pointed to by the left has all the qualifiers
 			// of the type pointed to by the right;
-			lhs.Type.Kind() == Ptr && rhs.Type.Kind() == Ptr &&
+			lhs.isPointerType() && rhs.isPointerType() &&
 				lhs.Type.IsCompatible(rhs.Type):
+		case
+			// the left operand is a pointer and the right is a null pointer constant;
+			lhs.isPointerType() && rhs.isIntegerType() && rhs.isZero():
 		default:
+			//dbg("", lhs)
+			//dbg("", rhs)
 			panic(ctx.position(n))
 		}
 		n.Operand = lhs
@@ -603,16 +736,16 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) *Operand {
 		case
 			// both operands are pointers to qualified or
 			// unqualified versions of compatible types;
-			a.Type.Kind() == Ptr && b.Type.Kind() == Ptr && a.Type.IsCompatible(b.Type):
+			a.isPointerType() && b.isPointerType() && a.Type.IsCompatible(b.Type):
 			n.Operand = a
 		default:
 			panic(ctx.position(n))
 		}
 		switch {
 		case cond.isNonzero():
-			panic(ctx.position(n))
+			n.Operand = a
 		case cond.isZero():
-			panic(ctx.position(n))
+			n.Operand = b
 		}
 	case ExprIndex: // Expr '[' ExprList ']'
 		// [0]6.5.2.1
@@ -645,38 +778,81 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) *Operand {
 	//TODO case ExprXor: // Expr '^' Expr
 	case ExprOr: // Expr '|' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr).or(ctx, n.Expr2.eval(ctx, arr2ptr))
-	//TODO case ExprFloat: // FLOATCONST
+	case ExprFloat: // FLOATCONST
+		s0 := string(dict.S(n.Token.Val))
+		s := s0
+	loop2:
+		for i := len(s) - 1; i > 0; i-- {
+			switch s0[i] {
+			case 'l', 'L', 'f', 'F':
+				s = s[:i]
+			default:
+				break loop2
+			}
+		}
+
+		var v float64
+		var err error
+		switch {
+		case strings.Contains(s, "p"):
+			var bf *big.Float
+			bf, _, err = big.ParseFloat(s, 0, 53, big.ToNearestEven)
+			if err == nil {
+				v, _ = bf.Float64()
+			}
+		default:
+			v, err = strconv.ParseFloat(s, 64)
+		}
+		if err != nil {
+			panic(ctx.position(n))
+		}
+
+		// [0]6.4.4.2
+		switch suff := strings.ToUpper(s0[len(s):]); suff {
+		case "":
+			n.Operand = newOperand(Double, &ir.Float64Value{Value: v}, nil)
+		default:
+			panic(fmt.Errorf("%v: TODO %q %q %v", ctx.position(n), s, suff, v))
+		}
 	case ExprIdent: // IDENTIFIER
 		// [0]6.5.1
 		nm := n.Token.Val
 		switch x := n.scope.lookupIdent(nm).(type) {
 		case *Declarator:
 			t := x.Type
+			t0 := t
 		more2:
 			switch y := t.(type) {
 			case
 				*ArrayType,
 				*PointerType,
-				*StructType:
+				*StructType,
+				*TaggedStructType:
 
-				n.Operand = newOperand(y, nil, nil)
+				n.Operand = newOperand(t0, nil, nil)
 			case *FunctionType:
-				n.Operand = newOperand(&PointerType{y}, nil, nil)
+				n.Operand = newOperand(&PointerType{t0}, nil, nil)
 			case *NamedType:
 				t = y.Type
 				goto more2
 			case TypeKind:
 				switch y {
 				case
+					Char,
+					Double,
 					Int,
 					LongLong,
-					ULong:
+					UInt,
+					ULong,
+					UShort:
 
-					n.Operand = newOperand(y, nil, nil)
+					n.Operand = newOperand(t0, nil, nil)
 				default:
+					//dbg("", ctx.position(n))
 					panic(y)
 				}
 			default:
+				//dbg("", ctx.position(n))
 				panic(y)
 			}
 			if x.StorageDuration == StorageDurationStatic {
@@ -717,7 +893,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) *Operand {
 		case suff == "UL" && decadic:
 			n.Operand = newIntConst(ctx, n, v, ULong, ULongLong)
 		default:
-			panic(fmt.Errorf("%v: TODO %q %q decadic: %v\n%s", ctx.fset.Position(n.Pos()), s, suff, decadic, PrettyString(n)))
+			panic(fmt.Errorf("%v: TODO %q %q decadic: %v\n%s", ctx.position(n), s, suff, decadic, PrettyString(n)))
 		}
 	//TODO case ExprLChar: // LONGCHARCONST
 	//TODO case ExprLString: // LONGSTRINGLITERAL
@@ -740,35 +916,41 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) *Operand {
 	// type’’ that points to the initial element of the array
 	// object and is not an lvalue. If the array object has
 	// register storage class, the behavior is undefined.
+	t := n.Operand.Type
 	for {
-		switch x := n.Operand.Type.(type) {
+		switch x := t.(type) {
 		case *ArrayType:
 			n.Operand.Type = &PointerType{x.Item}
 			return n.Operand
 		case *NamedType:
-			n.Operand.Type = x.Type
+			t = x.Type
 		case
 			*PointerType,
-			*StructType:
+			*StructType,
+			*TaggedStructType:
 
 			return n.Operand
 		case TypeKind:
 			switch x {
 			case
 				Char,
+				Double,
 				Int,
 				LongLong,
 				UChar,
 				UInt,
 				ULong,
+				ULongLong,
 				UShort,
 				Void:
 
 				return n.Operand
 			default:
+				//dbg("", ctx.position(n))
 				panic(x)
 			}
 		default:
+			//dbg("", ctx.position(n))
 			panic(fmt.Errorf("%T", x))
 		}
 	}
@@ -961,9 +1143,34 @@ func (n *Stmt) check(ctx *context, fn *Declarator, inSwitch, inLoop bool) {
 		n.IterationStmt.check(ctx, fn, inSwitch, inLoop)
 	case StmtJump: // JumpStmt
 		n.JumpStmt.check(ctx, fn, inSwitch, inLoop)
-	//TODO case StmtLabeled: // LabeledStmt
+	case StmtLabeled: // LabeledStmt
+		n.LabeledStmt.check(ctx, fn, inSwitch, inLoop)
 	case StmtSelect: // SelectionStmt
 		n.SelectionStmt.check(ctx, fn, inSwitch, inLoop)
+	default:
+		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
+	}
+}
+
+func (n *LabeledStmt) check(ctx *context, fn *Declarator, inSwitch, inLoop bool) {
+	//[0]6.8.1
+	switch n.Case {
+	case LabeledStmtSwitchCase: // "case" ConstExpr ':' Stmt
+		op := n.ConstExpr.eval(ctx)
+		if op.Value == nil {
+			panic("TODO")
+		}
+		if !inSwitch {
+			panic("TODO")
+		}
+		n.Stmt.check(ctx, fn, inSwitch, inLoop)
+	case LabeledStmtDefault: // "default" ':' Stmt
+		if !inSwitch {
+			panic("TODO")
+		}
+		n.Stmt.check(ctx, fn, inSwitch, inLoop)
+	case LabeledStmtLabel: // IDENTIFIER ':' Stmt
+		n.Stmt.check(ctx, fn, inSwitch, inLoop)
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	}
@@ -982,7 +1189,12 @@ func (n *SelectionStmt) check(ctx *context, fn *Declarator, inSwitch, inLoop boo
 			panic("TODO")
 		}
 		n.Stmt.check(ctx, fn, inSwitch, inLoop)
-	//TODO case SelectionStmtSwitch: // "switch" '(' ExprList ')' Stmt
+	case SelectionStmtSwitch: // "switch" '(' ExprList ')' Stmt
+		// [0]6.8.4.2
+		if !n.ExprList.eval(ctx, true).isIntegerType() {
+			panic("TODO")
+		}
+		n.Stmt.check(ctx, fn, true, inLoop)
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	}
@@ -1032,14 +1244,22 @@ func (n *JumpStmt) check(ctx *context, fn *Declarator, inSwitch, inLoop bool) {
 		if !inLoop {
 			panic(ctx.position(n))
 		}
-	//TODO case JumpStmtGoto: // "goto" IDENTIFIER ';'
+	case JumpStmtGoto: // "goto" IDENTIFIER ';'
+		if nm := n.Token2.Val; n.scope.lookupLabel(nm) == nil {
+			panic(ctx.position(n))
+		}
 	case JumpStmtReturn: // "return" ExprListOpt ';'
 		// [0]6.8.6.4
 		op := n.ExprListOpt.check(ctx, true)
 		switch t := fn.Type.(*FunctionType).Result; t.Kind() {
 		case Void:
-			panic(ctx.position(n))
+			if op != nil {
+				panic(ctx.position(n))
+			}
 		default:
+			if op == nil {
+				panic(ctx.position(n))
+			}
 			n.ReturnOperand = op.convertTo(ctx, t)
 		}
 	default:
@@ -1114,13 +1334,12 @@ func (n *Initializer) check(ctx *context, t Type) ir.Value {
 	case InitializerExpr: // Expr
 		op := n.Expr.eval(ctx, true)
 		if op.Value == nil {
-			if op.Addr == nil {
-				panic(fmt.Errorf("%v: TODO", ctx.position(n)))
+			if op.Addr != nil {
+				op.Value = op.Addr
 			}
-
-			op.Value = op.Addr
 		}
 
+		//dbg("", ctx.position(n.Expr))
 		if t.IsScalarType() {
 			// 11. The initializer for a scalar shall be a single
 			// expression, optionally enclosed in braces. The
@@ -1145,11 +1364,11 @@ func (n *Initializer) check(ctx *context, t Type) ir.Value {
 				// and the type pointed to by the left has all
 				// the qualifiers of the type pointed to by the
 				// right;
-				t.Kind() == Ptr && op.Type.Kind() == Ptr && t.IsCompatible(op.Type):
+				t.IsPointerType() && op.isPointerType() && t.IsCompatible(op.Type):
 				return op.Value
 			case
 				// the left operand is a pointer and the right is a null pointer constant;
-				t.Kind() == Ptr && op.isIntegerType() && op.isZero():
+				t.IsPointerType() && op.isIntegerType() && op.isZero():
 				return null
 			default:
 				//dbg("", t, op)
@@ -1157,7 +1376,7 @@ func (n *Initializer) check(ctx *context, t Type) ir.Value {
 			}
 		}
 
-		if t.Kind() == Array && t.(*ArrayType).Item == Char && op.Type.Kind() == Ptr && op.Type.(*PointerType).Item == Char {
+		if t.Kind() == Array && t.(*ArrayType).Item == Char && op.isPointerType() && op.Type.(*PointerType).Item == Char {
 			// 14. An array of character type may be initialized by
 			// a character string literal, optionally enclosed in
 			// braces. Successive characters of the character

@@ -120,6 +120,8 @@ func usualArithmeticConversions(ctx *context, a, b *Operand) (*Operand, *Operand
 	// Otherwise, the integer promotions are performed on both operands.
 	// Then the following rules are applied to the promoted operands:
 	if !a.isIntegerType() || !b.isIntegerType() {
+		//dbg("", a)
+		//dbg("", b)
 		panic("TODO")
 	}
 
@@ -165,6 +167,7 @@ type Operand struct {
 	Addr *ir.AddressValue // When known statically.
 	Type Type
 	ir.Value
+	//TODO lvalue bool
 }
 
 func newOperand(t Type, v ir.Value, addr *ir.AddressValue) *Operand {
@@ -184,10 +187,11 @@ func newIntConst(c *context, n Node, v uint64, t ...TypeKind) (r *Operand) {
 	return &Operand{Type: Undefined}
 }
 
+func (o *Operand) IsArithmeticType() bool { return o.Type.IsArithmeticType() }
 func (o *Operand) String() string         { return fmt.Sprintf("(%v, %v, %v)", o.Type, o.Value, o.Addr) }
 func (o *Operand) copy() *Operand         { r := *o; return &r }
-func (o *Operand) IsArithmeticType() bool { return o.Type.IsArithmeticType() }
-func (o *Operand) isIntegerType() bool    { return intConvRank[o.Type.Kind()] != 0 }
+func (o *Operand) isIntegerType() bool    { return o.Type.IsIntegerType() }
+func (o *Operand) isPointerType() bool    { return o.Type.IsPointerType() }
 func (o *Operand) isScalarType() bool     { return o.Type.IsScalarType() } // [0]6.2.5-21
 func (o *Operand) isSigned() bool         { return isSigned[o.Type.Kind()] }
 
@@ -227,6 +231,7 @@ func (o *Operand) convertTo(ctx *context, t Type) *Operand {
 		switch x {
 		case
 			Char,
+			Double,
 			Int,
 			LongLong,
 			UChar,
@@ -257,6 +262,8 @@ func (o *Operand) convertTo(ctx *context, t Type) *Operand {
 		switch x {
 		case Int:
 			switch t.Kind() {
+			case Double:
+				return newOperand(t, &ir.Float64Value{Value: float64(o.Value.(*ir.Int64Value).Value)}, nil)
 			case LongLong:
 				return newOperand(t, o.Value, nil)
 			case
@@ -282,7 +289,7 @@ func (o *Operand) convertTo(ctx *context, t Type) *Operand {
 					return newOperand(t, null, nil)
 				}
 
-				panic(fmt.Errorf("%T(%v) -> %T(%v)", x, o, t, t))
+				return newOperand(t, o.Value, nil)
 			default:
 				panic(fmt.Errorf("%T(%v) -> %T(%v)", x, o, t, t))
 			}
@@ -425,6 +432,24 @@ func (o *Operand) le(ctx *context, p *Operand) (r *Operand) {
 	return r
 }
 
+func (o *Operand) lsh(ctx *context, p *Operand) (r *Operand) { // [0]6.5.7
+	// 2. Each of the operands shall have integer type.
+	if !o.isIntegerType() || !p.isIntegerType() {
+		panic("TODO")
+	}
+	o, p = usualArithmeticConversions(ctx, o, p)
+	if o.Value == nil || p.Value == nil {
+		return &Operand{Type: o.Type}
+	}
+
+	switch x := o.Value.(type) {
+	case *ir.Int64Value:
+		return newOperand(o.Type, &ir.Int64Value{Value: x.Value << uint64(p.Value.(*ir.Int64Value).Value)}, nil).normalize(ctx)
+	default:
+		panic(fmt.Errorf("TODO %T", x))
+	}
+}
+
 func (o *Operand) lt(ctx *context, p *Operand) (r *Operand) {
 	r = &Operand{Type: Int}
 	if o.Value == nil || p.Value == nil {
@@ -540,7 +565,12 @@ func (o *Operand) normalize(ctx *context) *Operand {
 		case 8:
 			switch {
 			case o.isSigned():
-				panic("TODO")
+				switch {
+				case val < 0:
+					panic("TODO")
+				default:
+					x.Value = int64(uint64(val) & math.MaxUint64)
+				}
 			default:
 				x.Value = int64(uint64(val) & math.MaxUint64)
 			}
@@ -609,21 +639,32 @@ func (o *Operand) unaryMinus(ctx *context) *Operand {
 // are called the integer promotions. All other types are unchanged by the
 // integer promotions.
 func (o *Operand) integerPromotion(ctx *context) *Operand {
-	switch o.Type.Kind() {
-	case
-		Int,
-		Long,
-		UInt,
-		ULong:
+	t := o.Type
+	for {
+		switch x := t.(type) {
+		case *NamedType:
+			t = x.Type
+		case TypeKind:
+			switch x {
+			case
+				Int,
+				LongLong,
+				UInt,
+				ULong:
 
-		return o
-	case
-		UChar,
-		UShort:
+				return o
+			case
+				Char,
+				UChar,
+				UShort:
 
-		return o.convertTo(ctx, Int)
-	default:
-		panic(o.Type)
+				return o.convertTo(ctx, Int)
+			default:
+				panic(x)
+			}
+		default:
+			panic(x)
+		}
 	}
 }
 

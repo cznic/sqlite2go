@@ -1169,7 +1169,7 @@ type ExprCase int
 const (
 	ExprPreInc ExprCase = iota
 	ExprPreDec
-	ExprSizeOfType
+	ExprSizeofType
 	ExprSizeofExpr
 	ExprNot
 	ExprAddrof
@@ -1232,8 +1232,8 @@ func (n ExprCase) String() string {
 		return "ExprPreInc"
 	case ExprPreDec:
 		return "ExprPreDec"
-	case ExprSizeOfType:
-		return "ExprSizeOfType"
+	case ExprSizeofType:
+		return "ExprSizeofType"
 	case ExprSizeofExpr:
 		return "ExprSizeofExpr"
 	case ExprNot:
@@ -1350,7 +1350,7 @@ func (n ExprCase) String() string {
 //	Expr:
 //	        "++" Expr                                          // Case ExprPreInc
 //	|       "--" Expr                                          // Case ExprPreDec
-//	|       "sizeof" '(' TypeName ')'                          // Case ExprSizeOfType
+//	|       "sizeof" '(' TypeName ')'                          // Case ExprSizeofType
 //	|       "sizeof" Expr                                      // Case ExprSizeofExpr
 //	|       '!' Expr                                           // Case ExprNot
 //	|       '&' Expr                                           // Case ExprAddrof
@@ -2157,6 +2157,7 @@ func (n JumpStmtCase) String() string {
 //	|       "return" ExprListOpt ';'  // Case JumpStmtReturn
 type JumpStmt struct {
 	ReturnOperand *Operand
+	scope         *scope
 	Case          JumpStmtCase
 	ExprListOpt   *ExprListOpt
 	Token         xc.Token

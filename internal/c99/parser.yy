@@ -264,7 +264,7 @@ import (
 /*yy:case PreInc     */ Expr:
                         	"++" Expr
 /*yy:case PreDec     */ |	"--" Expr
-/*yy:case SizeOfType */ |	"sizeof" '(' TypeName ')' %prec SIZEOF
+/*yy:case SizeofType */ |	"sizeof" '(' TypeName ')' %prec SIZEOF
 /*yy:case SizeofExpr */ |	"sizeof" Expr
 /*yy:case Not        */ |	'!' Expr
 /*yy:case Addrof     */ |	'&' Expr %prec UNARY
@@ -683,6 +683,9 @@ import (
                         	"case" ConstExpr ':' Stmt
 /*yy:case Default    */ |	"default" ':' Stmt
 /*yy:case Label      */ |	IDENTIFIER ':' Stmt
+				{
+					lx.scope.insertLabel(lx.context, lhs)
+				}
 
                         // [0]6.8.2
 			//yy:field	scope	*scope
@@ -729,10 +732,14 @@ import (
 
                         // [0]6.8.6
 			//yy:field	ReturnOperand	*Operand
+			//yy:field	scope		*scope
 /*yy:case Break      */ JumpStmt:
                         	"break" ';'
 /*yy:case Continue   */ |	"continue" ';'
 /*yy:case Goto       */ |	"goto" IDENTIFIER ';'
+				{
+					lhs.scope = lx.scope
+				}
 /*yy:case Return     */ |	"return" ExprListOpt ';'
 
                         // [0]6.9

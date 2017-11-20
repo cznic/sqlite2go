@@ -228,6 +228,7 @@ func (s *stringSource) ReadCloser() (io.ReadCloser, error) {
 type scope struct {
 	enumTags   map[int]Type // name: Type
 	idents     map[int]Node // name: Node in {*Declarator, EnumerationConstant}
+	labels     map[int]*LabeledStmt
 	parent     *scope
 	structTags map[int]*StructOrUnionSpecifier // name: *StructOrUnionSpecifier
 	typedefs   map[int]struct{}
@@ -236,6 +237,20 @@ type scope struct {
 }
 
 func newScope(parent *scope) *scope { return &scope{parent: parent} }
+
+func (s *scope) insertLabel(ctx *context, st *LabeledStmt) {
+	for s.parent != nil && s.parent.parent != nil {
+		s = s.parent
+	}
+	if s.labels == nil {
+		s.labels = map[int]*LabeledStmt{}
+	}
+	if ex := s.labels[st.Token.Val]; ex != nil {
+		panic("TODO")
+	}
+
+	s.labels[st.Token.Val] = st
+}
 
 func (s *scope) insertEnumTag(ctx *context, nm int, t Type) {
 	if s.enumTags == nil {
@@ -317,6 +332,21 @@ func (s *scope) isTypedef(nm int) bool {
 func (s *scope) lookupIdent(nm int) Node {
 	for s != nil {
 		if n := s.idents[nm]; n != nil {
+			return n
+		}
+
+		s = s.parent
+	}
+	return nil
+}
+
+func (s *scope) lookupLabel(nm int) Node {
+	for s != nil {
+		if n := s.labels[nm]; n != nil {
+			if s.parent == nil && s.parent.parent != nil {
+				panic("internal error")
+			}
+
 			return n
 		}
 

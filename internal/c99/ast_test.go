@@ -1131,11 +1131,11 @@ func ExampleExpr_preDec() {
 	// }
 }
 
-func ExampleExpr_sizeOfType() {
+func ExampleExpr_sizeofType() {
 	fmt.Println(exampleAST(10, "\U00100000 sizeof ( _Bool )"))
 	// Output:
 	// &c99.Expr{
-	// · Case: ExprSizeOfType,
+	// · Case: ExprSizeofType,
 	// · Token: SIZEOF "sizeof",
 	// · Token2: '(',
 	// · Token3: ')',
