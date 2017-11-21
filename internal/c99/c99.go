@@ -7,7 +7,7 @@
 //go:generate golex -o scanner.go scanner.l
 
 //go:generate rm -f ast.go
-//go:generate yy -kind Case -o parser.y -astImport "\"github.com/cznic/ir\";\"github.com/cznic/xc\";\"go/token\";\"fmt\"" -prettyString PrettyString parser.yy
+//go:generate yy -kind Case -o parser.y -astImport "\"github.com/cznic/xc\";\"go/token\";\"fmt\"" -prettyString PrettyString parser.yy
 
 //go:generate rm -f parser.go
 //go:generate goyacc -o /dev/null -xegen xegen parser.y
@@ -138,7 +138,20 @@ func (c *context) popScope() (old, new *scope) {
 	return old, c.scope
 }
 
-func (c *context) sizeof(t Type) *Operand {
+func (c *context) ptrDiff() Type {
+	d, ok := c.scope.lookupIdent(idPtrdiffT).(*Declarator)
+	if !ok {
+		panic("TODO")
+	}
+
+	if !d.DeclarationSpecifier.isTypedef() {
+		panic(d.Type)
+	}
+
+	return d.Type
+}
+
+func (c *context) sizeof(t Type) Operand {
 	sz := c.model.Sizeof(t)
 	d, ok := c.scope.lookupIdent(idSizeT).(*Declarator)
 	if !ok {
@@ -149,7 +162,7 @@ func (c *context) sizeof(t Type) *Operand {
 		panic(d.Type)
 	}
 
-	return newOperand(d.Type, &ir.Int64Value{Value: sz}, nil)
+	return Operand{Type: d.Type, Value: &ir.Int64Value{Value: sz}}
 }
 
 func (c *context) toC(ch rune, val int) rune {
@@ -253,6 +266,9 @@ func (s *scope) insertLabel(ctx *context, st *LabeledStmt) {
 }
 
 func (s *scope) insertEnumTag(ctx *context, nm int, t Type) {
+	for s.parent != nil {
+		s = s.parent
+	}
 	if s.enumTags == nil {
 		s.enumTags = map[int]Type{}
 	}
@@ -296,15 +312,16 @@ func (s *scope) insertEnumerationConstant(ctx *context, c *EnumerationConstant) 
 }
 
 func (s *scope) insertStructTag(ctx *context, ss *StructOrUnionSpecifier) {
+	for s.parent != nil {
+		s = s.parent
+	}
 	if s.structTags == nil {
 		s.structTags = map[int]*StructOrUnionSpecifier{}
 	}
 	nm := ss.IdentifierOpt.Token.Val
-	if ex := s.structTags[nm]; ex != nil {
-		if ex == ss {
-			return
-		}
-
+	if ex := s.structTags[nm]; ex != nil && !ex.typ.Equal(ss.typ) {
+		//dbg("", ex.typ)
+		//dbg("", ss.typ)
 		panic(ctx.position(ss))
 	}
 

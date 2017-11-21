@@ -684,6 +684,59 @@ func TestParseSQLite(t *testing.T) {
 	}
 }
 
+func TestFunc(t *testing.T) {
+	model, err := newModel()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, err := newContext(token.NewFileSet(), &tweaks{injectFinalNL: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx.model = model
+	ast, err := ctx.parse(
+		[]Source{newStringSource("testfunc.c", `int (*foo(char bar))(double baz){}`)},
+	)
+	if err != nil {
+		t.Fatalf("%v", errString(err))
+	}
+
+	if err := ast.check(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ctx.error(); err != nil {
+		t.Fatal(err)
+	}
+
+	fileScope := ctx.scope
+	n := fileScope.lookupIdent(dict.SID("foo"))
+	d, ok := n.(*Declarator)
+	if !ok {
+		t.Fatalf("%T", n)
+	}
+
+	if g, e := d.Type.String(), "function (char) returning pointer to function (double) returning int"; g != e {
+		t.Fatalf("got %q\nexp %q", g, e)
+	}
+
+	if g, e := fmt.Sprint(d.Type.(*FunctionType).Params), "[char]"; g != e {
+		t.Fatalf("got %q\nexp %q", g, e)
+	}
+
+	fnScope := ast.ExternalDeclaration.FunctionDefinition.FunctionBody.CompoundStmt.scope
+	n = fnScope.lookupIdent(dict.SID("bar"))
+	if d, ok = n.(*Declarator); !ok {
+		t.Fatalf("%T", n)
+	}
+
+	if g, e := fmt.Sprint(d.Type), "char"; g != e {
+		t.Fatalf("got %q\nexp %q", g, e)
+	}
+}
+
 func TestTypecheckSQLite(t *testing.T) {
 	model, err := newModel()
 	if err != nil {

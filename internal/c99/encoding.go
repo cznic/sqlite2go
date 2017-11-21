@@ -75,7 +75,9 @@ func init() {
 
 var (
 	nopos xc.Token
-	null  = &ir.AddressValue{}
+
+	// Null pointer, [0]6.3.2.3-3.
+	Null = &ir.AddressValue{Index: -1, NameID: ir.NameID(dict.SID("\x00"))}
 
 	idChar     = dict.SID("char")
 	idConst    = dict.SID("const")
@@ -94,6 +96,7 @@ var (
 	idLine     = dict.SID("__LINE__")
 	idOne      = dict.SID("1")
 	idPragma   = dict.SID("pragma")
+	idPtrdiffT = dict.SID("ptrdiff_t")
 	idSizeT    = dict.SID("size_t")
 	idStatic   = dict.SID("static")
 	idUndef    = dict.SID("undef")

@@ -245,7 +245,7 @@ import (
 				}
 
                         // [0]6.4.4.3
-			//yy:field	Operand	*Operand
+			//yy:field	Operand	Operand
                         EnumerationConstant:
                         	IDENTIFIER
 
@@ -259,7 +259,7 @@ import (
                         |	ArgumentExprList
 
                         // [0]6.5.16
-			//yy:field	Operand	*Operand
+			//yy:field	Operand	Operand
 			//yy:field	scope	*scope	// case Ident
 /*yy:case PreInc     */ Expr:
                         	"++" Expr
@@ -328,7 +328,7 @@ import (
 
                         // [0]6.5.17
                         //yy:list
-			//yy:field	Operand	*Operand
+			//yy:field	Operand	Operand
                         ExprList:
                         	Expr
                         |	ExprList ',' Expr
@@ -338,7 +338,7 @@ import (
                         |	ExprList
 
                         // [0]6.6
-			//yy:field	Operand	*Operand
+			//yy:field	Operand	Operand
                         ConstExpr:
                         	Expr
 
@@ -500,7 +500,7 @@ import (
 
                         // [0]6.7.5
 			//yy:field	DeclarationSpecifier	*DeclarationSpecifier	// Nil for embedded declarators.
-			//yy:field	Initializer		ir.Value		// Only when part of an InitDeclarator.
+			//yy:field	Initializer		Operand			// Only when part of an InitDeclarator.
 			//yy:field	Linkage			Linkage			// Linkage of the declared name, [0]6.2.2.
 			//yy:field	StorageDuration		StorageDuration		// Storage duration of the declared name, [0]6.2.4.
 			//yy:field	Type			Type			// Declared type.
@@ -731,7 +731,7 @@ import (
 /*yy:case While      */ |	"while" '(' ExprList ')' Stmt
 
                         // [0]6.8.6
-			//yy:field	ReturnOperand	*Operand
+			//yy:field	ReturnOperand	Operand
 			//yy:field	scope		*scope
 /*yy:case Break      */ JumpStmt:
                         	"break" ';'

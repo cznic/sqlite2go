@@ -61,7 +61,7 @@ func newModel() (m Model, err error) {
 func (m Model) Sizeof(t Type) int64 {
 	switch x := t.(type) {
 	case *ArrayType:
-		if x.Size == nil {
+		if x.Size.Type == nil {
 			panic("TODO")
 		}
 		return m.Sizeof(x.Item) * x.Size.Value.(*ir.Int64Value).Value
@@ -86,11 +86,20 @@ func (m Model) Sizeof(t Type) int64 {
 		return m.Sizeof(u)
 	case TypeKind:
 		return int64(m[x].Size)
+	case *UnionType:
+		var sz int64
+		for _, v := range x.Fields {
+			if n := m.Sizeof(v.Type); n > sz {
+				sz = n
+			}
+		}
+		return roundup(sz, int64(m.Alignof(t)))
 	default:
 		panic(x)
 	}
 }
 
+// Layout computes the memory layout of t.
 func (m Model) Layout(t Type) []ir.FieldProperties {
 	//TODO bit fields
 	switch x := t.(type) {
@@ -125,7 +134,7 @@ func (m Model) Layout(t Type) []ir.FieldProperties {
 	}
 }
 
-// Alignof computes the memory alignment requirements of t. Zero is returned
+// Alignof computes the memory alignment requirements of t. One is returned
 // for a struct/union type with no fields.
 func (m Model) Alignof(t Type) int {
 	switch x := t.(type) {
@@ -151,13 +160,21 @@ func (m Model) Alignof(t Type) int {
 		return m.Alignof(u)
 	case TypeKind:
 		return m[x].Align
+	case *UnionType:
+		r := 1
+		for _, v := range x.Fields {
+			if a := m.Alignof(v.Type); a > r {
+				r = a
+			}
+		}
+		return r
 	default:
 		panic(x)
 	}
 }
 
 // StructAlignof computes the memory alignment requirements of t when its
-// instance is a struct field. Zero is returned for a struct/union type with no
+// instance is a struct field. One is returned for a struct/union type with no
 // fields.
 func (m Model) StructAlignof(t Type) int {
 	switch x := t.(type) {
@@ -183,6 +200,14 @@ func (m Model) StructAlignof(t Type) int {
 		return m.StructAlignof(u)
 	case TypeKind:
 		return m[x].StructAlign
+	case *UnionType:
+		r := 1
+		for _, v := range x.Fields {
+			if a := m.StructAlignof(v.Type); a > r {
+				r = a
+			}
+		}
+		return r
 	default:
 		panic(x)
 	}

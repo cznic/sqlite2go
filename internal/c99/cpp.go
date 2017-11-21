@@ -323,10 +323,9 @@ func (c *cpp) parse(src ...Source) (tokenReader, error) {
 
 					if ch = lx.cppScan(); ch.Rune == ccEOF {
 						if !c.tweaks.injectFinalNL {
-							c.errPos(lx.last.Pos(), "file is missing final NL")
+							c.errPos(lx.last.Pos(), "file is missing final newline")
 						}
-						break
-
+						ch.Rune = '\n'
 					}
 				}
 

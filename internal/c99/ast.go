@@ -8,7 +8,6 @@ package c99
 
 import (
 	"fmt"
-	"github.com/cznic/ir"
 	"github.com/cznic/xc"
 	"go/token"
 )
@@ -366,7 +365,7 @@ func (n *CompoundStmt) Pos() token.Pos {
 //	ConstExpr:
 //	        Expr  // Case 0
 type ConstExpr struct {
-	Operand *Operand
+	Operand Operand
 	Expr    *Expr
 }
 
@@ -589,7 +588,7 @@ func (n *DeclarationSpecifiersOpt) Pos() token.Pos {
 //	        PointerOpt DirectDeclarator  // Case 0
 type Declarator struct {
 	DeclarationSpecifier *DeclarationSpecifier // Nil for embedded declarators.
-	Initializer          ir.Value              // Only when part of an InitDeclarator.
+	Initializer          Operand               // Only when part of an InitDeclarator.
 	Linkage              Linkage               // Linkage of the declared name, [0]6.2.2.
 	StorageDuration      StorageDuration       // Storage duration of the declared name, [0]6.2.4.
 	Type                 Type                  // Declared type.
@@ -1041,7 +1040,7 @@ func (n *EnumSpecifier) Pos() token.Pos {
 //	EnumerationConstant:
 //	        IDENTIFIER  // Case 0
 type EnumerationConstant struct {
-	Operand *Operand
+	Operand Operand
 	Token   xc.Token
 }
 
@@ -1405,7 +1404,7 @@ func (n ExprCase) String() string {
 //	|       LONGSTRINGLITERAL                                  // Case ExprLString
 //	|       STRINGLITERAL                                      // Case ExprString
 type Expr struct {
-	Operand             *Operand
+	Operand             Operand
 	scope               *scope // case Ident
 	ArgumentExprListOpt *ArgumentExprListOpt
 	Case                ExprCase
@@ -1450,7 +1449,7 @@ func (n *Expr) Pos() token.Pos {
 //	        Expr               // Case 0
 //	|       ExprList ',' Expr  // Case 1
 type ExprList struct {
-	Operand  *Operand
+	Operand  Operand
 	Case     int
 	Expr     *Expr
 	ExprList *ExprList
@@ -2156,7 +2155,7 @@ func (n JumpStmtCase) String() string {
 //	|       "goto" IDENTIFIER ';'     // Case JumpStmtGoto
 //	|       "return" ExprListOpt ';'  // Case JumpStmtReturn
 type JumpStmt struct {
-	ReturnOperand *Operand
+	ReturnOperand Operand
 	scope         *scope
 	Case          JumpStmtCase
 	ExprListOpt   *ExprListOpt

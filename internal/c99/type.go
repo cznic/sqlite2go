@@ -9,6 +9,8 @@ package c99
 import (
 	"bytes"
 	"fmt"
+
+	"github.com/cznic/ir"
 )
 
 var (
@@ -17,6 +19,9 @@ var (
 	_ Type = (*NamedType)(nil)
 	_ Type = (*PointerType)(nil)
 	_ Type = (*StructType)(nil)
+	_ Type = (*TaggedStructType)(nil)
+	_ Type = (*TaggedUnionType)(nil)
+	_ Type = (*UnionType)(nil)
 	_ Type = (*undefinedType)(nil)
 	_ Type = TypeKind(0)
 
@@ -36,8 +41,10 @@ type Type interface {
 	IsIntegerType() bool
 	IsPointerType() bool
 	IsScalarType() bool
+	IsVoidPointerType() bool
 	Kind() TypeKind
 	String() string
+	assign(ctx *context, op Operand) Operand
 }
 
 // TypeKind represents a particular type kind.
@@ -77,6 +84,7 @@ const (
 	StructTag
 	TypedefName
 	Union
+	UnionTag
 	Void
 
 	maxTypeKind
@@ -85,13 +93,33 @@ const (
 // Kind implements Type.
 func (t TypeKind) Kind() TypeKind { return t }
 
+// assign implements Type.
+func (t TypeKind) assign(ctx *context, op Operand) Operand {
+	// [0]6.5.16.1
+	switch {
+	// One of the following shall hold:
+	case
+		// the left operand has qualified or unqualified arithmetic
+		// type and the right has arithmetic type;
+		t.IsArithmeticType() && op.Type.IsArithmeticType():
+		return op.convertTo(ctx, t)
+	default:
+		panic("TODO")
+	}
+}
+
 // IsPointerType implements Type.
 func (t TypeKind) IsPointerType() bool {
 	switch t {
 	case
+		Double,
 		Int,
+		LongDouble,
 		LongLong,
-		ULong:
+		UChar,
+		UInt,
+		ULong,
+		ULongLong:
 
 		return false
 	default:
@@ -105,14 +133,21 @@ func (t TypeKind) IsIntegerType() bool {
 	case
 		Char,
 		Int,
+		Long,
 		LongLong,
+		SChar,
+		Short,
 		UChar,
 		UInt,
 		ULong,
+		ULongLong,
 		UShort:
 
 		return true
-	case Double:
+	case
+		Double,
+		LongDouble:
+
 		return false
 	default:
 		panic(t)
@@ -126,13 +161,28 @@ func (t TypeKind) IsScalarType() bool {
 		Char,
 		Double,
 		Int,
+		Long,
+		LongDouble,
 		LongLong,
+		SChar,
+		Short,
 		UChar,
 		UInt,
 		ULong,
+		ULongLong,
 		UShort:
 
 		return true
+	default:
+		panic(t)
+	}
+}
+
+// IsVoidPointerType implements Type.
+func (t TypeKind) IsVoidPointerType() bool {
+	switch t {
+	case Int:
+		return false
 	default:
 		panic(t)
 	}
@@ -157,6 +207,13 @@ func (t TypeKind) Equal(u Type) bool {
 	switch x := u.(type) {
 	case *NamedType:
 		return t.Equal(x.Type)
+	case *PointerType:
+		switch t {
+		case Int:
+			return false
+		default:
+			panic(t)
+		}
 	case *StructType:
 		switch t {
 		case Void:
@@ -177,8 +234,15 @@ func (t TypeKind) Equal(u Type) bool {
 			Char,
 			Double,
 			Int,
+			Long,
+			LongDouble,
 			LongLong,
+			SChar,
+			Short,
+			UChar,
+			UInt,
 			ULong,
+			ULongLong,
 			UShort,
 			Void:
 
@@ -214,7 +278,7 @@ func (t TypeKind) String() string {
 	case ULong:
 		return "unsigned long"
 	case ULongLong:
-		return "unsigned  long long"
+		return "unsigned long long"
 	case UShort:
 		return "unsigned short"
 	case Float:
@@ -257,9 +321,12 @@ func (t TypeKind) String() string {
 // ArrayType type represents an array type.
 type ArrayType struct {
 	Item           Type
-	Size           *Operand
+	Size           Operand
 	TypeQualifiers []*TypeQualifier // Eg. double a[restrict 3][5], see 6.7.5.3-21.
 }
+
+// IsVoidPointerType implements Type.
+func (t *ArrayType) IsVoidPointerType() bool { panic("TODO") }
 
 // IsArithmeticType implements Type.
 func (t *ArrayType) IsArithmeticType() bool {
@@ -275,11 +342,28 @@ func (t *ArrayType) Equal(u Type) bool {
 		return true
 	}
 
-	panic("TODO")
+	switch x := u.(type) {
+	case *ArrayType:
+		if !t.Item.Equal(x.Item) {
+			return false
+		}
+
+		switch {
+		case t.Size.Type != nil:
+			return x.Size.Type != nil && t.Size.Value.(*ir.Int64Value).Value == x.Size.Value.(*ir.Int64Value).Value
+		default:
+			panic("TODO")
+		}
+	default:
+		panic(x)
+	}
 }
 
 // Kind implements Type.
 func (t *ArrayType) Kind() TypeKind { return Array }
+
+// assign implements Type.
+func (t *ArrayType) assign(ctx *context, op Operand) Operand { panic("TODO") }
 
 // IsPointerType implements Type.
 func (t *ArrayType) IsPointerType() bool { panic("TODO") }
@@ -292,7 +376,7 @@ func (t *ArrayType) IsScalarType() bool { return false }
 
 func (t *ArrayType) String() string {
 	switch {
-	case t.Size != nil && t.Size.Value != nil:
+	case t.Size.Type != nil && t.Size.Value != nil:
 		return fmt.Sprintf("array %v of %v", t.Size.Value, t.Item)
 	default:
 		return fmt.Sprintf("array of %v", t.Item)
@@ -303,6 +387,9 @@ func (t *ArrayType) String() string {
 type EnumType struct {
 	Enums []*EnumerationConstant
 }
+
+// IsVoidPointerType implements Type.
+func (t *EnumType) IsVoidPointerType() bool { panic("TODO") }
 
 // IsArithmeticType implements Type.
 func (t *EnumType) IsArithmeticType() bool {
@@ -324,6 +411,9 @@ func (t *EnumType) Equal(u Type) bool {
 // Kind implements Type.
 func (t *EnumType) Kind() TypeKind { return Enum }
 
+// assign implements Type.
+func (t *EnumType) assign(ctx *context, op Operand) Operand { panic("TODO") }
+
 // IsPointerType implements Type.
 func (t *EnumType) IsPointerType() bool { panic("TODO") }
 
@@ -341,6 +431,8 @@ type Field struct {
 	Type Type
 }
 
+func (f Field) equal(g Field) bool { return f.Name == g.Name && f.Type.Equal(g.Type) }
+
 func (f Field) String() string { return fmt.Sprintf("%s %v", dict.S(f.Name), f.Type) }
 
 // FunctionType represents a function type.
@@ -350,6 +442,9 @@ type FunctionType struct {
 	Result    Type
 	Variadic  bool
 }
+
+// IsVoidPointerType implements Type.
+func (t *FunctionType) IsVoidPointerType() bool { panic("TODO") }
 
 // IsArithmeticType implements Type.
 func (t *FunctionType) IsArithmeticType() bool {
@@ -385,6 +480,9 @@ func (t *FunctionType) Equal(u Type) bool {
 // Kind implements Type.
 func (t *FunctionType) Kind() TypeKind { return Function }
 
+// assign implements Type.
+func (t *FunctionType) assign(ctx *context, op Operand) Operand { panic("TODO") }
+
 // IsPointerType implements Type.
 func (t *FunctionType) IsPointerType() bool { return false }
 
@@ -413,6 +511,9 @@ type NamedType struct {
 	Type Type // The type Name refers to.
 }
 
+// IsVoidPointerType implements Type.
+func (t *NamedType) IsVoidPointerType() bool { panic("TODO") }
+
 // IsArithmeticType implements Type.
 func (t *NamedType) IsArithmeticType() bool { return t.Type.IsArithmeticType() }
 
@@ -429,7 +530,10 @@ func (t *NamedType) Equal(u Type) bool {
 }
 
 // Kind implements Type.
-func (t *NamedType) Kind() TypeKind { return TypedefName }
+func (t *NamedType) Kind() TypeKind { return t.Type.Kind() }
+
+// assign implements Type.
+func (t *NamedType) assign(ctx *context, op Operand) Operand { return t.Type.assign(ctx, op) }
 
 // IsPointerType implements Type.
 func (t *NamedType) IsPointerType() bool { return t.Type.IsPointerType() }
@@ -446,6 +550,9 @@ func (t *NamedType) String() string { return string(dict.S(t.Name)) }
 type PointerType struct {
 	Item Type
 }
+
+// IsVoidPointerType implements Type.
+func (t *PointerType) IsVoidPointerType() bool { panic("TODO") }
 
 // IsArithmeticType implements Type.
 func (t *PointerType) IsArithmeticType() bool { return false }
@@ -466,10 +573,12 @@ func (t *PointerType) IsCompatible(u Type) bool {
 		// incomplete or object type. A pointer to any incomplete or object
 		// type may be converted to a pointer to void and back again; the
 		// result shall compare equal to the original pointer.
-		if t.Item == Void || x.Item == Void {
+		if t.Item.Equal(x.Item) || t.Item == Void || x.Item == Void {
 			return true
 		}
 
+		//dbg("", t)
+		//dbg("", u)
 		panic("TODO")
 	default:
 		panic(fmt.Errorf("%T", x))
@@ -487,6 +596,21 @@ func (t *PointerType) Equal(u Type) bool {
 		return t.Equal(x.Type)
 	case *PointerType:
 		return t.Item.Equal(x.Item)
+	case TypeKind:
+		switch x {
+		case
+			Double,
+			Int,
+			Long,
+			LongLong,
+			UInt,
+			ULong,
+			ULongLong:
+
+			return false
+		default:
+			panic(x)
+		}
 	default:
 		panic(fmt.Errorf("%T", x))
 	}
@@ -494,6 +618,38 @@ func (t *PointerType) Equal(u Type) bool {
 
 // Kind implements Type.
 func (t *PointerType) Kind() TypeKind { return Ptr }
+
+// assign implements Type.
+func (t *PointerType) assign(ctx *context, op Operand) Operand {
+	// [0]6.5.16.1
+	switch {
+	// One of the following shall hold:
+	case
+		// both operands are pointers to qualified or unqualified
+		// versions of compatible types, and the type pointed to by the
+		// left has all the qualifiers of the type pointed to by the
+		// right;
+		op.Type.IsPointerType() && t.IsCompatible(op.Type):
+
+		return op.convertTo(ctx, t)
+	case
+		// one operand is a pointer to an object or incomplete type and
+		// the other is a pointer to a qualified or unqualified version
+		// of void, and the type pointed to by the left has all the
+		// qualifiers of the type pointed to by the right;
+		t.IsPointerType() && op.Type.IsVoidPointerType():
+
+		panic("TODO")
+	case
+		// the left operand is a pointer and the right is a null
+		// pointer constant;
+		op.isIntegerType() && op.isZero():
+
+		return Operand{Type: t, Addr: Null}
+	default:
+		panic("TODO")
+	}
+}
 
 // IsPointerType implements Type.
 func (t *PointerType) IsPointerType() bool { return true }
@@ -512,6 +668,9 @@ type StructType struct {
 	scope  *scope
 	//TODO cache layout, size, alignment, struct alignment.
 }
+
+// IsVoidPointerType implements Type.
+func (t *StructType) IsVoidPointerType() bool { panic("TODO") }
 
 // IsArithmeticType implements Type.
 func (t *StructType) IsArithmeticType() bool {
@@ -536,16 +695,17 @@ func (t *StructType) Equal(u Type) bool {
 		}
 
 		for i, v := range t.Fields {
-			if !v.Type.Equal(x.Fields[i].Type) {
+			if !v.equal(x.Fields[i]) {
 				return false
 			}
 		}
-		return false
+		return true
 	case *TaggedStructType:
 		v := x.getType()
 		if v == u {
-			panic("TODO")
+			return false
 		}
+
 		return t.Equal(v)
 	case TypeKind:
 		return false
@@ -556,6 +716,9 @@ func (t *StructType) Equal(u Type) bool {
 
 // Kind implements Type.
 func (t *StructType) Kind() TypeKind { return Struct }
+
+// assign implements Type.
+func (t *StructType) assign(ctx *context, op Operand) Operand { panic("TODO") }
 
 // IsPointerType implements Type.
 func (t *StructType) IsPointerType() bool { panic("TODO") }
@@ -571,9 +734,9 @@ func (t *StructType) String() string {
 	buf.WriteString("struct{")
 	for i, v := range t.Fields {
 		if i != 0 {
-			buf.WriteByte(';')
+			buf.WriteString("; ")
 		}
-		buf.WriteString(v.Type.String())
+		fmt.Fprintf(&buf, "%s %s", dict.S(v.Name), v.Type)
 	}
 	buf.WriteByte('}')
 	return buf.String()
@@ -586,10 +749,11 @@ type TaggedStructType struct {
 	scope *scope
 }
 
+// IsVoidPointerType implements Type.
+func (t *TaggedStructType) IsVoidPointerType() bool { panic("TODO") }
+
 // IsArithmeticType implements Type.
-func (t *TaggedStructType) IsArithmeticType() bool {
-	panic("TODO")
-}
+func (t *TaggedStructType) IsArithmeticType() bool { return false }
 
 // IsCompatible implements Type.
 func (t *TaggedStructType) IsCompatible(u Type) bool { return t.Equal(u) }
@@ -608,6 +772,8 @@ func (t *TaggedStructType) Equal(u Type) bool {
 			switch y := u.(type) {
 			case *NamedType:
 				return x.Equal(y.Type)
+			case *StructType:
+				return false
 			case *TaggedStructType:
 				return t.Tag == y.Tag
 			default:
@@ -636,16 +802,43 @@ func (t *TaggedStructType) getType() Type {
 }
 
 // Kind implements Type.
-func (t *TaggedStructType) Kind() TypeKind { return StructTag }
+func (t *TaggedStructType) Kind() TypeKind { return Struct }
+
+// assign implements Type.
+func (t *TaggedStructType) assign(ctx *context, op Operand) Operand {
+	switch x := op.Type.(type) {
+	case *NamedType:
+		op.Type = x.Type
+		return t.assign(ctx, op)
+	case *TaggedStructType:
+		t2 := t.getType()
+		u2 := x.getType()
+		if t2 != t && u2 != x {
+			// [0]6.5.16.1
+			//
+			// the left operand has a qualified or unqualified
+			// version of a structure or union type compatible with
+			// the type of the right;
+			if t2.Equal(u2) {
+				return op
+			}
+
+			panic("TODO")
+		}
+		panic("TODO")
+	default:
+		panic("TODO")
+	}
+}
 
 // IsPointerType implements Type.
-func (t *TaggedStructType) IsPointerType() bool { panic("TODO") }
+func (t *TaggedStructType) IsPointerType() bool { return false }
 
 // IsIntegerType implements Type.
 func (t *TaggedStructType) IsIntegerType() bool { panic("TODO") }
 
 // IsScalarType implements Type.
-func (t *TaggedStructType) IsScalarType() bool { panic("TODO") }
+func (t *TaggedStructType) IsScalarType() bool { return false }
 
 func (t *TaggedStructType) String() string { return fmt.Sprintf("struct %s", dict.S(t.Tag)) }
 
@@ -655,6 +848,53 @@ type UnionType struct {
 	scope  *scope
 	//TODO cache size, alignment, struct alignment.
 }
+
+// TaggedUnionType represents a struct type described by a tag name.
+type TaggedUnionType struct {
+	Tag   int
+	Type  Type
+	scope *scope
+}
+
+// IsVoidPointerType implements Type.
+func (t *TaggedUnionType) IsVoidPointerType() bool { panic("TODO") }
+
+// IsArithmeticType implements Type.
+func (t *TaggedUnionType) IsArithmeticType() bool { panic("TODO") }
+
+// IsCompatible implements Type.
+func (t *TaggedUnionType) IsCompatible(u Type) bool { panic("TODO") }
+
+// Equal implements Type.
+func (t *TaggedUnionType) Equal(u Type) bool {
+	panic("TODO")
+}
+
+func (t *TaggedUnionType) getType() Type {
+	panic("TODO")
+}
+
+// Kind implements Type.
+func (t *TaggedUnionType) Kind() TypeKind { return Union }
+
+// assign implements Type.
+func (t *TaggedUnionType) assign(ctx *context, op Operand) Operand {
+	panic("TODO")
+}
+
+// IsPointerType implements Type.
+func (t *TaggedUnionType) IsPointerType() bool { panic("TODO") }
+
+// IsIntegerType implements Type.
+func (t *TaggedUnionType) IsIntegerType() bool { panic("TODO") }
+
+// IsScalarType implements Type.
+func (t *TaggedUnionType) IsScalarType() bool { panic("TODO") }
+
+func (t *TaggedUnionType) String() string { return fmt.Sprintf("union %s", dict.S(t.Tag)) }
+
+// IsVoidPointerType implements Type.
+func (t *UnionType) IsVoidPointerType() bool { panic("TODO") }
 
 // IsArithmeticType implements Type.
 func (t *UnionType) IsArithmeticType() bool {
@@ -670,11 +910,19 @@ func (t *UnionType) Equal(u Type) bool {
 		return true
 	}
 
-	panic("TODO")
+	switch x := u.(type) {
+	case *NamedType:
+		return t.Equal(x.Type)
+	default:
+		panic(x)
+	}
 }
 
 // Kind implements Type.
 func (t *UnionType) Kind() TypeKind { return Union }
+
+// assign implements Type.
+func (t *UnionType) assign(ctx *context, op Operand) Operand { panic("TODO") }
 
 // IsPointerType implements Type.
 func (t *UnionType) IsPointerType() bool { panic("TODO") }
@@ -690,9 +938,9 @@ func (t *UnionType) String() string {
 	buf.WriteString("union{")
 	for i, v := range t.Fields {
 		if i != 0 {
-			buf.WriteByte(';')
+			buf.WriteString("; ")
 		}
-		buf.WriteString(v.Type.String())
+		fmt.Fprintf(&buf, "%s %s", dict.S(v.Name), v.Type)
 	}
 	buf.WriteByte('}')
 	return buf.String()

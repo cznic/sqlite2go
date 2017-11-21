@@ -79,41 +79,42 @@ var (
 // result, whose type domain is the type domain of the operands if they are the
 // same, and complex otherwise. This pattern is called the usual arithmetic
 // conversions:
-func usualArithmeticConversions(ctx *context, a, b *Operand) (*Operand, *Operand) {
-	if !a.IsArithmeticType() || !b.IsArithmeticType() {
+func usualArithmeticConversions(ctx *context, a, b Operand) (Operand, Operand) {
+	if !a.isArithmeticType() || !b.isArithmeticType() {
+		//dbg("", a, b)
 		panic("TODO")
 	}
 
 	// First, if the corresponding real type of either operand is long
 	// double, the other operand is converted, without change of type
 	// domain, to a type whose corresponding real type is long double.
-	if a.Type == LongDoubleComplex || b.Type == LongDoubleComplex {
+	if a.Type.Kind() == LongDoubleComplex || b.Type.Kind() == LongDoubleComplex {
 		return a.convertTo(ctx, LongDoubleComplex), b.convertTo(ctx, LongDoubleComplex)
 	}
 
-	if a.Type == LongDouble || b.Type == LongDouble {
+	if a.Type.Kind() == LongDouble || b.Type.Kind() == LongDouble {
 		return a.convertTo(ctx, LongDouble), b.convertTo(ctx, LongDouble)
 	}
 
 	// Otherwise, if the corresponding real type of either operand is
 	// double, the other operand is converted, without change of type
 	// domain, to a type whose corresponding real type is double.
-	if a.Type == DoubleComplex || b.Type == DoubleComplex {
+	if a.Type.Kind() == DoubleComplex || b.Type.Kind() == DoubleComplex {
 		return a.convertTo(ctx, DoubleComplex), b.convertTo(ctx, DoubleComplex)
 	}
 
-	if a.Type == Double || b.Type == Double {
+	if a.Type.Kind() == Double || b.Type.Kind() == Double {
 		return a.convertTo(ctx, Double), b.convertTo(ctx, Double)
 	}
 
 	// Otherwise, if the corresponding real type of either operand is
 	// float, the other operand is converted, without change of type
 	// domain, to a type whose corresponding real type is float.)
-	if a.Type == FloatComplex || b.Type == FloatComplex {
+	if a.Type.Kind() == FloatComplex || b.Type.Kind() == FloatComplex {
 		return a.convertTo(ctx, FloatComplex), b.convertTo(ctx, FloatComplex)
 	}
 
-	if a.Type == Float || b.Type == Float {
+	if a.Type.Kind() == Float || b.Type.Kind() == Float {
 		return a.convertTo(ctx, Float), b.convertTo(ctx, Float)
 	}
 
@@ -130,7 +131,7 @@ func usualArithmeticConversions(ctx *context, a, b *Operand) (*Operand, *Operand
 
 	// If both operands have the same type, then no further conversion is
 	// needed.
-	if a.Type == b.Type {
+	if a.Type.Equal(b.Type) {
 		return a, b
 	}
 
@@ -155,64 +156,85 @@ func usualArithmeticConversions(ctx *context, a, b *Operand) (*Operand, *Operand
 		if intConvRank[b.Type.Kind()] >= intConvRank[a.Type.Kind()] {
 			return a.convertTo(ctx, b.Type), b
 		}
+	case b.isSigned(): // a is unsigned
+		if intConvRank[a.Type.Kind()] >= intConvRank[b.Type.Kind()] {
+			return a, b.convertTo(ctx, a.Type)
+		}
 	default:
 		panic(fmt.Errorf("TODO %v %v", a, b))
 	}
 
+	// Otherwise, if the type of the operand with signed integer type can
+	// represent all of the values of the type of the operand with unsigned
+	// integer type, then the operand with unsigned integer type is
+	// converted to the type of the operand with signed integer type.
+	switch {
+	case a.isSigned(): // b is unsigned
+		if intConvRank[a.Type.Kind()] > intConvRank[b.Type.Kind()] {
+			return a, b.convertTo(ctx, a.Type)
+		}
+	case b.isSigned(): // a is unsigned
+		if intConvRank[b.Type.Kind()] > intConvRank[a.Type.Kind()] {
+			return a.convertTo(ctx, b.Type), b
+		}
+	default:
+		panic(fmt.Errorf("TODO %v %v", a, b))
+	}
+
+	//dbg("", a.isSigned())
+	//dbg("", b.isSigned())
 	panic(fmt.Errorf("TODO %v %v", a, b))
 }
 
 // Operand represents the type and optionally the value of an expression.
 type Operand struct {
-	Addr *ir.AddressValue // When known statically.
+	Addr *ir.AddressValue // When address known link-statically.
 	Type Type
 	ir.Value
 	//TODO lvalue bool
 }
 
-func newOperand(t Type, v ir.Value, addr *ir.AddressValue) *Operand {
-	return &Operand{Type: t, Value: v, Addr: addr}
-}
-
-func newIntConst(c *context, n Node, v uint64, t ...TypeKind) (r *Operand) {
-	r = &Operand{Type: Undefined}
+func newIntConst(c *context, n Node, v uint64, t ...TypeKind) (r Operand) {
+	r = Operand{Type: Undefined}
 	b := bits.Len64(v)
 	for _, t := range t {
 		if c.model[t].Size*8 >= b {
-			return newOperand(t, &ir.Int64Value{Value: int64(v)}, nil)
+			return Operand{Type: t, Value: &ir.Int64Value{Value: int64(v)}}
 		}
 	}
 
 	c.err(n, "invalid integer constant")
-	return &Operand{Type: Undefined}
+	return Operand{Type: Undefined}
 }
 
-func (o *Operand) IsArithmeticType() bool { return o.Type.IsArithmeticType() }
-func (o *Operand) String() string         { return fmt.Sprintf("(%v, %v, %v)", o.Type, o.Value, o.Addr) }
-func (o *Operand) copy() *Operand         { r := *o; return &r }
-func (o *Operand) isIntegerType() bool    { return o.Type.IsIntegerType() }
-func (o *Operand) isPointerType() bool    { return o.Type.IsPointerType() }
-func (o *Operand) isScalarType() bool     { return o.Type.IsScalarType() } // [0]6.2.5-21
-func (o *Operand) isSigned() bool         { return isSigned[o.Type.Kind()] }
+func (o Operand) isArithmeticType() bool { return o.Type.IsArithmeticType() }
+func (o Operand) String() string         { return fmt.Sprintf("(%v, %v, %v)", o.Type, o.Value, o.Addr) }
+func (o Operand) isIntegerType() bool    { return o.Type.IsIntegerType() }
+func (o Operand) isPointerType() bool    { return o.Type.IsPointerType() }
+func (o Operand) isScalarType() bool     { return o.Type.IsScalarType() } // [0]6.2.5-21
+func (o Operand) isSigned() bool         { return isSigned[o.Type.Kind()] }
 
-func (o *Operand) add(ctx *context, p *Operand) (r *Operand) {
+func (o Operand) add(ctx *context, p Operand) (r Operand) {
 	o, p = usualArithmeticConversions(ctx, o, p)
 	if o.Value == nil || p.Value == nil {
-		return &Operand{Type: o.Type}
+		return Operand{Type: o.Type}
 	}
 
 	switch x := o.Value.(type) {
 	case *ir.Int64Value:
-		return newOperand(o.Type, &ir.Int64Value{Value: x.Value + p.Value.(*ir.Int64Value).Value}, nil).normalize(ctx)
+		return Operand{Type: o.Type, Value: &ir.Int64Value{Value: x.Value + p.Value.(*ir.Int64Value).Value}}.normalize(ctx)
 	default:
 		panic(fmt.Errorf("TODO %T", x))
 	}
 }
 
-func (o *Operand) and(ctx *context, p *Operand) (r *Operand) {
+func (o Operand) and(ctx *context, p Operand) (r Operand) {
+	if !o.isIntegerType() || !p.isIntegerType() {
+		panic("TODO")
+	}
 	o, p = usualArithmeticConversions(ctx, o, p)
 	if o.Value == nil || p.Value == nil {
-		return &Operand{Type: o.Type}
+		return Operand{Type: o.Type}
 	}
 
 	switch x := o.Value.(type) {
@@ -223,7 +245,11 @@ func (o *Operand) and(ctx *context, p *Operand) (r *Operand) {
 	}
 }
 
-func (o *Operand) convertTo(ctx *context, t Type) *Operand {
+func (o Operand) convertTo(ctx *context, t Type) Operand {
+	if o.Type.Equal(t) {
+		return o
+	}
+
 	switch x := t.(type) {
 	case *PointerType:
 		// ok
@@ -233,10 +259,15 @@ func (o *Operand) convertTo(ctx *context, t Type) *Operand {
 			Char,
 			Double,
 			Int,
+			Long,
+			LongDouble,
 			LongLong,
+			SChar,
+			Short,
 			UChar,
 			UInt,
 			ULong,
+			ULongLong,
 			UShort:
 
 			// ok
@@ -249,96 +280,98 @@ func (o *Operand) convertTo(ctx *context, t Type) *Operand {
 		panic(fmt.Errorf("%T", x))
 	}
 
-	if o.Type == t {
+	if o.Value == nil {
+		return Operand{Type: t}
+	}
+
+	if o.isIntegerType() {
+		if t.IsIntegerType() {
+			return Operand{Type: t, Value: o.Value}.normalize(ctx)
+		}
+
+		if t.IsPointerType() {
+			// [0]6.3.2.3
+			if o.isZero() {
+				// 3. An integer constant expression
+				// with the value 0, or such an
+				// expression cast to type void *, is
+				// called a null pointer constant.  If
+				// a null pointer constant is converted
+				// to a pointer type, the resulting
+				// pointer, called a null pointer, is
+				// guaranteed to compare unequal to a
+				// pointer to any object or function.
+				return Operand{Type: t, Addr: Null}
+			}
+
+			return Operand{Type: t, Value: o.Value}
+		}
+
+		switch t.Kind() {
+		case Double:
+			return Operand{Type: t, Value: &ir.Float64Value{Value: float64(o.Value.(*ir.Int64Value).Value)}}
+		default:
+			panic(t)
+		}
+	}
+
+	if o.Type.Kind() == Double {
+		switch x := t.(type) {
+		case TypeKind:
+			switch x {
+			case LongDouble:
+				return Operand{Type: t, Value: o.Value}
+			default:
+				panic(x)
+			}
+		default:
+			panic(x)
+		}
+	}
+
+	if o.isPointerType() && t.IsPointerType() {
+		o.Type = t
 		return o
 	}
 
-	if o.Value == nil {
-		return &Operand{Type: t}
-	}
-
-	switch x := o.Type.(type) {
-	case TypeKind:
-		switch x {
-		case Int:
-			switch t.Kind() {
-			case Double:
-				return newOperand(t, &ir.Float64Value{Value: float64(o.Value.(*ir.Int64Value).Value)}, nil)
-			case LongLong:
-				return newOperand(t, o.Value, nil)
-			case
-				Char,
-				UChar,
-				UInt,
-				ULong,
-				UShort:
-				return newOperand(t, o.Value, nil).normalize(ctx)
-			case Ptr:
-				// [0]6.3.2.3
-
-				if o.isZero() {
-					// 3. An integer constant expression
-					// with the value 0, or such an
-					// expression cast to type void *, is
-					// called a null pointer constant.  If
-					// a null pointer constant is converted
-					// to a pointer type, the resulting
-					// pointer, called a null pointer, is
-					// guaranteed to compare unequal to a
-					// pointer to any object or function.
-					return newOperand(t, null, nil)
-				}
-
-				return newOperand(t, o.Value, nil)
-			default:
-				panic(fmt.Errorf("%T(%v) -> %T(%v)", x, o, t, t))
-			}
-		case UInt:
-			switch t.Kind() {
-			default:
-				return newOperand(t, o.Value, nil)
-			}
-		case ULong:
-			switch t.Kind() {
-			case Int:
-				return newOperand(t, o.Value, nil).normalize(ctx)
-			default:
-				panic(fmt.Errorf("%T(%v) -> %T(%v)", x, o, t, t))
-			}
-		case UShort:
-			switch t.Kind() {
-			case Int:
-				return newOperand(t, o.Value, nil)
-			default:
-				panic(fmt.Errorf("%T(%v) -> %T(%v)", x, o, t, t))
-			}
-		default:
-			panic(fmt.Errorf("%T(%v) -> %T(%v)", x, o, t, t))
-		}
-	default:
-		panic(fmt.Errorf("%T(%v) -> %T(%v)", x, o, t, t))
-	}
+	panic(fmt.Errorf("%T(%v) -> %T(%v)", o.Type, o, t, t))
 }
 
-func (o *Operand) div(ctx *context, p *Operand) (r *Operand) {
-	o, p = usualArithmeticConversions(ctx, o, p)
-	if p.isZero() {
-		panic("TODO")
-	}
-	if o.Value == nil || p.Value == nil {
-		return &Operand{Type: o.Type}
+func (o Operand) cpl(ctx *context) Operand {
+	if o.isIntegerType() {
+		o = o.integerPromotion(ctx)
 	}
 
 	switch x := o.Value.(type) {
 	case *ir.Int64Value:
-		return newOperand(o.Type, &ir.Int64Value{Value: x.Value / p.Value.(*ir.Int64Value).Value}, nil).normalize(ctx)
+		o.Value = &ir.Int64Value{Value: ^o.Value.(*ir.Int64Value).Value}
+		return o.normalize(ctx)
 	default:
 		panic(fmt.Errorf("TODO %T", x))
 	}
 }
 
-func (o *Operand) eq(ctx *context, p *Operand) (r *Operand) {
-	r = &Operand{Type: Int}
+func (o Operand) div(ctx *context, p Operand) (r Operand) {
+	o, p = usualArithmeticConversions(ctx, o, p)
+	if p.isZero() {
+		panic("TODO")
+	}
+	if o.Value == nil || p.Value == nil {
+		return Operand{Type: o.Type}
+	}
+
+	switch x := o.Value.(type) {
+	case *ir.Int64Value:
+		return Operand{Type: o.Type, Value: &ir.Int64Value{Value: x.Value / p.Value.(*ir.Int64Value).Value}}.normalize(ctx)
+	case *ir.Float64Value:
+		return Operand{Type: o.Type, Value: &ir.Float64Value{Value: x.Value / p.Value.(*ir.Float64Value).Value}}
+	default:
+		panic(fmt.Errorf("TODO %T", x))
+	}
+}
+
+func (o Operand) eq(ctx *context, p Operand) (r Operand) {
+	r = Operand{Type: Int}
 	if o.Value == nil || p.Value == nil {
 		return r
 	}
@@ -357,8 +390,8 @@ func (o *Operand) eq(ctx *context, p *Operand) (r *Operand) {
 	return r
 }
 
-func (o *Operand) ge(ctx *context, p *Operand) (r *Operand) {
-	r = &Operand{Type: Int}
+func (o Operand) ge(ctx *context, p Operand) (r Operand) {
+	r = Operand{Type: Int}
 	if o.Value == nil || p.Value == nil {
 		return r
 	}
@@ -382,8 +415,8 @@ func (o *Operand) ge(ctx *context, p *Operand) (r *Operand) {
 	return r
 }
 
-func (o *Operand) gt(ctx *context, p *Operand) (r *Operand) {
-	r = &Operand{Type: Int}
+func (o Operand) gt(ctx *context, p Operand) (r Operand) {
+	r = Operand{Type: Int}
 	if o.Value == nil || p.Value == nil {
 		return r
 	}
@@ -407,8 +440,8 @@ func (o *Operand) gt(ctx *context, p *Operand) (r *Operand) {
 	return r
 }
 
-func (o *Operand) le(ctx *context, p *Operand) (r *Operand) {
-	r = &Operand{Type: Int}
+func (o Operand) le(ctx *context, p Operand) (r Operand) {
+	r = Operand{Type: Int}
 	if o.Value == nil || p.Value == nil {
 		return r
 	}
@@ -432,26 +465,26 @@ func (o *Operand) le(ctx *context, p *Operand) (r *Operand) {
 	return r
 }
 
-func (o *Operand) lsh(ctx *context, p *Operand) (r *Operand) { // [0]6.5.7
+func (o Operand) lsh(ctx *context, p Operand) (r Operand) { // [0]6.5.7
 	// 2. Each of the operands shall have integer type.
 	if !o.isIntegerType() || !p.isIntegerType() {
 		panic("TODO")
 	}
 	o, p = usualArithmeticConversions(ctx, o, p)
 	if o.Value == nil || p.Value == nil {
-		return &Operand{Type: o.Type}
+		return Operand{Type: o.Type}
 	}
 
 	switch x := o.Value.(type) {
 	case *ir.Int64Value:
-		return newOperand(o.Type, &ir.Int64Value{Value: x.Value << uint64(p.Value.(*ir.Int64Value).Value)}, nil).normalize(ctx)
+		return Operand{Type: o.Type, Value: &ir.Int64Value{Value: x.Value << uint64(p.Value.(*ir.Int64Value).Value)}}.normalize(ctx)
 	default:
 		panic(fmt.Errorf("TODO %T", x))
 	}
 }
 
-func (o *Operand) lt(ctx *context, p *Operand) (r *Operand) {
-	r = &Operand{Type: Int}
+func (o Operand) lt(ctx *context, p Operand) (r Operand) {
+	r = Operand{Type: Int}
 	if o.Value == nil || p.Value == nil {
 		return r
 	}
@@ -477,13 +510,13 @@ func (o *Operand) lt(ctx *context, p *Operand) (r *Operand) {
 	return r
 }
 
-func (o *Operand) mod(ctx *context, p *Operand) (r *Operand) {
+func (o Operand) mod(ctx *context, p Operand) (r Operand) {
 	o, p = usualArithmeticConversions(ctx, o, p)
 	if p.isZero() {
 		panic("TODO")
 	}
 	if o.Value == nil || p.Value == nil {
-		return &Operand{Type: o.Type}
+		return Operand{Type: o.Type}
 	}
 
 	switch x := o.Value.(type) {
@@ -492,22 +525,24 @@ func (o *Operand) mod(ctx *context, p *Operand) (r *Operand) {
 	}
 }
 
-func (o *Operand) mul(ctx *context, p *Operand) (r *Operand) {
+func (o Operand) mul(ctx *context, p Operand) (r Operand) {
 	o, p = usualArithmeticConversions(ctx, o, p)
 	if o.Value == nil || p.Value == nil {
-		return &Operand{Type: o.Type}
+		return Operand{Type: o.Type}
 	}
 
 	switch x := o.Value.(type) {
 	case *ir.Int64Value:
-		return newOperand(o.Type, &ir.Int64Value{Value: x.Value * p.Value.(*ir.Int64Value).Value}, nil).normalize(ctx)
+		return Operand{Type: o.Type, Value: &ir.Int64Value{Value: x.Value * p.Value.(*ir.Int64Value).Value}}.normalize(ctx)
+	case *ir.Float64Value:
+		return Operand{Type: o.Type, Value: &ir.Float64Value{Value: x.Value * p.Value.(*ir.Float64Value).Value}}
 	default:
 		panic(fmt.Errorf("TODO %T", x))
 	}
 }
 
-func (o *Operand) ne(ctx *context, p *Operand) (r *Operand) {
-	r = &Operand{Type: Int}
+func (o Operand) ne(ctx *context, p Operand) (r Operand) {
+	r = Operand{Type: Int}
 	if o.Value == nil || p.Value == nil {
 		return r
 	}
@@ -526,7 +561,7 @@ func (o *Operand) ne(ctx *context, p *Operand) (r *Operand) {
 	return r
 }
 
-func (o *Operand) normalize(ctx *context) *Operand {
+func (o Operand) normalize(ctx *context) Operand {
 	switch x := o.Value.(type) {
 	case *ir.Int64Value:
 		val := x.Value
@@ -546,7 +581,12 @@ func (o *Operand) normalize(ctx *context) *Operand {
 		case 2:
 			switch {
 			case o.isSigned():
-				panic("TODO")
+				switch {
+				case val < 0:
+					panic("TODO")
+				default:
+					x.Value = val & math.MaxUint16
+				}
 			default:
 				x.Value = val & math.MaxUint16
 			}
@@ -563,17 +603,7 @@ func (o *Operand) normalize(ctx *context) *Operand {
 				x.Value = val & math.MaxUint32
 			}
 		case 8:
-			switch {
-			case o.isSigned():
-				switch {
-				case val < 0:
-					panic("TODO")
-				default:
-					x.Value = int64(uint64(val) & math.MaxUint64)
-				}
-			default:
-				x.Value = int64(uint64(val) & math.MaxUint64)
-			}
+			// nop
 		default:
 			panic(fmt.Errorf("TODO %v", sz))
 		}
@@ -583,50 +613,69 @@ func (o *Operand) normalize(ctx *context) *Operand {
 	return o
 }
 
-func (o *Operand) or(ctx *context, p *Operand) (r *Operand) {
-	o, p = usualArithmeticConversions(ctx, o, p)
-	if o.Value == nil || p.Value == nil {
-		return &Operand{Type: o.Type}
-	}
-
-	switch x := o.Value.(type) {
-	case *ir.Int64Value:
-		return newOperand(o.Type, &ir.Int64Value{Value: x.Value | p.Value.(*ir.Int64Value).Value}, nil).normalize(ctx)
-	default:
-		panic(fmt.Errorf("TODO %T", x))
-	}
-}
-
-func (o *Operand) sub(ctx *context, p *Operand) (r *Operand) {
-	o, p = usualArithmeticConversions(ctx, o, p)
-	if o.Value == nil || p.Value == nil {
-		return &Operand{Type: o.Type}
-	}
-
-	switch x := o.Value.(type) {
-	case *ir.Int64Value:
-		return newOperand(o.Type, &ir.Int64Value{Value: x.Value - p.Value.(*ir.Int64Value).Value}, nil).normalize(ctx)
-	default:
-		panic(fmt.Errorf("TODO %T", x))
-	}
-}
-
-func (o *Operand) unaryMinus(ctx *context) *Operand {
-	if !o.IsArithmeticType() {
+func (o Operand) or(ctx *context, p Operand) (r Operand) {
+	if !o.isIntegerType() || !p.isIntegerType() {
 		panic("TODO")
 	}
-
-	r := o
-	if o.isIntegerType() {
-		r = o.integerPromotion(ctx)
+	o, p = usualArithmeticConversions(ctx, o, p)
+	if o.Value == nil || p.Value == nil {
+		return Operand{Type: o.Type}
 	}
 
-	switch x := r.Value.(type) {
+	switch x := o.Value.(type) {
+	case *ir.Int64Value:
+		return Operand{Type: o.Type, Value: &ir.Int64Value{Value: x.Value | p.Value.(*ir.Int64Value).Value}}.normalize(ctx)
+	default:
+		panic(fmt.Errorf("TODO %T", x))
+	}
+}
+
+func (o Operand) rsh(ctx *context, p Operand) (r Operand) { // [0]6.5.7
+	// 2. Each of the operands shall have integer type.
+	if !o.isIntegerType() || !p.isIntegerType() {
+		panic("TODO")
+	}
+	o, p = usualArithmeticConversions(ctx, o, p)
+	if o.Value == nil || p.Value == nil {
+		return Operand{Type: o.Type}
+	}
+
+	switch x := o.Value.(type) {
+	case *ir.Int64Value:
+		return Operand{Type: o.Type, Value: &ir.Int64Value{Value: x.Value >> uint64(p.Value.(*ir.Int64Value).Value)}}.normalize(ctx)
+	default:
+		panic(fmt.Errorf("TODO %T", x))
+	}
+}
+
+func (o Operand) sub(ctx *context, p Operand) (r Operand) {
+	o, p = usualArithmeticConversions(ctx, o, p)
+	if o.Value == nil || p.Value == nil {
+		return Operand{Type: o.Type}
+	}
+
+	switch x := o.Value.(type) {
+	case *ir.Int64Value:
+		return Operand{Type: o.Type, Value: &ir.Int64Value{Value: x.Value - p.Value.(*ir.Int64Value).Value}}.normalize(ctx)
+	default:
+		panic(fmt.Errorf("TODO %T", x))
+	}
+}
+
+func (o Operand) unaryMinus(ctx *context) Operand {
+	if o.isIntegerType() {
+		o = o.integerPromotion(ctx)
+	}
+
+	switch x := o.Value.(type) {
 	case nil:
-		return r
+		return o
 	case *ir.Int64Value:
 		x.Value = -x.Value
-		return r.normalize(ctx)
+		return o.normalize(ctx)
+	case *ir.Float64Value:
+		x.Value = -x.Value
+		return o
 	default:
 		panic(fmt.Errorf("TODO %T", x))
 	}
@@ -638,7 +687,7 @@ func (o *Operand) unaryMinus(ctx *context) *Operand {
 // converted to an int; otherwise, it is converted to an unsigned int. These
 // are called the integer promotions. All other types are unchanged by the
 // integer promotions.
-func (o *Operand) integerPromotion(ctx *context) *Operand {
+func (o Operand) integerPromotion(ctx *context) Operand {
 	t := o.Type
 	for {
 		switch x := t.(type) {
@@ -648,13 +697,16 @@ func (o *Operand) integerPromotion(ctx *context) *Operand {
 			switch x {
 			case
 				Int,
+				Long,
 				LongLong,
 				UInt,
-				ULong:
+				ULong,
+				ULongLong:
 
 				return o
 			case
 				Char,
+				Short,
 				UChar,
 				UShort:
 
@@ -668,7 +720,7 @@ func (o *Operand) integerPromotion(ctx *context) *Operand {
 	}
 }
 
-func (o *Operand) isNonzero() bool {
+func (o Operand) isNonzero() bool {
 	switch x := o.Value.(type) {
 	case nil:
 		return false
@@ -679,11 +731,13 @@ func (o *Operand) isNonzero() bool {
 	}
 }
 
-func (o *Operand) isZero() bool {
+func (o Operand) isZero() bool {
 	switch x := o.Value.(type) {
 	case nil:
 		return false
 	case *ir.Int64Value:
+		return x.Value == 0
+	case *ir.Float64Value:
 		return x.Value == 0
 	default:
 		panic(fmt.Errorf("TODO %T", x))
