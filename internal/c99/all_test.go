@@ -102,6 +102,7 @@ const (
 var (
 	oRE = flag.String("re", "", "")
 
+	shellc   = filepath.FromSlash("../../_sqlite/sqlite-amalgamation-3210000/shell.c")
 	sqlite3c = filepath.FromSlash("../../_sqlite/sqlite-amalgamation-3210000/sqlite3.c")
 )
 
@@ -763,7 +764,42 @@ func TestTypecheckSQLite(t *testing.T) {
 		t.Fatalf("%v", errString(err))
 	}
 
-	return //TODO-
+	if err := ast.check(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ctx.error(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTypecheckSQLiteShell(t *testing.T) {
+	model, err := newModel()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, err := newContext(token.NewFileSet(), &tweaks{
+		enableAnonymousStructFields: true,
+		enableEmptyStructs:          true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx.model = model
+	ctx.includePaths = []string{"@", ccir.LibcIncludePath}
+	ctx.sysIncludePaths = []string{ccir.LibcIncludePath}
+	ast, err := ctx.parse(
+		[]Source{
+			newStringSource("<builtin>", fmt.Sprintf(inj, runtime.GOARCH, runtime.GOOS, predef)),
+			newFileSource(shellc),
+		},
+	)
+	if err != nil {
+		t.Fatalf("%v", errString(err))
+	}
+
 	if err := ast.check(ctx); err != nil {
 		t.Fatal(err)
 	}

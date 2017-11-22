@@ -7,7 +7,6 @@ package c99
 // [0]: http://www.open-std.org/jtc1/sc22/wg14/www/docs/n1256.pdf
 
 import (
-	"bytes"
 	"fmt"
 	"go/token"
 	"math/big"
@@ -223,14 +222,20 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		case
 			*PointerType,
 			*StructType,
-			*TaggedStructType:
+			*TaggedStructType,
+			*UnionType:
 
 			n.Operand = ctx.sizeof(t)
 		case *NamedType:
 			n.Operand = ctx.sizeof(t.Type)
 		case TypeKind:
 			switch t {
-			case Char:
+			case
+				Char,
+				Double,
+				Int,
+				UChar:
+
 				n.Operand = ctx.sizeof(t)
 			default:
 				panic(t)
@@ -292,7 +297,10 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				Double,
 				Int,
 				Long,
+				LongDouble,
 				LongLong,
+				SChar,
+				Short,
 				UChar,
 				UInt,
 				ULong,
@@ -310,11 +318,16 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 	case ExprDeref: // '*' Expr
 		// [0]6.5.3
 		op := n.Expr.eval(ctx, arr2ptr)
-		switch x := op.Type.(type) {
-		case *PointerType:
-			n.Operand = Operand{Type: x.Item}
-		default:
-			panic(ctx.position(n))
+		for t, done := op.Type, false; !done; {
+			switch x := t.(type) {
+			case *NamedType:
+				t = x.Type
+			case *PointerType:
+				n.Operand = Operand{Type: x.Item}
+				done = true
+			default:
+				panic(ctx.position(n))
+			}
 		}
 	case ExprUnaryPlus: // '+' Expr
 		// [0]6.5.3.3
@@ -346,26 +359,56 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		}
 		n.Operand = op.cpl(ctx)
 	case ExprChar: // CHARCONST
-		s := dict.S(n.Token.Val)
-		if bytes.Contains(s, []byte{'\\'}) && bytes.Contains(s, []byte{'"'}) {
-			panic("TODO") // If present, must replace any `\"` with `"`.
-		}
-		r, _, tail, err := strconv.UnquoteChar(string(s[1:len(s)-1]), '\'')
-		if err != nil {
-			//dbg("%v: %q", ctx.position(n), s)
-			panic(err)
-		}
-
-		if tail != "" {
-			panic("TODO")
-		}
-
-		n.Operand = Operand{Type: Int, Value: &ir.Int64Value{Value: int64(r)}}
+		n.Operand = charConst(n.Token.S())
 	case ExprNe: // Expr "!=" Expr
-		n.Operand = n.Expr.eval(ctx, arr2ptr).ne(ctx, n.Expr2.eval(ctx, arr2ptr))
+		lhs := n.Expr.eval(ctx, arr2ptr)
+		rhs := n.Expr2.eval(ctx, arr2ptr)
+		// [0]6.5.9
+		switch {
+		// One of the following shall hold:
+		case
+			// both operands have arithmetic type
+			lhs.isArithmeticType() && rhs.isArithmeticType():
+
+			n.Operand = lhs.ne(ctx, rhs)
+		case
+			// both operands are pointers to qualified or unqualified versions of compatible types
+			lhs.isPointerType() && rhs.isPointerType() && lhs.Type.IsCompatible(rhs.Type):
+
+			if lhs.Value != nil {
+				panic(ctx.position(n))
+			}
+
+			if lhs.Addr != nil {
+				if rhs.Value != nil || rhs.Addr != nil {
+					panic(ctx.position(n))
+				}
+			}
+
+			return Operand{Type: Int}
+		case
+			// one operand is a pointer and the other is a null
+			// pointer constant.
+			lhs.isPointerType() && rhs.isIntegerType() && rhs.isZero():
+
+			if lhs.Value != nil {
+				if lhs.isZero() {
+					panic(fmt.Errorf("%v: %v %v", ctx.position(n), lhs, rhs))
+				}
+
+				if lhs.isNonzero() {
+					return Operand{Type: Int, Value: &ir.Int64Value{Value: 1}}
+				}
+			}
+
+			return Operand{Type: Int}
+		default:
+			panic(fmt.Errorf("%v: %v %v", ctx.position(n), lhs, rhs))
+		}
 	case ExprModAssign: // Expr "%=" Expr
 		// [0]6.5.16.2
-		n.Operand = n.Expr.eval(ctx, arr2ptr).mod(ctx, n.Expr2.eval(ctx, arr2ptr))
+		n.Expr.eval(ctx, arr2ptr).mod(ctx, n.Expr2.eval(ctx, arr2ptr))
+		n.Operand = n.Expr.Operand
 	case ExprLAnd: // Expr "&&" Expr
 		n.Operand = Operand{Type: Int}
 		a := n.Expr.eval(ctx, arr2ptr)
@@ -482,26 +525,92 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				if t == x {
 					panic("TODO")
 				}
+			case *UnionType:
+				nm := n.Token2.Val
+				d0, ok := x.scope.idents[nm]
+				if !ok {
+					panic(ctx.position(n))
+				}
+				d := d0.(*Declarator)
+				n.Operand = Operand{Type: x.Fields[d.field].Type}
+				if a := op.Addr; a != nil {
+					panic("TODO")
+				}
+				break out
 			default:
 				panic(x)
 			}
 		}
 	case ExprDivAssign: // Expr "/=" Expr
 		// [0]6.5.16.2
-		n.Operand = n.Expr.eval(ctx, arr2ptr).div(ctx, n.Expr2.eval(ctx, arr2ptr))
+		n.Expr.eval(ctx, arr2ptr).div(ctx, n.Expr2.eval(ctx, arr2ptr))
+		n.Operand = n.Expr.Operand
 	case ExprLsh: // Expr "<<" Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr).lsh(ctx, n.Expr2.eval(ctx, arr2ptr))
-	//TODO case ExprLshAssign: // Expr "<<=" Expr
+	case ExprLshAssign: // Expr "<<=" Expr
+		n.Expr.eval(ctx, arr2ptr).lsh(ctx, n.Expr2.eval(ctx, arr2ptr))
+		n.Operand = n.Expr.Operand
 	case ExprLe: // Expr "<=" Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr).le(ctx, n.Expr2.eval(ctx, arr2ptr))
 	case ExprEq: // Expr "==" Expr
-		n.Operand = n.Expr.eval(ctx, arr2ptr).eq(ctx, n.Expr2.eval(ctx, arr2ptr))
+		lhs := n.Expr.eval(ctx, arr2ptr)
+		rhs := n.Expr2.eval(ctx, arr2ptr)
+		// [0]6.5.9
+		switch {
+		// One of the following shall hold:
+		case
+			// both operands have arithmetic type
+			lhs.isArithmeticType() && rhs.isArithmeticType():
+
+			n.Operand = lhs.eq(ctx, rhs)
+		case
+			// both operands are pointers to qualified or unqualified versions of compatible types
+			lhs.isPointerType() && rhs.isPointerType() && lhs.Type.IsCompatible(rhs.Type):
+
+			if lhs.Value != nil {
+				panic(ctx.position(n))
+			}
+
+			if lhs.Addr != nil {
+				if rhs.Value != nil || rhs.Addr != nil {
+					panic(ctx.position(n))
+				}
+			}
+
+			return Operand{Type: Int}
+		case
+			// one operand is a pointer and the other is a null
+			// pointer constant.
+			lhs.isPointerType() && rhs.isIntegerType() && rhs.isZero():
+
+			if lhs.Value != nil {
+				panic(ctx.position(n))
+			}
+
+			return Operand{Type: Int}
+		case
+			// one operand is a pointer and the other is a null
+			// pointer constant.
+			lhs.isIntegerType() && lhs.isZero() && rhs.isPointerType():
+
+			if rhs.Value != nil {
+				panic(ctx.position(n))
+			}
+
+			return Operand{Type: Int}
+		default:
+			panic(fmt.Errorf("%v: %v %v", ctx.position(n), lhs, rhs))
+		}
 	case ExprGe: // Expr ">=" Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr).ge(ctx, n.Expr2.eval(ctx, arr2ptr))
 	case ExprRsh: // Expr ">>" Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr).rsh(ctx, n.Expr2.eval(ctx, arr2ptr))
-	//TODO case ExprRshAssign: // Expr ">>=" Expr
-	//TODO case ExprXorAssign: // Expr "^=" Expr
+	case ExprRshAssign: // Expr ">>=" Expr
+		n.Expr.eval(ctx, arr2ptr).rsh(ctx, n.Expr2.eval(ctx, arr2ptr))
+		n.Operand = n.Expr.Operand
+	case ExprXorAssign: // Expr "^=" Expr
+		n.Expr.eval(ctx, arr2ptr).xor(ctx, n.Expr2.eval(ctx, arr2ptr))
+		n.Operand = n.Expr.Operand
 	case ExprOrAssign: // Expr "|=" Expr
 		n.Expr.eval(ctx, arr2ptr).or(ctx, n.Expr2.eval(ctx, arr2ptr))
 		n.Operand = n.Expr.Operand
@@ -533,16 +642,22 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		// have type pointer to function returning void or returning an
 		// object type other than an array type.
 		var t *FunctionType
-		switch x := op.Type.(type) {
-		case *PointerType:
-			switch x := x.Item.(type) {
-			case *FunctionType:
-				t = x
+		for u, done := op.Type, false; !done; {
+			switch x := u.(type) {
+			case *NamedType:
+				u = x.Type
+			case *PointerType:
+				switch x := x.Item.(type) {
+				case *FunctionType:
+					t = x
+					done = true
+				default:
+					panic(ctx.position)
+				}
 			default:
-				panic(ctx.position)
+				//dbg("", x)
+				panic(ctx.position(n))
 			}
-		default:
-			panic(ctx.position)
 		}
 		if _, ok := t.Result.(*ArrayType); ok {
 			panic(ctx.position)
@@ -579,7 +694,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 						continue
 					}
 
-					t.Params[i].assign(ctx, rhs)
+					AdjustedParameterType(t.Params[i]).assign(ctx, rhs)
 				}
 			default:
 				switch {
@@ -591,7 +706,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 					panic(ctx.position(n))
 				}
 				for i, rhs := range args {
-					t.Params[i].assign(ctx, rhs)
+					AdjustedParameterType(t.Params[i]).assign(ctx, rhs)
 				}
 				break out2
 			}
@@ -616,7 +731,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 					continue
 				}
 
-				t.Params[i].assign(ctx, rhs)
+				AdjustedParameterType(t.Params[i]).assign(ctx, rhs)
 			}
 		default:
 			switch {
@@ -640,7 +755,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				case rhs.Type.Kind() == Float:
 					rhs = rhs.convertTo(ctx, Double)
 				}
-				t.Params[i].assign(ctx, rhs)
+				AdjustedParameterType(t.Params[i]).assign(ctx, rhs)
 			}
 		}
 	case ExprMul: // Expr '*' Expr
@@ -664,7 +779,10 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			}
 			n.Operand = lhs
 		case lhs.isIntegerType() && rhs.isPointerType():
-			panic(ctx.position(n))
+			if rhs.Addr != nil {
+				panic(ctx.position(n))
+			}
+			n.Operand = rhs
 		default:
 			panic(ctx.position(n))
 		}
@@ -777,6 +895,12 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			// the result.
 			n.Operand, _ = usualArithmeticConversions(ctx, a, b)
 		case
+			// both operands have the same structure or union type
+			a.Type.Kind() == Struct && b.Type.Kind() == Struct && a.Type.Equal(b.Type),
+			a.Type.Kind() == Union && b.Type.Kind() == Union && a.Type.Equal(b.Type):
+
+			n.Operand = Operand{Type: a.Type}
+		case
 			// both operands are pointers to qualified or
 			// unqualified versions of compatible types;
 			a.isPointerType() && b.isPointerType() && a.Type.IsCompatible(b.Type):
@@ -840,7 +964,8 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				op.Addr = nil
 			}
 		}
-	//TODO case ExprXor: // Expr '^' Expr
+	case ExprXor: // Expr '^' Expr
+		n.Operand = n.Expr.eval(ctx, arr2ptr).xor(ctx, n.Expr2.eval(ctx, arr2ptr))
 	case ExprOr: // Expr '|' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr).or(ctx, n.Expr2.eval(ctx, arr2ptr))
 	case ExprFloat: // FLOATCONST
@@ -910,6 +1035,8 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 					Long,
 					LongDouble,
 					LongLong,
+					SChar,
+					Short,
 					UChar,
 					UInt,
 					ULong,
@@ -956,12 +1083,16 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		switch suff := strings.ToUpper(s0[len(s):]); {
 		case suff == "" && decadic:
 			n.Operand = newIntConst(ctx, n, v, Int, Long, LongLong)
-		case suff == "":
+		case suff == "" && !decadic:
 			n.Operand = newIntConst(ctx, n, v, Int, UInt, Long, ULong, LongLong, ULongLong)
 		case suff == "L" && decadic:
 			n.Operand = newIntConst(ctx, n, v, Long, LongLong)
+		case suff == "U" && !decadic:
+			n.Operand = newIntConst(ctx, n, v, Int, UInt, ULong, ULongLong)
 		case suff == "UL" && decadic:
 			n.Operand = newIntConst(ctx, n, v, ULong, ULongLong)
+		case suff == "ULL":
+			n.Operand = newIntConst(ctx, n, v, ULongLong)
 		default:
 			panic(fmt.Errorf("%v: TODO %q %q decadic: %v\n%s", ctx.position(n), s, suff, decadic, PrettyString(n)))
 		}
@@ -972,6 +1103,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		n.Operand = Operand{Type: &PointerType{Item: Char}, Value: &ir.StringValue{StringID: ir.StringID(dict.ID(s[1 : len(s)-1]))}}
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
+	}
+	if n.Operand.Type.Kind() == Function {
+		n.Operand = Operand{Type: &PointerType{n.Operand.Type}}
 	}
 	if !arr2ptr {
 		return n.Operand
@@ -1010,6 +1144,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				Long,
 				LongDouble,
 				LongLong,
+				SChar,
 				Short,
 				UChar,
 				UInt,
@@ -2011,10 +2146,18 @@ func (n *StructDeclarationList) check(ctx *context) (r []Field) {
 }
 
 func (n *StructDeclaration) check(ctx *context, field *int) []Field {
-	// SpecifierQualifierList StructDeclaratorList ';'
-	ds := &DeclarationSpecifier{}
-	n.SpecifierQualifierList.check(ctx, ds)
-	return n.StructDeclaratorList.check(ctx, ds, field)
+	switch n.Case {
+	case StructDeclarationBase: // SpecifierQualifierList StructDeclaratorList ';'
+		ds := &DeclarationSpecifier{}
+		n.SpecifierQualifierList.check(ctx, ds)
+		return n.StructDeclaratorList.check(ctx, ds, field)
+	case StructDeclarationAnon: // SpecifierQualifierList ';'
+		ds := &DeclarationSpecifier{}
+		n.SpecifierQualifierList.check(ctx, ds)
+		return []Field{{Type: ds.typ()}}
+	default:
+		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
+	}
 }
 
 func (n *StructDeclaratorList) check(ctx *context, ds *DeclarationSpecifier, field *int) (r []Field) {

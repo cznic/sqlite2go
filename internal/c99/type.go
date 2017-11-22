@@ -112,14 +112,17 @@ func (t TypeKind) assign(ctx *context, op Operand) Operand {
 func (t TypeKind) IsPointerType() bool {
 	switch t {
 	case
+		Char,
 		Double,
 		Int,
 		LongDouble,
 		LongLong,
+		Short,
 		UChar,
 		UInt,
 		ULong,
-		ULongLong:
+		ULongLong,
+		UShort:
 
 		return false
 	default:
@@ -205,11 +208,30 @@ func (t TypeKind) IsCompatible(u Type) bool {
 // Equal implements Type.
 func (t TypeKind) Equal(u Type) bool {
 	switch x := u.(type) {
+	case *ArrayType:
+		switch t {
+		case Void:
+			return false
+		default:
+			panic(t)
+		}
+	case *FunctionType:
+		switch t {
+		case Void:
+			return false
+		default:
+			panic(t)
+		}
 	case *NamedType:
 		return t.Equal(x.Type)
 	case *PointerType:
 		switch t {
-		case Int:
+		case
+			Char,
+			Int,
+			Long,
+			Void:
+
 			return false
 		default:
 			panic(t)
@@ -223,7 +245,13 @@ func (t TypeKind) Equal(u Type) bool {
 		}
 	case *TaggedStructType:
 		switch t {
-		case Void:
+		case
+			Char,
+			SChar,
+			UChar,
+			UInt,
+			Void:
+
 			return false
 		default:
 			panic(t)
@@ -249,6 +277,13 @@ func (t TypeKind) Equal(u Type) bool {
 			return t == x
 		default:
 			panic(x)
+		}
+	case *UnionType:
+		switch t {
+		case Void:
+			return false
+		default:
+			panic(t)
 		}
 	default:
 		panic(fmt.Errorf("%T", x))
@@ -353,6 +388,13 @@ func (t *ArrayType) Equal(u Type) bool {
 			return x.Size.Type != nil && t.Size.Value.(*ir.Int64Value).Value == x.Size.Value.(*ir.Int64Value).Value
 		default:
 			panic("TODO")
+		}
+	case TypeKind:
+		switch x {
+		case Void:
+			return false
+		default:
+			panic(x)
 		}
 	default:
 		panic(x)
@@ -472,6 +514,13 @@ func (t *FunctionType) Equal(u Type) bool {
 			}
 		}
 		return true
+	case TypeKind:
+		switch x {
+		case Void:
+			return false
+		default:
+			panic(x)
+		}
 	default:
 		panic(fmt.Errorf("%T", x))
 	}
@@ -599,13 +648,18 @@ func (t *PointerType) Equal(u Type) bool {
 	case TypeKind:
 		switch x {
 		case
+			Char,
 			Double,
 			Int,
 			Long,
 			LongLong,
+			Short,
+			UChar,
 			UInt,
 			ULong,
-			ULongLong:
+			ULongLong,
+			UShort,
+			Void:
 
 			return false
 		default:
@@ -678,7 +732,13 @@ func (t *StructType) IsArithmeticType() bool {
 }
 
 // IsCompatible implements Type.
-func (t *StructType) IsCompatible(u Type) bool { panic("TODO") }
+func (t *StructType) IsCompatible(u Type) bool {
+	if t.Equal(u) {
+		return true
+	}
+
+	panic("TODO")
+}
 
 // Equal implements Type.
 func (t *StructType) Equal(u Type) bool {
@@ -689,6 +749,11 @@ func (t *StructType) Equal(u Type) bool {
 	switch x := u.(type) {
 	case *NamedType:
 		return t.Equal(x.Type)
+	case
+		*FunctionType,
+		*PointerType:
+
+		return false
 	case *StructType:
 		if len(t.Fields) != len(x.Fields) {
 			return false
@@ -708,7 +773,19 @@ func (t *StructType) Equal(u Type) bool {
 
 		return t.Equal(v)
 	case TypeKind:
-		return false
+		switch x {
+		case
+			Char,
+			Int,
+			UChar,
+			UInt,
+			UShort,
+			Void:
+
+			return false
+		default:
+			panic(x)
+		}
 	default:
 		panic(fmt.Errorf("%T", x))
 	}
@@ -718,7 +795,17 @@ func (t *StructType) Equal(u Type) bool {
 func (t *StructType) Kind() TypeKind { return Struct }
 
 // assign implements Type.
-func (t *StructType) assign(ctx *context, op Operand) Operand { panic("TODO") }
+func (t *StructType) assign(ctx *context, op Operand) Operand {
+	switch x := op.Type.(type) {
+	case *StructType:
+		if !t.IsCompatible(x) {
+			panic("TODO")
+		}
+		return Operand{Type: t}
+	default:
+		panic(x)
+	}
+}
 
 // IsPointerType implements Type.
 func (t *StructType) IsPointerType() bool { panic("TODO") }
@@ -776,6 +863,13 @@ func (t *TaggedStructType) Equal(u Type) bool {
 				return false
 			case *TaggedStructType:
 				return t.Tag == y.Tag
+			case TypeKind:
+				switch y {
+				case Void:
+					return false
+				default:
+					panic(y)
+				}
 			default:
 				panic(fmt.Errorf("%T", y))
 			}
@@ -835,7 +929,7 @@ func (t *TaggedStructType) assign(ctx *context, op Operand) Operand {
 func (t *TaggedStructType) IsPointerType() bool { return false }
 
 // IsIntegerType implements Type.
-func (t *TaggedStructType) IsIntegerType() bool { panic("TODO") }
+func (t *TaggedStructType) IsIntegerType() bool { return false }
 
 // IsScalarType implements Type.
 func (t *TaggedStructType) IsScalarType() bool { return false }
@@ -902,7 +996,13 @@ func (t *UnionType) IsArithmeticType() bool {
 }
 
 // IsCompatible implements Type.
-func (t *UnionType) IsCompatible(u Type) bool { panic("TODO") }
+func (t *UnionType) IsCompatible(u Type) bool {
+	if t.Equal(u) {
+		return true
+	}
+
+	panic("TODO")
+}
 
 // Equal implements Type.
 func (t *UnionType) Equal(u Type) bool {
@@ -913,6 +1013,13 @@ func (t *UnionType) Equal(u Type) bool {
 	switch x := u.(type) {
 	case *NamedType:
 		return t.Equal(x.Type)
+	case TypeKind:
+		switch x {
+		case Void:
+			return false
+		default:
+			panic(x)
+		}
 	default:
 		panic(x)
 	}
@@ -922,7 +1029,17 @@ func (t *UnionType) Equal(u Type) bool {
 func (t *UnionType) Kind() TypeKind { return Union }
 
 // assign implements Type.
-func (t *UnionType) assign(ctx *context, op Operand) Operand { panic("TODO") }
+func (t *UnionType) assign(ctx *context, op Operand) Operand {
+	switch x := op.Type.(type) {
+	case *UnionType:
+		if !t.IsCompatible(x) {
+			panic("TODO")
+		}
+		return Operand{Type: t}
+	default:
+		panic(x)
+	}
+}
 
 // IsPointerType implements Type.
 func (t *UnionType) IsPointerType() bool { panic("TODO") }
@@ -944,4 +1061,45 @@ func (t *UnionType) String() string {
 	}
 	buf.WriteByte('}')
 	return buf.String()
+}
+
+// AdjustedParameterType returns the type of an expression when used as an
+// argument of a function, see [0]6.9.1-10.
+func AdjustedParameterType(t Type) Type {
+	u := t
+	for {
+		switch x := u.(type) {
+		case *ArrayType:
+			return &PointerType{t}
+		case *NamedType:
+			u = x.Type
+		case
+			*PointerType,
+			*TaggedStructType:
+
+			return t
+		case TypeKind:
+			switch x {
+			case
+				Char,
+				Double,
+				Int,
+				Long,
+				LongLong,
+				SChar,
+				Short,
+				UChar,
+				UInt,
+				ULong,
+				ULongLong,
+				UShort:
+
+				return t
+			default:
+				panic(x)
+			}
+		default:
+			panic(x)
+		}
+	}
 }

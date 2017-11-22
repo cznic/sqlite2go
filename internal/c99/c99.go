@@ -41,10 +41,11 @@ import (
 )
 
 type tweaks struct {
-	cppExpandTest      bool // Fake includes
-	enableEmptyStructs bool // struct{}
-	enableTrigraphs    bool
-	injectFinalNL      bool
+	cppExpandTest               bool // Fake includes
+	enableAnonymousStructFields bool // struct{int;}
+	enableEmptyStructs          bool // struct{}
+	enableTrigraphs             bool
+	injectFinalNL               bool
 }
 
 // Translation unit context.

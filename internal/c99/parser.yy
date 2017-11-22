@@ -441,8 +441,14 @@ import (
                         |	StructDeclarationList StructDeclaration
 
                         // [0]6.7.2.1
-                        StructDeclaration:
+/*yy:case Base       */ StructDeclaration:
 				SpecifierQualifierList StructDeclaratorList ';'
+/*yy:case Anon       */	|	SpecifierQualifierList ';'
+				{
+					if !lx.tweaks.enableAnonymousStructFields {
+						lx.err($1, "anonymous structs/unions members not allowed")
+					}
+				}
 
                         // [0]6.7.2.1
 /*yy:case Qualifier  */ SpecifierQualifierList:

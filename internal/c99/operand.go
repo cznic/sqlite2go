@@ -81,7 +81,6 @@ var (
 // conversions:
 func usualArithmeticConversions(ctx *context, a, b Operand) (Operand, Operand) {
 	if !a.isArithmeticType() || !b.isArithmeticType() {
-		//dbg("", a, b)
 		panic("TODO")
 	}
 
@@ -238,8 +237,8 @@ func (o Operand) and(ctx *context, p Operand) (r Operand) {
 	}
 
 	switch x := o.Value.(type) {
-	//case *ir.Int64Value:
-	//	return newOperand(o.Type, &ir.Int64Value{Value: x.Value + p.Value.(*ir.Int64Value).Value}, nil).normalize(ctx)
+	case *ir.Int64Value:
+		return Operand{Type: o.Type, Value: &ir.Int64Value{Value: x.Value & p.Value.(*ir.Int64Value).Value}}.normalize(ctx)
 	default:
 		panic(fmt.Errorf("TODO %T", x))
 	}
@@ -292,15 +291,14 @@ func (o Operand) convertTo(ctx *context, t Type) Operand {
 		if t.IsPointerType() {
 			// [0]6.3.2.3
 			if o.isZero() {
-				// 3. An integer constant expression
-				// with the value 0, or such an
-				// expression cast to type void *, is
-				// called a null pointer constant.  If
-				// a null pointer constant is converted
-				// to a pointer type, the resulting
-				// pointer, called a null pointer, is
-				// guaranteed to compare unequal to a
-				// pointer to any object or function.
+				// 3. An integer constant expression with the
+				// value 0, or such an expression cast to type
+				// void *, is called a null pointer constant.
+				// If a null pointer constant is converted to a
+				// pointer type, the resulting pointer, called
+				// a null pointer, is guaranteed to compare
+				// unequal to a pointer to any object or
+				// function.
 				return Operand{Type: t, Addr: Null}
 			}
 
@@ -343,6 +341,8 @@ func (o Operand) cpl(ctx *context) Operand {
 	}
 
 	switch x := o.Value.(type) {
+	case nil:
+		return o
 	case *ir.Int64Value:
 		o.Value = &ir.Int64Value{Value: ^o.Value.(*ir.Int64Value).Value}
 		return o.normalize(ctx)
@@ -406,7 +406,9 @@ func (o Operand) ge(ctx *context, p Operand) (r Operand) {
 				val = 1
 			}
 		default:
-			panic("TODO")
+			if uint64(x.Value) >= uint64(p.Value.(*ir.Int64Value).Value) {
+				val = 1
+			}
 		}
 		r.Value = &ir.Int64Value{Value: val}
 	default:
@@ -431,13 +433,79 @@ func (o Operand) gt(ctx *context, p Operand) (r Operand) {
 				val = 1
 			}
 		default:
-			panic("TODO")
+			if uint64(x.Value) > uint64(p.Value.(*ir.Int64Value).Value) {
+				val = 1
+			}
 		}
 		r.Value = &ir.Int64Value{Value: val}
 	default:
 		panic(fmt.Errorf("TODO %T", x))
 	}
 	return r
+}
+
+// [0]6.3.1.1-2
+//
+// If an int can represent all values of the original type, the value is
+// converted to an int; otherwise, it is converted to an unsigned int. These
+// are called the integer promotions. All other types are unchanged by the
+// integer promotions.
+func (o Operand) integerPromotion(ctx *context) Operand {
+	t := o.Type
+	for {
+		switch x := t.(type) {
+		case *NamedType:
+			t = x.Type
+		case TypeKind:
+			switch x {
+			case
+				Int,
+				Long,
+				LongLong,
+				UInt,
+				ULong,
+				ULongLong:
+
+				return o
+			case
+				Char,
+				SChar,
+				Short,
+				UChar,
+				UShort:
+
+				return o.convertTo(ctx, Int)
+			default:
+				panic(x)
+			}
+		default:
+			panic(x)
+		}
+	}
+}
+
+func (o Operand) isNonzero() bool {
+	switch x := o.Value.(type) {
+	case nil:
+		return false
+	case *ir.Int64Value:
+		return x.Value != 0
+	default:
+		panic(fmt.Errorf("TODO %T", x))
+	}
+}
+
+func (o Operand) isZero() bool {
+	switch x := o.Value.(type) {
+	case nil:
+		return false
+	case *ir.Int64Value:
+		return x.Value == 0
+	case *ir.Float64Value:
+		return x.Value == 0
+	default:
+		panic(fmt.Errorf("TODO %T", x))
+	}
 }
 
 func (o Operand) le(ctx *context, p Operand) (r Operand) {
@@ -456,7 +524,9 @@ func (o Operand) le(ctx *context, p Operand) (r Operand) {
 				val = 1
 			}
 		default:
-			panic("TODO")
+			if uint64(x.Value) <= uint64(p.Value.(*ir.Int64Value).Value) {
+				val = 1
+			}
 		}
 		r.Value = &ir.Int64Value{Value: val}
 	default:
@@ -583,7 +653,7 @@ func (o Operand) normalize(ctx *context) Operand {
 			case o.isSigned():
 				switch {
 				case val < 0:
-					panic("TODO")
+					x.Value = val | ^math.MaxUint16
 				default:
 					x.Value = val & math.MaxUint16
 				}
@@ -681,64 +751,18 @@ func (o Operand) unaryMinus(ctx *context) Operand {
 	}
 }
 
-// [0]6.3.1.1-2
-//
-// If an int can represent all values of the original type, the value is
-// converted to an int; otherwise, it is converted to an unsigned int. These
-// are called the integer promotions. All other types are unchanged by the
-// integer promotions.
-func (o Operand) integerPromotion(ctx *context) Operand {
-	t := o.Type
-	for {
-		switch x := t.(type) {
-		case *NamedType:
-			t = x.Type
-		case TypeKind:
-			switch x {
-			case
-				Int,
-				Long,
-				LongLong,
-				UInt,
-				ULong,
-				ULongLong:
-
-				return o
-			case
-				Char,
-				Short,
-				UChar,
-				UShort:
-
-				return o.convertTo(ctx, Int)
-			default:
-				panic(x)
-			}
-		default:
-			panic(x)
-		}
+func (o Operand) xor(ctx *context, p Operand) (r Operand) {
+	if !o.isIntegerType() || !p.isIntegerType() {
+		panic("TODO")
 	}
-}
-
-func (o Operand) isNonzero() bool {
-	switch x := o.Value.(type) {
-	case nil:
-		return false
-	case *ir.Int64Value:
-		return x.Value != 0
-	default:
-		panic(fmt.Errorf("TODO %T", x))
+	o, p = usualArithmeticConversions(ctx, o, p)
+	if o.Value == nil || p.Value == nil {
+		return Operand{Type: o.Type}
 	}
-}
 
-func (o Operand) isZero() bool {
 	switch x := o.Value.(type) {
-	case nil:
-		return false
-	case *ir.Int64Value:
-		return x.Value == 0
-	case *ir.Float64Value:
-		return x.Value == 0
+	//case *ir.Int64Value:
+	//	return Operand{Type: o.Type, Value: &ir.Int64Value{Value: x.Value ^ p.Value.(*ir.Int64Value).Value}}.normalize(ctx)
 	default:
 		panic(fmt.Errorf("TODO %T", x))
 	}

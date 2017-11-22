@@ -2763,11 +2763,34 @@ func (n *StorageClassSpecifier) Pos() token.Pos {
 	return n.Token.Pos()
 }
 
-// StructDeclaration represents data reduced by production:
+// StructDeclarationCase represents case numbers of production StructDeclaration
+type StructDeclarationCase int
+
+// Values of type StructDeclarationCase
+const (
+	StructDeclarationBase StructDeclarationCase = iota
+	StructDeclarationAnon
+)
+
+// String implements fmt.Stringer
+func (n StructDeclarationCase) String() string {
+	switch n {
+	case StructDeclarationBase:
+		return "StructDeclarationBase"
+	case StructDeclarationAnon:
+		return "StructDeclarationAnon"
+	default:
+		return fmt.Sprintf("StructDeclarationCase(%v)", int(n))
+	}
+}
+
+// StructDeclaration represents data reduced by productions:
 //
 //	StructDeclaration:
-//	        SpecifierQualifierList StructDeclaratorList ';'  // Case 0
+//	        SpecifierQualifierList StructDeclaratorList ';'  // Case StructDeclarationBase
+//	|       SpecifierQualifierList ';'                       // Case StructDeclarationAnon
 type StructDeclaration struct {
+	Case                   StructDeclarationCase
 	SpecifierQualifierList *SpecifierQualifierList
 	StructDeclaratorList   *StructDeclaratorList
 	Token                  xc.Token
