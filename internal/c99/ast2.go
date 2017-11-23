@@ -55,7 +55,7 @@ func (d *DeclarationSpecifier) typ() Type {
 		case TypeSpecifierName:
 			ts := d.TypeSpecifiers[0]
 			r := &NamedType{Name: ts.Token.Val}
-			switch x := ts.scope.lookupIdent(ts.Token.Val).(type) {
+			switch x := ts.scope.LookupIdent(ts.Token.Val).(type) {
 			case *Declarator:
 				if !x.DeclarationSpecifier.isTypedef() {
 					panic("internal error 1")
@@ -1007,7 +1007,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 	case ExprIdent: // IDENTIFIER
 		// [0]6.5.1
 		nm := n.Token.Val
-		switch x := n.scope.lookupIdent(nm).(type) {
+		switch x := n.scope.LookupIdent(nm).(type) {
 		case *Declarator:
 			t := x.Type
 			t0 := t
@@ -1299,9 +1299,9 @@ func (n *CompoundStmt) check(ctx *context, fn *Declarator, outermost bool, inSwi
 	n.BlockItemListOpt.check(ctx, fn, inSwitch, inLoop)
 }
 
-func (n *Declarator) fpScope(ctx *context) *scope { return n.DirectDeclarator.fpScope(ctx) }
+func (n *Declarator) fpScope(ctx *context) *Scope { return n.DirectDeclarator.fpScope(ctx) }
 
-func (n *DirectDeclarator) fpScope(ctx *context) *scope {
+func (n *DirectDeclarator) fpScope(ctx *context) *Scope {
 	switch n.Case {
 	//TODO case DirectDeclaratorParen: // '(' Declarator ')'
 	//TODO case DirectDeclaratorIdentList: // DirectDeclarator '(' IdentifierListOpt ')'
@@ -1461,7 +1461,7 @@ func (n *JumpStmt) check(ctx *context, fn *Declarator, inSwitch, inLoop bool) {
 			panic(ctx.position(n))
 		}
 	case JumpStmtGoto: // "goto" IDENTIFIER ';'
-		if nm := n.Token2.Val; n.scope.lookupLabel(nm) == nil {
+		if nm := n.Token2.Val; n.scope.LookupLabel(nm) == nil {
 			panic(ctx.position(n))
 		}
 	case JumpStmtReturn: // "return" ExprListOpt ';'
@@ -2069,7 +2069,7 @@ func (n *EnumSpecifier) check(ctx *context) { // [0]6.7.2.2
 	}
 }
 
-func (n *EnumeratorList) check(ctx *context, s *scope) *EnumType {
+func (n *EnumeratorList) check(ctx *context, s *Scope) *EnumType {
 	r := &EnumType{}
 	iota := int64(-1)
 	for ; n != nil; n = n.EnumeratorList {
@@ -2078,7 +2078,7 @@ func (n *EnumeratorList) check(ctx *context, s *scope) *EnumType {
 	return r
 }
 
-func (n *Enumerator) check(ctx *context, s *scope, iota *int64) *EnumerationConstant {
+func (n *Enumerator) check(ctx *context, s *Scope, iota *int64) *EnumerationConstant {
 	c := n.EnumerationConstant
 	switch n.Case {
 	case EnumeratorBase: // EnumerationConstant

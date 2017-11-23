@@ -281,7 +281,7 @@ nextTest:
 }
 
 func TestLexer(t *testing.T) {
-	ctx, err := newContext(token.NewFileSet(), &tweaks{})
+	ctx, err := newContext(token.NewFileSet(), &Tweaks{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -361,7 +361,7 @@ func TestLexer(t *testing.T) {
 }
 
 func TestLexerTrigraphs(t *testing.T) {
-	ctx, err := newContext(token.NewFileSet(), &tweaks{enableTrigraphs: true})
+	ctx, err := newContext(token.NewFileSet(), &Tweaks{EnableTrigraphs: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -441,7 +441,10 @@ func TestLexerTrigraphs(t *testing.T) {
 }
 
 func exampleAST(rule int, src string) interface{} {
-	ctx, err := newContext(token.NewFileSet(), &tweaks{enableEmptyStructs: true})
+	ctx, err := newContext(token.NewFileSet(), &Tweaks{
+		EnableAnonymousStructFields: true,
+		EnableEmptyStructs:          true,
+	})
 	if err != nil {
 		return fmt.Sprintf("TODO: %v", err) //TODOOK
 	}
@@ -468,7 +471,7 @@ func exampleAST(rule int, src string) interface{} {
 func testCPPParseSource(ctx *context, src Source) (*cpp, tokenReader, error) {
 	if ctx == nil {
 		var err error
-		if ctx, err = newContext(token.NewFileSet(), &tweaks{}); err != nil {
+		if ctx, err = newContext(token.NewFileSet(), &Tweaks{}); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -483,15 +486,15 @@ func testCPPParseSource(ctx *context, src Source) (*cpp, tokenReader, error) {
 }
 
 func testCPPParseFile(ctx *context, nm string) (*cpp, tokenReader, error) {
-	return testCPPParseSource(ctx, newFileSource(nm))
+	return testCPPParseSource(ctx, NewFileSource(nm))
 }
 
 func testCPPParseString(ctx *context, name, src string) (*cpp, tokenReader, error) {
-	return testCPPParseSource(ctx, newStringSource(name, src))
+	return testCPPParseSource(ctx, NewStringSource(name, src))
 }
 
 func TestCPPParse0(t *testing.T) {
-	ctx, err := newContext(token.NewFileSet(), &tweaks{})
+	ctx, err := newContext(token.NewFileSet(), &Tweaks{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -538,7 +541,7 @@ func TestCPPExpand(t *testing.T) {
 			return nil
 		}
 
-		ctx, err := newContext(token.NewFileSet(), &tweaks{
+		ctx, err := newContext(token.NewFileSet(), &Tweaks{
 			cppExpandTest: true,
 		})
 		if err != nil {
@@ -631,7 +634,7 @@ func TestPreprocessSQLite(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx, err := newContext(token.NewFileSet(), &tweaks{})
+	ctx, err := newContext(token.NewFileSet(), &Tweaks{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -640,7 +643,7 @@ func TestPreprocessSQLite(t *testing.T) {
 	cpp := newCPP(ctx)
 	cpp.includePaths = []string{"@", ccir.LibcIncludePath}
 	cpp.sysIncludePaths = []string{ccir.LibcIncludePath}
-	r, err := cpp.parse(newStringSource("<builtin>", builtin), newFileSource(sqlite3c))
+	r, err := cpp.parse(NewStringSource("<builtin>", builtin), NewFileSource(sqlite3c))
 	if err != nil {
 		t.Fatalf("%v: %v", sqlite3c, err)
 	}
@@ -665,8 +668,8 @@ func TestParseSQLite(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx, err := newContext(token.NewFileSet(), &tweaks{
-		enableEmptyStructs: true,
+	ctx, err := newContext(token.NewFileSet(), &Tweaks{
+		EnableEmptyStructs: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -677,8 +680,8 @@ func TestParseSQLite(t *testing.T) {
 	ctx.sysIncludePaths = []string{ccir.LibcIncludePath}
 	if _, err := ctx.parse(
 		[]Source{
-			newStringSource("<builtin>", fmt.Sprintf(inj, runtime.GOARCH, runtime.GOOS, predef)),
-			newFileSource(sqlite3c),
+			NewStringSource("<builtin>", fmt.Sprintf(inj, runtime.GOARCH, runtime.GOOS, predef)),
+			NewFileSource(sqlite3c),
 		},
 	); err != nil {
 		t.Fatalf("%v", errString(err))
@@ -691,14 +694,14 @@ func TestFunc(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx, err := newContext(token.NewFileSet(), &tweaks{injectFinalNL: true})
+	ctx, err := newContext(token.NewFileSet(), &Tweaks{InjectFinalNL: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	ctx.model = model
 	ast, err := ctx.parse(
-		[]Source{newStringSource("testfunc.c", `int (*foo(char bar))(double baz){}`)},
+		[]Source{NewStringSource("testfunc.c", `int (*foo(char bar))(double baz){}`)},
 	)
 	if err != nil {
 		t.Fatalf("%v", errString(err))
@@ -713,7 +716,7 @@ func TestFunc(t *testing.T) {
 	}
 
 	fileScope := ctx.scope
-	n := fileScope.lookupIdent(dict.SID("foo"))
+	n := fileScope.LookupIdent(dict.SID("foo"))
 	d, ok := n.(*Declarator)
 	if !ok {
 		t.Fatalf("%T", n)
@@ -728,7 +731,7 @@ func TestFunc(t *testing.T) {
 	}
 
 	fnScope := ast.ExternalDeclaration.FunctionDefinition.FunctionBody.CompoundStmt.scope
-	n = fnScope.lookupIdent(dict.SID("bar"))
+	n = fnScope.LookupIdent(dict.SID("bar"))
 	if d, ok = n.(*Declarator); !ok {
 		t.Fatalf("%T", n)
 	}
@@ -739,72 +742,27 @@ func TestFunc(t *testing.T) {
 }
 
 func TestTypecheckSQLite(t *testing.T) {
-	model, err := newModel()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ctx, err := newContext(token.NewFileSet(), &tweaks{
-		enableEmptyStructs: true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ctx.model = model
-	ctx.includePaths = []string{"@", ccir.LibcIncludePath}
-	ctx.sysIncludePaths = []string{ccir.LibcIncludePath}
-	ast, err := ctx.parse(
-		[]Source{
-			newStringSource("<builtin>", fmt.Sprintf(inj, runtime.GOARCH, runtime.GOOS, predef)),
-			newFileSource(sqlite3c),
-		},
-	)
-	if err != nil {
-		t.Fatalf("%v", errString(err))
-	}
-
-	if err := ast.check(ctx); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := ctx.error(); err != nil {
+	if _, err := Translate(
+		token.NewFileSet(),
+		&Tweaks{EnableEmptyStructs: true},
+		[]string{"@", ccir.LibcIncludePath},
+		[]string{ccir.LibcIncludePath},
+		NewStringSource("<builtin>", fmt.Sprintf(inj, runtime.GOARCH, runtime.GOOS, predef)),
+		NewFileSource(sqlite3c),
+	); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestTypecheckSQLiteShell(t *testing.T) {
-	model, err := newModel()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ctx, err := newContext(token.NewFileSet(), &tweaks{
-		enableAnonymousStructFields: true,
-		enableEmptyStructs:          true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ctx.model = model
-	ctx.includePaths = []string{"@", ccir.LibcIncludePath}
-	ctx.sysIncludePaths = []string{ccir.LibcIncludePath}
-	ast, err := ctx.parse(
-		[]Source{
-			newStringSource("<builtin>", fmt.Sprintf(inj, runtime.GOARCH, runtime.GOOS, predef)),
-			newFileSource(shellc),
-		},
-	)
-	if err != nil {
-		t.Fatalf("%v", errString(err))
-	}
-
-	if err := ast.check(ctx); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := ctx.error(); err != nil {
+	if _, err := Translate(
+		token.NewFileSet(),
+		&Tweaks{EnableAnonymousStructFields: true, EnableEmptyStructs: true},
+		[]string{"@", ccir.LibcIncludePath},
+		[]string{ccir.LibcIncludePath},
+		NewStringSource("<builtin>", fmt.Sprintf(inj, runtime.GOARCH, runtime.GOOS, predef)),
+		NewFileSource(shellc),
+	); err != nil {
 		t.Fatal(err)
 	}
 }

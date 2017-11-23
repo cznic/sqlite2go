@@ -47,7 +47,7 @@ type trigraphs struct {
 
 func newTrigraphs(ctx *context, file *token.File, r io.Reader) (*trigraphs, error) {
 	sc := scINITIAL
-	if ctx.tweaks.enableTrigraphs {
+	if ctx.tweaks.EnableTrigraphs {
 		sc = scTRIGRAPHS
 	}
 	t := &trigraphs{

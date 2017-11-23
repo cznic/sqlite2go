@@ -322,7 +322,7 @@ func (c *cpp) parse(src ...Source) (tokenReader, error) {
 					tokBuf = append(tokBuf, t)
 
 					if ch = lx.cppScan(); ch.Rune == ccEOF {
-						if !c.tweaks.injectFinalNL {
+						if !c.tweaks.InjectFinalNL {
 							c.errPos(lx.last.Pos(), "file is missing final newline")
 						}
 						ch.Rune = '\n'
@@ -1031,7 +1031,7 @@ func (c *cpp) include(n Node, nm string, paths []string, w tokenWriter) {
 		panic(fmt.Errorf("%v: %q %q", c.position(n), nm, paths))
 	}
 
-	r, err := c.parse(newFileSource(path))
+	r, err := c.parse(NewFileSource(path))
 	if err != nil {
 		c.err(n, "%s", err.Error())
 	}

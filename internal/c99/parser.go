@@ -3235,7 +3235,7 @@ yynewstate:
 				Token:         yyS[yypt-1].Token,
 				Token2:        yyS[yypt-0].Token,
 			}
-			if !lx.tweaks.enableEmptyStructs {
+			if !lx.tweaks.EnableEmptyStructs {
 				lx.err(yyS[yypt-3].node, "empty structs/unions not allowed")
 			}
 		}
@@ -3303,7 +3303,7 @@ yynewstate:
 				SpecifierQualifierList: yyS[yypt-1].node.(*SpecifierQualifierList),
 				Token: yyS[yypt-0].Token,
 			}
-			if !lx.tweaks.enableAnonymousStructFields {
+			if !lx.tweaks.EnableAnonymousStructFields {
 				lx.err(yyS[yypt-1].node, "anonymous structs/unions members not allowed")
 			}
 		}

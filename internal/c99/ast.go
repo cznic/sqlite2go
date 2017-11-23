@@ -338,7 +338,7 @@ func (n *CommaOpt) Pos() token.Pos {
 //	CompoundStmt:
 //	        '{' BlockItemListOpt '}'  // Case 0
 type CompoundStmt struct {
-	scope            *scope
+	scope            *Scope
 	BlockItemListOpt *BlockItemListOpt
 	Token            xc.Token
 	Token2           xc.Token
@@ -593,7 +593,7 @@ type Declarator struct {
 	StorageDuration      StorageDuration       // Storage duration of the declared name, [0]6.2.4.
 	Type                 Type                  // Declared type.
 	TypeQualifiers       []*TypeQualifier      // From the PointerOpt production, if any.
-	scope                *scope                // Declare the name in scope.
+	scope                *Scope                // Declare the name in scope.
 	Bits                 int                   // StructDeclarator: bit width when a bit field.
 	field                int                   // Declaration order#.
 	Embedded             bool                  // [0]6.7.5-3: Not a full declarator.
@@ -943,7 +943,7 @@ func (n DirectDeclaratorCase) String() string {
 //	|       DirectDeclarator '[' TypeQualifierListOpt ExprOpt ']'        // Case DirectDeclaratorArray
 //	|       IDENTIFIER                                                   // Case DirectDeclaratorIdent
 type DirectDeclarator struct {
-	paramScope           *scope
+	paramScope           *Scope
 	Case                 DirectDeclaratorCase
 	Declarator           *Declarator
 	DirectDeclarator     *DirectDeclarator
@@ -1008,7 +1008,7 @@ func (n EnumSpecifierCase) String() string {
 //	        "enum" IDENTIFIER                                     // Case EnumSpecifierTag
 //	|       "enum" IdentifierOpt '{' EnumeratorList CommaOpt '}'  // Case EnumSpecifierDefine
 type EnumSpecifier struct {
-	scope          *scope // Where to declare enumeration constants.
+	scope          *Scope // Where to declare enumeration constants.
 	typ            Type
 	Case           EnumSpecifierCase
 	CommaOpt       *CommaOpt
@@ -1405,7 +1405,7 @@ func (n ExprCase) String() string {
 //	|       STRINGLITERAL                                      // Case ExprString
 type Expr struct {
 	Operand             Operand
-	scope               *scope // case Ident
+	scope               *Scope // case Ident
 	ArgumentExprListOpt *ArgumentExprListOpt
 	Case                ExprCase
 	CommaOpt            *CommaOpt
@@ -2156,7 +2156,7 @@ func (n JumpStmtCase) String() string {
 //	|       "return" ExprListOpt ';'  // Case JumpStmtReturn
 type JumpStmt struct {
 	ReturnOperand Operand
-	scope         *scope
+	scope         *Scope
 	Case          JumpStmtCase
 	ExprListOpt   *ExprListOpt
 	Token         xc.Token
@@ -3055,7 +3055,7 @@ func (n StructOrUnionSpecifierCase) String() string {
 //	|       StructOrUnion IdentifierOpt '{' '}'                        // Case StructOrUnionSpecifierEmpty
 //	|       StructOrUnion IdentifierOpt '{' StructDeclarationList '}'  // Case StructOrUnionSpecifierDefine
 type StructOrUnionSpecifier struct {
-	scope                 *scope // Declare the struct tag in scope.parent.
+	scope                 *Scope // Declare the struct tag in scope.parent.
 	typ                   Type
 	Case                  StructOrUnionSpecifierCase
 	IdentifierOpt         *IdentifierOpt
@@ -3360,7 +3360,7 @@ func (n TypeSpecifierCase) String() string {
 //	|       StructOrUnionSpecifier  // Case TypeSpecifierStruct
 //	|       TYPEDEF_NAME            // Case TypeSpecifierName
 type TypeSpecifier struct {
-	scope                  *scope
+	scope                  *Scope
 	Case                   TypeSpecifierCase
 	EnumSpecifier          *EnumSpecifier
 	StructOrUnionSpecifier *StructOrUnionSpecifier

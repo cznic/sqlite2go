@@ -11,10 +11,10 @@ import (
 	"github.com/cznic/ir"
 )
 
-// Model describes properties of TypeKinds.
+// Model describes properties of scalar Types.
 type Model map[TypeKind]ModelItem
 
-// ModelItem describers properties of a particular TypeKind.
+// ModelItem describers properties of a particular Type.
 type ModelItem struct {
 	Size        int
 	Align       int

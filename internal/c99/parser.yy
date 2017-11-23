@@ -260,7 +260,7 @@ import (
 
                         // [0]6.5.16
 			//yy:field	Operand	Operand
-			//yy:field	scope	*scope	// case Ident
+			//yy:field	scope	*Scope	// case Ident
 /*yy:case PreInc     */ Expr:
                         	"++" Expr
 /*yy:case PreDec     */ |	"--" Expr
@@ -386,7 +386,7 @@ import (
 				}
 
                         // [0]6.7.2
-			//yy:field	scope	*scope
+			//yy:field	scope	*Scope
 /*yy:case Bool       */ TypeSpecifier:
                         	"_Bool"
 /*yy:case Complex    */ |	"_Complex"
@@ -408,7 +408,7 @@ import (
 				}
 
                         // [0]6.7.2.1
-			//yy:field	scope	*scope	// Declare the struct tag in scope.parent.
+			//yy:field	scope	*Scope	// Declare the struct tag in scope.parent.
 			//yy:field	typ	Type
 /*yy:case Tag        */ StructOrUnionSpecifier:
                         	StructOrUnion IDENTIFIER
@@ -417,7 +417,7 @@ import (
 				}
 /*yy:case Empty      */ |	StructOrUnion IdentifierOpt '{' '}'
 				{
-					if !lx.tweaks.enableEmptyStructs {
+					if !lx.tweaks.EnableEmptyStructs {
 						lx.err($1, "empty structs/unions not allowed")
 					}
 				}
@@ -445,7 +445,7 @@ import (
 				SpecifierQualifierList StructDeclaratorList ';'
 /*yy:case Anon       */	|	SpecifierQualifierList ';'
 				{
-					if !lx.tweaks.enableAnonymousStructFields {
+					if !lx.tweaks.EnableAnonymousStructFields {
 						lx.err($1, "anonymous structs/unions members not allowed")
 					}
 				}
@@ -475,7 +475,7 @@ import (
                         |	','
 
                         // [0]6.7.2.2
-			//yy:field	scope	*scope	// Where to declare enumeration constants.
+			//yy:field	scope	*Scope	// Where to declare enumeration constants.
 			//yy:field	typ	Type
 /*yy:case Tag        */ EnumSpecifier:
                         	"enum" IDENTIFIER
@@ -511,7 +511,7 @@ import (
 			//yy:field	StorageDuration		StorageDuration		// Storage duration of the declared name, [0]6.2.4.
 			//yy:field	Type			Type			// Declared type.
 			//yy:field	TypeQualifiers		[]*TypeQualifier	// From the PointerOpt production, if any.
-			//yy:field	scope			*scope			// Declare the name in scope.
+			//yy:field	scope			*Scope			// Declare the name in scope.
 			//yy:field	Bits			int			// StructDeclarator: bit width when a bit field.
 			//yy:field	field			int			// Declaration order#.
 			//yy:field	Embedded		bool			// [0]6.7.5-3: Not a full declarator.
@@ -532,7 +532,7 @@ import (
                         |	Declarator
 
                         // [0]6.7.5
-			//yy:field	paramScope	*scope
+			//yy:field	paramScope	*Scope
 /*yy:case Paren      */ DirectDeclarator:
                         	'(' Declarator ')'
 				{
@@ -694,7 +694,7 @@ import (
 				}
 
                         // [0]6.8.2
-			//yy:field	scope	*scope
+			//yy:field	scope	*Scope
                         CompoundStmt:
 				'{'
 				{
@@ -738,7 +738,7 @@ import (
 
                         // [0]6.8.6
 			//yy:field	ReturnOperand	Operand
-			//yy:field	scope		*scope
+			//yy:field	scope		*Scope
 /*yy:case Break      */ JumpStmt:
                         	"break" ';'
 /*yy:case Continue   */ |	"continue" ';'

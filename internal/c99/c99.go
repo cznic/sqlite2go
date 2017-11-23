@@ -40,12 +40,53 @@ import (
 	"github.com/cznic/ir"
 )
 
-type tweaks struct {
+var (
+	_ Source = (*FileSource)(nil)
+	_ Source = (*StringSource)(nil)
+)
+
+// Tweaks amend the behavior of the parser.
+type Tweaks struct {
 	cppExpandTest               bool // Fake includes
-	enableAnonymousStructFields bool // struct{int;}
-	enableEmptyStructs          bool // struct{}
-	enableTrigraphs             bool
-	injectFinalNL               bool
+	EnableAnonymousStructFields bool // struct{int;}
+	EnableEmptyStructs          bool // struct{}
+	EnableTrigraphs             bool
+	InjectFinalNL               bool // Specs want the source to always end in a newline.
+}
+
+// Translate preprocesses, parses and type checks a translation unit using fset
+// to record node and error positions, includePaths and sysIncludePaths for
+// looking for "foo.h" and <foo.h> files. A special path "@" is interpretted as
+// 'the same directory as where the file with the #include is'. The input
+// consists of sources which must include any predefined/builtin stuff.
+func Translate(fset *token.FileSet, tweaks *Tweaks, includePaths, sysIncludePaths []string, sources ...Source) (*TranslationUnit, error) {
+	model, err := newModel()
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, err := newContext(fset, tweaks)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx.model = model
+	ctx.includePaths = append([]string(nil), includePaths...)
+	ctx.sysIncludePaths = append([]string(nil), sysIncludePaths...)
+	ast, err := ctx.parse(sources)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := ast.check(ctx); err != nil {
+		return nil, err
+	}
+
+	if err := ctx.error(); err != nil {
+		return nil, err
+	}
+
+	return ast, nil
 }
 
 // Translation unit context.
@@ -56,13 +97,13 @@ type context struct {
 	fset         *token.FileSet
 	includePaths []string
 	model        Model
-	scope        *scope
+	scope        *Scope
 	sync.Mutex
 	sysIncludePaths []string
-	tweaks          *tweaks
+	tweaks          *Tweaks
 }
 
-func newContext(fset *token.FileSet, t *tweaks) (*context, error) {
+func newContext(fset *token.FileSet, t *Tweaks) (*context, error) {
 	return &context{
 		fset:   fset,
 		scope:  newScope(nil),
@@ -133,14 +174,14 @@ func (c *context) parse(in []Source) (*TranslationUnit, error) {
 	return lx.ast.(*TranslationUnit), nil
 }
 
-func (c *context) popScope() (old, new *scope) {
+func (c *context) popScope() (old, new *Scope) {
 	old = c.scope
 	c.scope = c.scope.parent
 	return old, c.scope
 }
 
 func (c *context) ptrDiff() Type {
-	d, ok := c.scope.lookupIdent(idPtrdiffT).(*Declarator)
+	d, ok := c.scope.LookupIdent(idPtrdiffT).(*Declarator)
 	if !ok {
 		panic("TODO")
 	}
@@ -154,7 +195,7 @@ func (c *context) ptrDiff() Type {
 
 func (c *context) sizeof(t Type) Operand {
 	sz := c.model.Sizeof(t)
-	d, ok := c.scope.lookupIdent(idSizeT).(*Declarator)
+	d, ok := c.scope.LookupIdent(idSizeT).(*Declarator)
 	if !ok {
 		return newIntConst(c, nopos, uint64(sz), UInt, ULong, ULongLong)
 	}
@@ -178,29 +219,39 @@ func (c *context) toC(ch rune, val int) rune {
 	return ch
 }
 
-// Source represents a preprocessing file.
+// Source represents parser's input.
 type Source interface {
-	Cache([]uint32)
-	Cached() []uint32
-	Name() string
-	ReadCloser() (io.ReadCloser, error)
-	Size() (int64, error)
+	Cache([]uint32)                     // Optionally cache the encoded source. Can be a no-operation.
+	Cached() []uint32                   // Return nil or the optionally encoded source cached by earlier call to Cache.
+	Name() string                       // Result will be used in reporting source code positions.
+	ReadCloser() (io.ReadCloser, error) // Where to read the source from
+	Size() (int64, error)               // Report the size of the source in bytes.
 }
 
-type fileSource struct {
+// FileSource is a Source reading from a named file.
+type FileSource struct {
 	*bufio.Reader
 	f    *os.File
 	path string
 }
 
-func newFileSource(nm string) *fileSource { return &fileSource{path: nm} }
+// NewFileSource returns a newly created *FileSource reading from name.
+func NewFileSource(name string) *FileSource { return &FileSource{path: name} }
 
-func (s *fileSource) Cache([]uint32)   {}
-func (s *fileSource) Cached() []uint32 { return nil }
-func (s *fileSource) Close() error     { return s.f.Close() }
-func (s *fileSource) Name() string     { return s.path }
+// Cache implements Source.
+func (s *FileSource) Cache([]uint32) {}
 
-func (s *fileSource) ReadCloser() (io.ReadCloser, error) {
+// Cached implements Source.
+func (s *FileSource) Cached() []uint32 { return nil }
+
+// Close implements io.ReadCloser.
+func (s *FileSource) Close() error { return s.f.Close() }
+
+// Name implements Source.
+func (s *FileSource) Name() string { return s.path }
+
+// ReadCloser implements Source.
+func (s *FileSource) ReadCloser() (io.ReadCloser, error) {
 	f, err := os.Open(s.path)
 	if err != nil {
 		return nil, err
@@ -211,7 +262,8 @@ func (s *fileSource) ReadCloser() (io.ReadCloser, error) {
 	return s, nil
 }
 
-func (s *fileSource) Size() (int64, error) {
+// Size implements Source.
+func (s *FileSource) Size() (int64, error) {
 	fi, err := os.Stat(s.path)
 	if err != nil {
 		return 0, err
@@ -220,39 +272,54 @@ func (s *fileSource) Size() (int64, error) {
 	return fi.Size(), nil
 }
 
-type stringSource struct {
+// StringSource is a Source reading from a string.
+type StringSource struct {
 	*strings.Reader
 	name string
 	src  string
 }
 
-func newStringSource(name, src string) *stringSource { return &stringSource{name: name, src: src} }
+// NewStringSource returns a newly created *StringSource reading from src and
+// having the presumed name.
+func NewStringSource(name, src string) *StringSource { return &StringSource{name: name, src: src} }
 
-func (s *stringSource) Cache([]uint32)       {}
-func (s *stringSource) Cached() []uint32     { return nil }
-func (s *stringSource) Close() error         { return nil }
-func (s *stringSource) Name() string         { return s.name }
-func (s *stringSource) Size() (int64, error) { return int64(len(s.src)), nil }
+// Cache implements Source.
+func (s *StringSource) Cache([]uint32) {}
 
-func (s *stringSource) ReadCloser() (io.ReadCloser, error) {
+// Cached implements Source.
+func (s *StringSource) Cached() []uint32 { return nil }
+
+// Close implements io.ReadCloser.
+func (s *StringSource) Close() error { return nil }
+
+// Name implements Source.
+func (s *StringSource) Name() string { return s.name }
+
+// Size implements Source.
+func (s *StringSource) Size() (int64, error) { return int64(len(s.src)), nil }
+
+// ReadCloser implements Source.
+func (s *StringSource) ReadCloser() (io.ReadCloser, error) {
 	s.Reader = strings.NewReader(s.src)
 	return s, nil
 }
 
-type scope struct {
-	enumTags   map[int]Type // name: Type
-	idents     map[int]Node // name: Node in {*Declarator, EnumerationConstant}
-	labels     map[int]*LabeledStmt
-	parent     *scope
+// Scope binds names to declarations.
+type Scope struct {
+	enumTags   map[int]Type         // name: Type
+	idents     map[int]Node         // name: Node in {*Declarator, EnumerationConstant}
+	labels     map[int]*LabeledStmt // name: label
+	parent     *Scope
 	structTags map[int]*StructOrUnionSpecifier // name: *StructOrUnionSpecifier
-	typedefs   map[int]struct{}
 
-	typedef bool
+	// parser support
+	typedefs map[int]struct{} // name: nothing
+	typedef  bool
 }
 
-func newScope(parent *scope) *scope { return &scope{parent: parent} }
+func newScope(parent *Scope) *Scope { return &Scope{parent: parent} }
 
-func (s *scope) insertLabel(ctx *context, st *LabeledStmt) {
+func (s *Scope) insertLabel(ctx *context, st *LabeledStmt) {
 	for s.parent != nil && s.parent.parent != nil {
 		s = s.parent
 	}
@@ -266,7 +333,7 @@ func (s *scope) insertLabel(ctx *context, st *LabeledStmt) {
 	s.labels[st.Token.Val] = st
 }
 
-func (s *scope) insertEnumTag(ctx *context, nm int, t Type) {
+func (s *Scope) insertEnumTag(ctx *context, nm int, t Type) {
 	for s.parent != nil {
 		s = s.parent
 	}
@@ -284,7 +351,7 @@ func (s *scope) insertEnumTag(ctx *context, nm int, t Type) {
 	s.enumTags[nm] = t
 }
 
-func (s *scope) insertDeclarator(ctx *context, d *Declarator) {
+func (s *Scope) insertDeclarator(ctx *context, d *Declarator) {
 	if s.idents == nil {
 		s.idents = map[int]Node{}
 	}
@@ -296,7 +363,7 @@ func (s *scope) insertDeclarator(ctx *context, d *Declarator) {
 	s.idents[nm] = d
 }
 
-func (s *scope) insertEnumerationConstant(ctx *context, c *EnumerationConstant) {
+func (s *Scope) insertEnumerationConstant(ctx *context, c *EnumerationConstant) {
 	if s.idents == nil {
 		s.idents = map[int]Node{}
 	}
@@ -312,7 +379,7 @@ func (s *scope) insertEnumerationConstant(ctx *context, c *EnumerationConstant) 
 	s.idents[nm] = c
 }
 
-func (s *scope) insertStructTag(ctx *context, ss *StructOrUnionSpecifier) {
+func (s *Scope) insertStructTag(ctx *context, ss *StructOrUnionSpecifier) {
 	for s.parent != nil {
 		s = s.parent
 	}
@@ -329,14 +396,14 @@ func (s *scope) insertStructTag(ctx *context, ss *StructOrUnionSpecifier) {
 	s.structTags[nm] = ss
 }
 
-func (s *scope) insertTypedef(ctx *context, d *Declarator) {
+func (s *Scope) insertTypedef(ctx *context, d *Declarator) {
 	if s.typedefs == nil {
 		s.typedefs = map[int]struct{}{}
 	}
 	s.typedefs[d.nm()] = struct{}{}
 }
 
-func (s *scope) isTypedef(nm int) bool {
+func (s *Scope) isTypedef(nm int) bool {
 	for s != nil {
 		if _, ok := s.typedefs[nm]; ok {
 			return true
@@ -347,7 +414,8 @@ func (s *scope) isTypedef(nm int) bool {
 	return false
 }
 
-func (s *scope) lookupIdent(nm int) Node {
+// LookupIdent will return the Node associated with name ID nm.
+func (s *Scope) LookupIdent(nm int) Node {
 	for s != nil {
 		if n := s.idents[nm]; n != nil {
 			return n
@@ -358,7 +426,8 @@ func (s *scope) lookupIdent(nm int) Node {
 	return nil
 }
 
-func (s *scope) lookupLabel(nm int) Node {
+// LookupLabel will return the Node associated with label ID nm.
+func (s *Scope) LookupLabel(nm int) Node {
 	for s != nil {
 		if n := s.labels[nm]; n != nil {
 			if s.parent == nil && s.parent.parent != nil {
@@ -373,7 +442,7 @@ func (s *scope) lookupLabel(nm int) Node {
 	return nil
 }
 
-func (s *scope) lookupStructTag(nm int) *StructOrUnionSpecifier {
+func (s *Scope) lookupStructTag(nm int) *StructOrUnionSpecifier {
 	for s != nil {
 		if n := s.structTags[nm]; n != nil {
 			return n
@@ -384,7 +453,7 @@ func (s *scope) lookupStructTag(nm int) *StructOrUnionSpecifier {
 	return nil
 }
 
-func (s *scope) String() string {
+func (s *Scope) String() string {
 	var a []string
 	for _, v := range s.idents {
 		switch x := v.(type) {

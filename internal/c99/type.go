@@ -719,7 +719,7 @@ func (t *PointerType) String() string { return fmt.Sprintf("pointer to %v", t.It
 // StructType represents a struct type.
 type StructType struct {
 	Fields []Field
-	scope  *scope
+	scope  *Scope
 	//TODO cache layout, size, alignment, struct alignment.
 }
 
@@ -833,7 +833,7 @@ func (t *StructType) String() string {
 type TaggedStructType struct {
 	Tag   int
 	Type  Type
-	scope *scope
+	scope *Scope
 }
 
 // IsVoidPointerType implements Type.
@@ -939,7 +939,7 @@ func (t *TaggedStructType) String() string { return fmt.Sprintf("struct %s", dic
 // UnionType represents a union type.
 type UnionType struct {
 	Fields []Field
-	scope  *scope
+	scope  *Scope
 	//TODO cache size, alignment, struct alignment.
 }
 
@@ -947,7 +947,7 @@ type UnionType struct {
 type TaggedUnionType struct {
 	Tag   int
 	Type  Type
-	scope *scope
+	scope *Scope
 }
 
 // IsVoidPointerType implements Type.

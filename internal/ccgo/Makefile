@@ -1,4 +1,4 @@
-# Copyright 2017 The SQLite2Go Authors. All rights reserved.
+# Copyright 2017 The CCGO Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style
 # license that can be found in the LICENSE file.
 
@@ -22,20 +22,20 @@ clean:
 	rm -f *~ *.test *.out
 
 cover:
-	t=$(shell tempfile) ; go test -coverprofile $$t && go tool cover -html $$t && unlink $$t
+	t=$(shell mktemp) ; go test -coverprofile $$t && go tool cover -html $$t && unlink $$t
 
 cpu: clean
 	go test -run @ -bench . -cpuprofile cpu.out
 	go tool pprof -lines *.test cpu.out
 
 edit:
-	@ 1>/dev/null 2>/dev/null gvim -p Makefile *.go
+	gvim -p Makefile *.go
 
 editor:
 	gofmt -l -s -w *.go
 	go test -i
 	go test 2>&1 | tee log
-	go install
+	go build
 
 internalError:
 	egrep -ho '"internal error.*"' *.go | sort | cat -n

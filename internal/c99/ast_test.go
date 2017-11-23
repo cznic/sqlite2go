@@ -3240,19 +3240,63 @@ func ExampleStructDeclaration_base() {
 func ExampleStructDeclaration_anon() {
 	fmt.Println(exampleAST(112, "\U00100001 struct { _Bool ; }"))
 	// Output:
-	// TODO: example112.c:1:15: anonymous structs/unions members not allowed
+	// &c99.StructDeclaration{
+	// · Case: 1,
+	// · SpecifierQualifierList: &c99.SpecifierQualifierList{
+	// · · Case: 1,
+	// · · TypeSpecifier: &c99.TypeSpecifier{
+	// · · · Token: BOOL "_Bool",
+	// · · },
+	// · },
+	// · Token: ';',
+	// }
 }
 
 func ExampleStructDeclarationList_case0() {
 	fmt.Println(exampleAST(109, "\U00100001 struct { _Bool ; }"))
 	// Output:
-	// TODO: example109.c:1:15: anonymous structs/unions members not allowed
+	// &c99.StructDeclarationList{
+	// · StructDeclaration: &c99.StructDeclaration{
+	// · · Case: 1,
+	// · · SpecifierQualifierList: &c99.SpecifierQualifierList{
+	// · · · Case: 1,
+	// · · · TypeSpecifier: &c99.TypeSpecifier{
+	// · · · · Token: BOOL "_Bool",
+	// · · · },
+	// · · },
+	// · · Token: ';',
+	// · },
+	// }
 }
 
 func ExampleStructDeclarationList_case1() {
 	fmt.Println(exampleAST(110, "\U00100001 struct { _Bool ; _Bool ; }"))
 	// Output:
-	// TODO: example110.c:1:15: anonymous structs/unions members not allowed (and 1 more errors)
+	// &c99.StructDeclarationList{
+	// · StructDeclaration: &c99.StructDeclaration{
+	// · · Case: 1,
+	// · · SpecifierQualifierList: &c99.SpecifierQualifierList{
+	// · · · Case: 1,
+	// · · · TypeSpecifier: &c99.TypeSpecifier{
+	// · · · · Token: BOOL "_Bool",
+	// · · · },
+	// · · },
+	// · · Token: ';',
+	// · },
+	// · StructDeclarationList: &c99.StructDeclarationList{
+	// · · Case: 1,
+	// · · StructDeclaration: &c99.StructDeclaration{
+	// · · · Case: 1,
+	// · · · SpecifierQualifierList: &c99.SpecifierQualifierList{
+	// · · · · Case: 1,
+	// · · · · TypeSpecifier: &c99.TypeSpecifier{
+	// · · · · · Token: BOOL "_Bool",
+	// · · · · },
+	// · · · },
+	// · · · Token: ';',
+	// · · },
+	// · },
+	// }
 }
 
 func ExampleStructDeclarator_base() {
@@ -3377,7 +3421,26 @@ func ExampleStructOrUnionSpecifier_empty() {
 func ExampleStructOrUnionSpecifier_define() {
 	fmt.Println(exampleAST(106, "\U00100001 struct { _Bool ; } ("))
 	// Output:
-	// TODO: example106.c:1:15: anonymous structs/unions members not allowed
+	// &c99.StructOrUnionSpecifier{
+	// · Case: 2,
+	// · StructDeclarationList: &c99.StructDeclarationList{
+	// · · StructDeclaration: &c99.StructDeclaration{
+	// · · · Case: 1,
+	// · · · SpecifierQualifierList: &c99.SpecifierQualifierList{
+	// · · · · Case: 1,
+	// · · · · TypeSpecifier: &c99.TypeSpecifier{
+	// · · · · · Token: BOOL "_Bool",
+	// · · · · },
+	// · · · },
+	// · · · Token: ';',
+	// · · },
+	// · },
+	// · StructOrUnion: &c99.StructOrUnion{
+	// · · Token: STRUCT "struct",
+	// · },
+	// · Token: '{',
+	// · Token2: '}',
+	// }
 }
 
 func ExampleTranslationUnit_case0() {
