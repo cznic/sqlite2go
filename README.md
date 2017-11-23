@@ -27,7 +27,7 @@ To generate a standalone Go SQLite shell:
     -D<name>
     -D<name>=<value>
 
-Define preprocessor macros. The first form is equivalent of -D<name>=1.
+Define preprocessor macros. The first form is equivalent of -D\<name>=1.
 
     -h
 
@@ -35,7 +35,7 @@ Print usage to standard error and exit with status 2.
 
     -o <path>
 
-Write the result to <path>. Defaults to standard output.
+Write the result to \<path>. Defaults to standard output.
 
     -package <name>
 
