@@ -700,14 +700,14 @@ func TestFunc(t *testing.T) {
 	}
 
 	ctx.model = model
-	ast, err := ctx.parse(
+	tu, err := ctx.parse(
 		[]Source{NewStringSource("testfunc.c", `int (*foo(char bar))(double baz){}`)},
 	)
 	if err != nil {
 		t.Fatalf("%v", errString(err))
 	}
 
-	if err := ast.check(ctx); err != nil {
+	if err := tu.ExternalDeclarationList.check(ctx); err != nil {
 		t.Fatal(err)
 	}
 
@@ -730,7 +730,7 @@ func TestFunc(t *testing.T) {
 		t.Fatalf("got %q\nexp %q", g, e)
 	}
 
-	fnScope := ast.ExternalDeclaration.FunctionDefinition.FunctionBody.CompoundStmt.scope
+	fnScope := tu.ExternalDeclarationList.ExternalDeclaration.FunctionDefinition.FunctionBody.CompoundStmt.scope
 	n = fnScope.LookupIdent(dict.SID("bar"))
 	if d, ok = n.(*Declarator); !ok {
 		t.Fatalf("%T", n)

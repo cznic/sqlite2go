@@ -167,6 +167,7 @@ import (
 	ExprOpt				"optional expression"
 	ExprStmt			"expression statement"
 	ExternalDeclaration		"external declaration"
+	ExternalDeclarationList		"external declaration list"
 	FunctionBody			"function body"
 	FunctionDefinition		"function definition"
 	FunctionSpecifier		"function specifier"
@@ -198,7 +199,6 @@ import (
 	StructDeclaratorList		"struct declarator list"
 	StructOrUnion			"struct-or-union"
 	StructOrUnionSpecifier		"struct-or-union specifier"
-	TranslationUnit			"translation unit"
 	TypeName			"type name"
 	TypeQualifier			"type qualifier"
 	TypeQualifierList		"type qualifier list"
@@ -239,9 +239,13 @@ import (
 				{
 					lx.ast = $2
 				}
-                        |	TRANSLATION_UNIT TranslationUnit
+                        |	TRANSLATION_UNIT ExternalDeclarationList
 				{
-					lx.ast = $2.(*TranslationUnit).reverse()
+					lx.ast = &TranslationUnit{
+						ExternalDeclarationList: $2.(*ExternalDeclarationList).reverse(), 
+						FileScope: lx.scope,
+						FileSet: lx.fset,
+					}
 				}
 
                         // [0]6.4.4.3
@@ -401,7 +405,7 @@ import (
 /*yy:case Void       */ |	"void"
 /*yy:case Enum       */ |	EnumSpecifier
 /*yy:case Struct     */ |	StructOrUnionSpecifier
-//yy:example "\U00100001 typedef int foo; foo bar;"
+/*yy:example "\U00100001 typedef int foo; foo bar;" */
 /*yy:case Name       */ |	TYPEDEF_NAME
 				{
 					lhs.scope = lx.scope
@@ -505,15 +509,16 @@ import (
 				"inline"
 
                         // [0]6.7.5
+			//yy:field	Bits			int			// StructDeclarator: bit width when a bit field.
 			//yy:field	DeclarationSpecifier	*DeclarationSpecifier	// Nil for embedded declarators.
+			//yy:field	FunctionDefinition	*FunctionDefinition	// When the declarator defines a function.
 			//yy:field	Initializer		Operand			// Only when part of an InitDeclarator.
 			//yy:field	Linkage			Linkage			// Linkage of the declared name, [0]6.2.2.
 			//yy:field	StorageDuration		StorageDuration		// Storage duration of the declared name, [0]6.2.4.
 			//yy:field	Type			Type			// Declared type.
 			//yy:field	TypeQualifiers		[]*TypeQualifier	// From the PointerOpt production, if any.
-			//yy:field	scope			*Scope			// Declare the name in scope.
-			//yy:field	Bits			int			// StructDeclarator: bit width when a bit field.
 			//yy:field	field			int			// Declaration order#.
+			//yy:field	scope			*Scope			// Declare the name in scope.
 			//yy:field	Embedded		bool			// [0]6.7.5-3: Not a full declarator.
 			//yy:field	isFnDefinition		bool
 			//yy:field	isFnParamater		bool
@@ -522,7 +527,7 @@ import (
 				{
 					lhs.scope = lx.scope
 					if lx.scope.typedef {
-						delete(lx.scope.idents, lhs.DirectDeclarator.nm())
+						delete(lx.scope.Idents, lhs.DirectDeclarator.nm())
 						lx.scope.insertTypedef(lx.context, lhs)
 					}
 				}
@@ -750,9 +755,9 @@ import (
 
                         // [0]6.9
                         //yy:list
-                        TranslationUnit:
+                        ExternalDeclarationList:
                         	ExternalDeclaration
-                        |	TranslationUnit ExternalDeclaration
+                        |	ExternalDeclarationList ExternalDeclaration
 
                         // [0]6.9
 /*yy:case Decl       */ ExternalDeclaration:
@@ -767,6 +772,9 @@ import (
 					lx.currFn = $2.(*Declarator).nm()
 				}
 				DeclarationListOpt FunctionBody
+				{
+					lhs.Declarator.FunctionDefinition = lhs
+				}
 
 			FunctionBody:
 				{

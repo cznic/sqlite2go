@@ -587,15 +587,16 @@ func (n *DeclarationSpecifiersOpt) Pos() token.Pos {
 //	Declarator:
 //	        PointerOpt DirectDeclarator  // Case 0
 type Declarator struct {
+	Bits                 int                   // StructDeclarator: bit width when a bit field.
 	DeclarationSpecifier *DeclarationSpecifier // Nil for embedded declarators.
+	FunctionDefinition   *FunctionDefinition   // When the declarator defines a function.
 	Initializer          Operand               // Only when part of an InitDeclarator.
 	Linkage              Linkage               // Linkage of the declared name, [0]6.2.2.
 	StorageDuration      StorageDuration       // Storage duration of the declared name, [0]6.2.4.
 	Type                 Type                  // Declared type.
 	TypeQualifiers       []*TypeQualifier      // From the PointerOpt production, if any.
-	scope                *Scope                // Declare the name in scope.
-	Bits                 int                   // StructDeclarator: bit width when a bit field.
 	field                int                   // Declaration order#.
+	scope                *Scope                // Declare the name in scope.
 	Embedded             bool                  // [0]6.7.5-3: Not a full declarator.
 	isFnDefinition       bool
 	isFnParamater        bool
@@ -1625,6 +1626,57 @@ func (n *ExternalDeclaration) Pos() token.Pos {
 		return n.Declaration.Pos()
 	case 1:
 		return n.FunctionDefinition.Pos()
+	default:
+		panic("internal error")
+	}
+}
+
+// ExternalDeclarationList represents data reduced by productions:
+//
+//	ExternalDeclarationList:
+//	        ExternalDeclaration                          // Case 0
+//	|       ExternalDeclarationList ExternalDeclaration  // Case 1
+type ExternalDeclarationList struct {
+	Case                    int
+	ExternalDeclaration     *ExternalDeclaration
+	ExternalDeclarationList *ExternalDeclarationList
+}
+
+func (n *ExternalDeclarationList) reverse() *ExternalDeclarationList {
+	if n == nil {
+		return nil
+	}
+
+	na := n
+	nb := na.ExternalDeclarationList
+	for nb != nil {
+		nc := nb.ExternalDeclarationList
+		nb.ExternalDeclarationList = na
+		na = nb
+		nb = nc
+	}
+	n.ExternalDeclarationList = nil
+	return na
+}
+
+func (n *ExternalDeclarationList) fragment() interface{} { return n.reverse() }
+
+// String implements fmt.Stringer.
+func (n *ExternalDeclarationList) String() string {
+	return PrettyString(n)
+}
+
+// Pos reports the position of the first component of n or zero if it's empty.
+func (n *ExternalDeclarationList) Pos() token.Pos {
+	if n == nil {
+		return 0
+	}
+
+	switch n.Case {
+	case 0:
+		return n.ExternalDeclaration.Pos()
+	case 1:
+		return n.ExternalDeclarationList.Pos()
 	default:
 		panic("internal error")
 	}
@@ -3079,57 +3131,6 @@ func (n *StructOrUnionSpecifier) Pos() token.Pos {
 	}
 
 	return n.StructOrUnion.Pos()
-}
-
-// TranslationUnit represents data reduced by productions:
-//
-//	TranslationUnit:
-//	        ExternalDeclaration                  // Case 0
-//	|       TranslationUnit ExternalDeclaration  // Case 1
-type TranslationUnit struct {
-	Case                int
-	ExternalDeclaration *ExternalDeclaration
-	TranslationUnit     *TranslationUnit
-}
-
-func (n *TranslationUnit) reverse() *TranslationUnit {
-	if n == nil {
-		return nil
-	}
-
-	na := n
-	nb := na.TranslationUnit
-	for nb != nil {
-		nc := nb.TranslationUnit
-		nb.TranslationUnit = na
-		na = nb
-		nb = nc
-	}
-	n.TranslationUnit = nil
-	return na
-}
-
-func (n *TranslationUnit) fragment() interface{} { return n.reverse() }
-
-// String implements fmt.Stringer.
-func (n *TranslationUnit) String() string {
-	return PrettyString(n)
-}
-
-// Pos reports the position of the first component of n or zero if it's empty.
-func (n *TranslationUnit) Pos() token.Pos {
-	if n == nil {
-		return 0
-	}
-
-	switch n.Case {
-	case 0:
-		return n.ExternalDeclaration.Pos()
-	case 1:
-		return n.TranslationUnit.Pos()
-	default:
-		panic("internal error")
-	}
 }
 
 // TypeName represents data reduced by production:

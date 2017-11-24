@@ -72,6 +72,7 @@ func errString(err error) string {
 func printError(w io.Writer, pref string, err error) {
 	switch x := err.(type) {
 	case scanner.ErrorList:
+		x.RemoveMultiples()
 		for i, v := range x {
 			fmt.Fprintf(w, "%s%v\n", pref, v)
 			if i == 50 {

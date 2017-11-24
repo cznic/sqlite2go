@@ -22,6 +22,9 @@ type Node interface {
 	Pos() token.Pos
 }
 
+// Pos implements Node.
+func (n *TranslationUnit) Pos() token.Pos { return token.Pos(0) }
+
 // DeclarationSpecifier describes declaration specifiers.
 type DeclarationSpecifier struct {
 	StorageClassSpecifiers []*StorageClassSpecifier
@@ -57,7 +60,7 @@ func (d *DeclarationSpecifier) typ() Type {
 			r := &NamedType{Name: ts.Token.Val}
 			switch x := ts.scope.LookupIdent(ts.Token.Val).(type) {
 			case *Declarator:
-				if !x.DeclarationSpecifier.isTypedef() {
+				if !x.DeclarationSpecifier.IsTypedef() {
 					panic("internal error 1")
 				}
 
@@ -136,7 +139,8 @@ func (d *DeclarationSpecifier) is(a ...TypeSpecifierCase) bool {
 	return true
 }
 
-func (d *DeclarationSpecifier) isTypedef() bool {
+// IsTypedef return true when the storage class specifier "typedef" is present.
+func (d *DeclarationSpecifier) IsTypedef() bool {
 	if d == nil {
 		return false
 	}
@@ -509,7 +513,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				t = x.Type
 			case *StructType:
 				nm := n.Token2.Val
-				d0, ok := x.scope.idents[nm]
+				d0, ok := x.scope.Idents[nm]
 				if !ok {
 					panic(ctx.position(n))
 				}
@@ -517,7 +521,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				n.Operand = Operand{Type: x.Fields[d.field].Type}
 				if a := op.Addr; a != nil {
 					layout := ctx.model.Layout(x)
-					n.Operand.Addr = &ir.AddressValue{Index: -1, NameID: a.NameID, Offset: a.Offset + uintptr(layout[d.field].Offset)}
+					n.Operand.Addr = &ir.AddressValue{NameID: a.NameID, Offset: a.Offset + uintptr(layout[d.field].Offset)}
 				}
 				break out
 			case *TaggedStructType:
@@ -527,7 +531,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				}
 			case *UnionType:
 				nm := n.Token2.Val
-				d0, ok := x.scope.idents[nm]
+				d0, ok := x.scope.Idents[nm]
 				if !ok {
 					panic(ctx.position(n))
 				}
@@ -831,7 +835,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				t = x.Type
 			case *StructType:
 				nm := n.Token2.Val
-				d0, ok := x.scope.idents[nm]
+				d0, ok := x.scope.Idents[nm]
 				if !ok {
 					panic(ctx.position(n))
 				}
@@ -839,7 +843,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				n.Operand = Operand{Type: x.Fields[d.field].Type}
 				if a := op.Addr; a != nil {
 					layout := ctx.model.Layout(x)
-					n.Operand.Addr = &ir.AddressValue{Index: -1, NameID: a.NameID, Offset: a.Offset + uintptr(layout[d.field].Offset)}
+					n.Operand.Addr = &ir.AddressValue{NameID: a.NameID, Offset: a.Offset + uintptr(layout[d.field].Offset)}
 				}
 				break out3
 			case *TaggedStructType:
@@ -850,7 +854,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				t = y
 			case *UnionType:
 				nm := n.Token2.Val
-				d0, ok := x.scope.idents[nm]
+				d0, ok := x.scope.Idents[nm]
 				if !ok {
 					panic(ctx.position(n))
 				}
@@ -959,7 +963,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		if a := op.Addr; a != nil {
 			switch {
 			case index.Value != nil:
-				n.Operand.Addr = &ir.AddressValue{Index: -1, NameID: a.NameID, Offset: a.Offset + uintptr(index.Value.(*ir.Int64Value).Value*ctx.model.Sizeof(n.Operand.Type))}
+				n.Operand.Addr = &ir.AddressValue{NameID: a.NameID, Offset: a.Offset + uintptr(index.Value.(*ir.Int64Value).Value*ctx.model.Sizeof(n.Operand.Type))}
 			default:
 				op.Addr = nil
 			}
@@ -1053,7 +1057,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				panic(y)
 			}
 			if x.StorageDuration == StorageDurationStatic {
-				n.Operand.Addr = &ir.AddressValue{Index: -1, Linkage: ir.Linkage(x.Linkage), NameID: ir.NameID(nm)}
+				n.Operand.Addr = &ir.AddressValue{Linkage: ir.Linkage(x.Linkage), NameID: ir.NameID(nm)}
 			}
 		case *EnumerationConstant:
 			n.Operand = x.Operand
@@ -1234,7 +1238,7 @@ func (n *DirectDeclarator) nm() int {
 	}
 }
 
-func (n *TranslationUnit) check(ctx *context) (err error) {
+func (n *ExternalDeclarationList) check(ctx *context) (err error) {
 	defer func() {
 		switch e := recover(); x := e.(type) {
 		case nil:
@@ -1246,7 +1250,7 @@ func (n *TranslationUnit) check(ctx *context) (err error) {
 		}
 	}()
 
-	for ; n != nil; n = n.TranslationUnit {
+	for ; n != nil; n = n.ExternalDeclarationList {
 		n.ExternalDeclaration.check(ctx)
 	}
 	return nil
@@ -1286,10 +1290,10 @@ func (n *FunctionBody) check(ctx *context, fn *Declarator) {
 func (n *CompoundStmt) check(ctx *context, fn *Declarator, outermost bool, inSwitch, inLoop bool) {
 	// '{' BlockItemListOpt '}'
 	if outermost { // Pull function parameters into the outermost block scope.
-		for _, v := range fn.fpScope(ctx).idents {
+		for _, v := range fn.fpScope(ctx).Idents {
 			d := v.(*Declarator)
 			nm := d.nm()
-			if ex := n.scope.idents[nm]; ex != nil {
+			if ex := n.scope.Idents[nm]; ex != nil {
 				panic("TODO") // redeclared
 			}
 
@@ -1530,9 +1534,9 @@ func (n *InitDeclaratorList) check(ctx *context, ds *DeclarationSpecifier) {
 func (n *InitDeclarator) check(ctx *context, ds *DeclarationSpecifier) {
 	switch n.Case {
 	case InitDeclaratorBase: // Declarator
-		n.Declarator.check(ctx, ds, ds.typ(), !ds.isTypedef())
+		n.Declarator.check(ctx, ds, ds.typ(), !ds.IsTypedef())
 	case InitDeclaratorInit: // Declarator '=' Initializer
-		if ds.isTypedef() {
+		if ds.IsTypedef() {
 			panic(ctx.position(n)) // error
 		}
 		n.Declarator.check(ctx, ds, ds.typ(), true)
@@ -1682,7 +1686,7 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 	n.DeclarationSpecifier = ds
 	t = n.PointerOpt.check(ctx, t, &n.TypeQualifiers)
 	n.Type = n.DirectDeclarator.check(ctx, t)
-	isFunction := n.Type.Kind() == Function && !ds.isTypedef()
+	isFunction := n.Type.Kind() == Function && !ds.IsTypedef()
 	if n.Embedded {
 		return n.Type
 	}
@@ -1755,7 +1759,7 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 	}
 
 	nm := n.nm()
-	switch ex := n.scope.idents[n.nm()]; ex := ex.(type) {
+	switch ex := n.scope.Idents[n.nm()]; ex := ex.(type) {
 	case nil:
 		n.scope.insertDeclarator(ctx, n)
 	case *Declarator:
@@ -1763,7 +1767,7 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 		case LinkageNone:
 			switch n.Linkage {
 			case LinkageNone:
-				if ex.DeclarationSpecifier.isTypedef() && n.DeclarationSpecifier.isTypedef() && ex.Type.String() == n.Type.String() {
+				if ex.DeclarationSpecifier.IsTypedef() && n.DeclarationSpecifier.IsTypedef() && ex.Type.String() == n.Type.String() {
 					break
 				}
 
@@ -1783,7 +1787,7 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 				}
 
 				if isFunction && n.isFnDefinition {
-					n.scope.idents[nm] = n
+					n.scope.Idents[nm] = n
 					if !ex.isFnDefinition {
 						n.Type.(*FunctionType).Prototype = ex.Type.(*FunctionType)
 					}
@@ -1801,7 +1805,7 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 				}
 
 				if isFunction && n.isFnDefinition {
-					n.scope.idents[nm] = n
+					n.scope.Idents[nm] = n
 					if !ex.isFnDefinition {
 						n.Type.(*FunctionType).Prototype = ex.Type.(*FunctionType)
 					}
@@ -2130,7 +2134,7 @@ func (n *StructOrUnionSpecifier) check(ctx *context) {
 			n.typ = &UnionType{Fields: n.StructDeclarationList.check(ctx), scope: n.scope}
 		}
 		if n.IdentifierOpt != nil {
-			n.scope.parent.insertStructTag(ctx, n)
+			n.scope.Parent.insertStructTag(ctx, n)
 		}
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))

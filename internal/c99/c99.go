@@ -45,6 +45,13 @@ var (
 	_ Source = (*StringSource)(nil)
 )
 
+// TranslationUnit represents a translation unit, see [0]6.9.
+type TranslationUnit struct {
+	ExternalDeclarationList *ExternalDeclarationList
+	FileScope               *Scope
+	FileSet                 *token.FileSet
+}
+
 // Tweaks amend the behavior of the parser.
 type Tweaks struct {
 	cppExpandTest               bool // Fake includes
@@ -59,6 +66,8 @@ type Tweaks struct {
 // looking for "foo.h" and <foo.h> files. A special path "@" is interpretted as
 // 'the same directory as where the file with the #include is'. The input
 // consists of sources which must include any predefined/builtin stuff.
+//
+// The returned scope is the file scope of the Translation unit.
 func Translate(fset *token.FileSet, tweaks *Tweaks, includePaths, sysIncludePaths []string, sources ...Source) (*TranslationUnit, error) {
 	model, err := newModel()
 	if err != nil {
@@ -73,12 +82,12 @@ func Translate(fset *token.FileSet, tweaks *Tweaks, includePaths, sysIncludePath
 	ctx.model = model
 	ctx.includePaths = append([]string(nil), includePaths...)
 	ctx.sysIncludePaths = append([]string(nil), sysIncludePaths...)
-	ast, err := ctx.parse(sources)
+	t, err := ctx.parse(sources)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := ast.check(ctx); err != nil {
+	if err := t.ExternalDeclarationList.check(ctx); err != nil {
 		return nil, err
 	}
 
@@ -86,7 +95,7 @@ func Translate(fset *token.FileSet, tweaks *Tweaks, includePaths, sysIncludePath
 		return nil, err
 	}
 
-	return ast, nil
+	return t, nil
 }
 
 // Translation unit context.
@@ -167,7 +176,7 @@ func (c *context) parse(in []Source) (*TranslationUnit, error) {
 		return nil, err
 	}
 
-	if c.scope.parent != nil {
+	if c.scope.Parent != nil {
 		panic("internal error 7")
 	}
 
@@ -176,7 +185,7 @@ func (c *context) parse(in []Source) (*TranslationUnit, error) {
 
 func (c *context) popScope() (old, new *Scope) {
 	old = c.scope
-	c.scope = c.scope.parent
+	c.scope = c.scope.Parent
 	return old, c.scope
 }
 
@@ -186,7 +195,7 @@ func (c *context) ptrDiff() Type {
 		panic("TODO")
 	}
 
-	if !d.DeclarationSpecifier.isTypedef() {
+	if !d.DeclarationSpecifier.IsTypedef() {
 		panic(d.Type)
 	}
 
@@ -200,7 +209,7 @@ func (c *context) sizeof(t Type) Operand {
 		return newIntConst(c, nopos, uint64(sz), UInt, ULong, ULongLong)
 	}
 
-	if !d.DeclarationSpecifier.isTypedef() {
+	if !d.DeclarationSpecifier.IsTypedef() {
 		panic(d.Type)
 	}
 
@@ -306,41 +315,41 @@ func (s *StringSource) ReadCloser() (io.ReadCloser, error) {
 
 // Scope binds names to declarations.
 type Scope struct {
-	enumTags   map[int]Type         // name: Type
-	idents     map[int]Node         // name: Node in {*Declarator, EnumerationConstant}
-	labels     map[int]*LabeledStmt // name: label
-	parent     *Scope
-	structTags map[int]*StructOrUnionSpecifier // name: *StructOrUnionSpecifier
+	EnumTags   map[int]Type         // name ID: Type
+	Idents     map[int]Node         // name ID: Node in {*Declarator, EnumerationConstant}
+	Labels     map[int]*LabeledStmt // name ID: label
+	Parent     *Scope
+	StructTags map[int]*StructOrUnionSpecifier // name ID: *StructOrUnionSpecifier
 
 	// parser support
 	typedefs map[int]struct{} // name: nothing
 	typedef  bool
 }
 
-func newScope(parent *Scope) *Scope { return &Scope{parent: parent} }
+func newScope(parent *Scope) *Scope { return &Scope{Parent: parent} }
 
 func (s *Scope) insertLabel(ctx *context, st *LabeledStmt) {
-	for s.parent != nil && s.parent.parent != nil {
-		s = s.parent
+	for s.Parent != nil && s.Parent.Parent != nil {
+		s = s.Parent
 	}
-	if s.labels == nil {
-		s.labels = map[int]*LabeledStmt{}
+	if s.Labels == nil {
+		s.Labels = map[int]*LabeledStmt{}
 	}
-	if ex := s.labels[st.Token.Val]; ex != nil {
+	if ex := s.Labels[st.Token.Val]; ex != nil {
 		panic("TODO")
 	}
 
-	s.labels[st.Token.Val] = st
+	s.Labels[st.Token.Val] = st
 }
 
 func (s *Scope) insertEnumTag(ctx *context, nm int, t Type) {
-	for s.parent != nil {
-		s = s.parent
+	for s.Parent != nil {
+		s = s.Parent
 	}
-	if s.enumTags == nil {
-		s.enumTags = map[int]Type{}
+	if s.EnumTags == nil {
+		s.EnumTags = map[int]Type{}
 	}
-	if ex := s.enumTags[nm]; ex != nil {
+	if ex := s.EnumTags[nm]; ex != nil {
 		if ex == t {
 			return
 		}
@@ -348,27 +357,27 @@ func (s *Scope) insertEnumTag(ctx *context, nm int, t Type) {
 		panic("TODO")
 	}
 
-	s.enumTags[nm] = t
+	s.EnumTags[nm] = t
 }
 
 func (s *Scope) insertDeclarator(ctx *context, d *Declarator) {
-	if s.idents == nil {
-		s.idents = map[int]Node{}
+	if s.Idents == nil {
+		s.Idents = map[int]Node{}
 	}
 	nm := d.nm()
-	if ex := s.idents[nm]; ex != nil {
+	if ex := s.Idents[nm]; ex != nil {
 		panic("internal error 8")
 	}
 
-	s.idents[nm] = d
+	s.Idents[nm] = d
 }
 
 func (s *Scope) insertEnumerationConstant(ctx *context, c *EnumerationConstant) {
-	if s.idents == nil {
-		s.idents = map[int]Node{}
+	if s.Idents == nil {
+		s.Idents = map[int]Node{}
 	}
 	nm := c.Token.Val
-	if ex := s.idents[nm]; ex != nil {
+	if ex := s.Idents[nm]; ex != nil {
 		if ex == c {
 			return
 		}
@@ -376,24 +385,24 @@ func (s *Scope) insertEnumerationConstant(ctx *context, c *EnumerationConstant) 
 		panic(ctx.position(c))
 	}
 
-	s.idents[nm] = c
+	s.Idents[nm] = c
 }
 
 func (s *Scope) insertStructTag(ctx *context, ss *StructOrUnionSpecifier) {
-	for s.parent != nil {
-		s = s.parent
+	for s.Parent != nil {
+		s = s.Parent
 	}
-	if s.structTags == nil {
-		s.structTags = map[int]*StructOrUnionSpecifier{}
+	if s.StructTags == nil {
+		s.StructTags = map[int]*StructOrUnionSpecifier{}
 	}
 	nm := ss.IdentifierOpt.Token.Val
-	if ex := s.structTags[nm]; ex != nil && !ex.typ.Equal(ss.typ) {
+	if ex := s.StructTags[nm]; ex != nil && !ex.typ.Equal(ss.typ) {
 		//dbg("", ex.typ)
 		//dbg("", ss.typ)
 		panic(ctx.position(ss))
 	}
 
-	s.structTags[nm] = ss
+	s.StructTags[nm] = ss
 }
 
 func (s *Scope) insertTypedef(ctx *context, d *Declarator) {
@@ -409,7 +418,7 @@ func (s *Scope) isTypedef(nm int) bool {
 			return true
 		}
 
-		s = s.parent
+		s = s.Parent
 	}
 	return false
 }
@@ -417,11 +426,11 @@ func (s *Scope) isTypedef(nm int) bool {
 // LookupIdent will return the Node associated with name ID nm.
 func (s *Scope) LookupIdent(nm int) Node {
 	for s != nil {
-		if n := s.idents[nm]; n != nil {
+		if n := s.Idents[nm]; n != nil {
 			return n
 		}
 
-		s = s.parent
+		s = s.Parent
 	}
 	return nil
 }
@@ -429,33 +438,33 @@ func (s *Scope) LookupIdent(nm int) Node {
 // LookupLabel will return the Node associated with label ID nm.
 func (s *Scope) LookupLabel(nm int) Node {
 	for s != nil {
-		if n := s.labels[nm]; n != nil {
-			if s.parent == nil && s.parent.parent != nil {
+		if n := s.Labels[nm]; n != nil {
+			if s.Parent == nil && s.Parent.Parent != nil {
 				panic("internal error")
 			}
 
 			return n
 		}
 
-		s = s.parent
+		s = s.Parent
 	}
 	return nil
 }
 
 func (s *Scope) lookupStructTag(nm int) *StructOrUnionSpecifier {
 	for s != nil {
-		if n := s.structTags[nm]; n != nil {
+		if n := s.StructTags[nm]; n != nil {
 			return n
 		}
 
-		s = s.parent
+		s = s.Parent
 	}
 	return nil
 }
 
 func (s *Scope) String() string {
 	var a []string
-	for _, v := range s.idents {
+	for _, v := range s.Idents {
 		switch x := v.(type) {
 		case *Declarator:
 			a = append(a, string(dict.S(x.nm())))
