@@ -50,6 +50,7 @@ type TranslationUnit struct {
 	ExternalDeclarationList *ExternalDeclarationList
 	FileScope               *Scope
 	FileSet                 *token.FileSet
+	Model                   Model
 }
 
 // Tweaks amend the behavior of the parser.
@@ -364,7 +365,7 @@ func (s *Scope) insertDeclarator(ctx *context, d *Declarator) {
 	if s.Idents == nil {
 		s.Idents = map[int]Node{}
 	}
-	nm := d.nm()
+	nm := d.Name()
 	if ex := s.Idents[nm]; ex != nil {
 		panic("internal error 8")
 	}
@@ -409,7 +410,7 @@ func (s *Scope) insertTypedef(ctx *context, d *Declarator) {
 	if s.typedefs == nil {
 		s.typedefs = map[int]struct{}{}
 	}
-	s.typedefs[d.nm()] = struct{}{}
+	s.typedefs[d.Name()] = struct{}{}
 }
 
 func (s *Scope) isTypedef(nm int) bool {
@@ -467,7 +468,7 @@ func (s *Scope) String() string {
 	for _, v := range s.Idents {
 		switch x := v.(type) {
 		case *Declarator:
-			a = append(a, string(dict.S(x.nm())))
+			a = append(a, string(dict.S(x.Name())))
 		default:
 			panic(fmt.Errorf("%T", x))
 		}

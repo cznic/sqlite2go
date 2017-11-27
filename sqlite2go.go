@@ -166,13 +166,19 @@ func main() {
 
 	switch {
 	case opts.shell:
+		crt0Source := c99.NewFileSource(filepath.Join(ccir.LibcIncludePath, "crt0.c"))
+		crt0, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, crt0Source)
+		if err != nil {
+			exit(1, "%s", errString(err))
+		}
+
 		shellSource := c99.NewFileSource(filepath.Join(repo, filepath.FromSlash("_sqlite/sqlite-amalgamation-3210000/shell.c")))
 		shell, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, shellSource)
 		if err != nil {
 			exit(1, "%s", errString(err))
 		}
 
-		err = ccgo.Command(w, []*c99.TranslationUnit{shell, sqlite})
+		err = ccgo.Command(w, []*c99.TranslationUnit{crt0, shell, sqlite})
 	default:
 		err = ccgo.Package(w, []*c99.TranslationUnit{sqlite})
 	}

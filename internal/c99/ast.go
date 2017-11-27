@@ -598,7 +598,6 @@ type Declarator struct {
 	field                int                   // Declaration order#.
 	scope                *Scope                // Declare the name in scope.
 	Embedded             bool                  // [0]6.7.5-3: Not a full declarator.
-	isFnDefinition       bool
 	isFnParamater        bool
 	DirectDeclarator     *DirectDeclarator
 	PointerOpt           *PointerOpt

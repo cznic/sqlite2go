@@ -245,6 +245,7 @@ import (
 						ExternalDeclarationList: $2.(*ExternalDeclarationList).reverse(), 
 						FileScope: lx.scope,
 						FileSet: lx.fset,
+						Model: lx.model,
 					}
 				}
 
@@ -520,7 +521,6 @@ import (
 			//yy:field	field			int			// Declaration order#.
 			//yy:field	scope			*Scope			// Declare the name in scope.
 			//yy:field	Embedded		bool			// [0]6.7.5-3: Not a full declarator.
-			//yy:field	isFnDefinition		bool
 			//yy:field	isFnParamater		bool
                         Declarator:
                         	PointerOpt DirectDeclarator
@@ -769,7 +769,7 @@ import (
 				DeclarationSpecifiers Declarator
 				{
 					lx.scope.typedef = false
-					lx.currFn = $2.(*Declarator).nm()
+					lx.currFn = $2.(*Declarator).Name()
 				}
 				DeclarationListOpt FunctionBody
 				{

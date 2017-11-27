@@ -153,7 +153,8 @@ func (d *DeclarationSpecifier) IsTypedef() bool {
 	return false
 }
 
-func (d *DeclarationSpecifier) isStatic() bool {
+// IsTypedef return true when the storage class specifier "static" is present.
+func (d *DeclarationSpecifier) IsStatic() bool {
 	if d == nil {
 		return false
 	}
@@ -1223,16 +1224,17 @@ func (n *ExprOpt) eval(ctx *context, arr2ptr bool) Operand {
 	return n.Expr.eval(ctx, arr2ptr)
 }
 
-func (n *Declarator) nm() int { return n.DirectDeclarator.nm() }
+// Name returns the ID of the declared name.
+func (n *Declarator) Name() int { return n.DirectDeclarator.nm() }
 
 func (n *DirectDeclarator) nm() int {
 	switch n.Case {
-	case DirectDeclaratorArray, DirectDeclaratorParamList:
+	case DirectDeclaratorArray, DirectDeclaratorParamList, DirectDeclaratorIdentList:
 		return n.DirectDeclarator.nm()
 	case DirectDeclaratorIdent:
 		return n.Token.Val
 	case DirectDeclaratorParen:
-		return n.Declarator.nm()
+		return n.Declarator.Name()
 	default:
 		panic(fmt.Errorf("TODO %v", n.Case))
 	}
@@ -1274,7 +1276,6 @@ func (n *FunctionDefinition) check(ctx *context) {
 	if len(ds.TypeSpecifiers) == 0 { // [0]6.7.2-2
 		panic("TODO")
 	}
-	n.Declarator.isFnDefinition = true
 	n.Declarator.check(ctx, ds, ds.typ(), false)
 	if n.Declarator.Type.Kind() != Function {
 		panic("TODO")
@@ -1292,7 +1293,7 @@ func (n *CompoundStmt) check(ctx *context, fn *Declarator, outermost bool, inSwi
 	if outermost { // Pull function parameters into the outermost block scope.
 		for _, v := range fn.fpScope(ctx).Idents {
 			d := v.(*Declarator)
-			nm := d.nm()
+			nm := d.Name()
 			if ex := n.scope.Idents[nm]; ex != nil {
 				panic("TODO") // redeclared
 			}
@@ -1325,6 +1326,40 @@ func (n *DirectDeclarator) fpScope(ctx *context) *Scope {
 	//TODO case DirectDeclaratorIdent: // IDENTIFIER
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
+	}
+}
+
+// ParameterNames returns a list of IDs of names of parameters of n. The
+// function panics if n is not function type.
+func (n *Declarator) ParameterNames() []int { return n.DirectDeclarator.parameterNames() }
+
+func (n *DirectDeclarator) parameterNames() (r []int) {
+	switch n.Case {
+	//TODO case DirectDeclaratorParen: // '(' Declarator ')'
+	//TODO case DirectDeclaratorIdentList: // DirectDeclarator '(' IdentifierListOpt ')'
+	case DirectDeclaratorParamList: // DirectDeclarator '(' ParameterTypeList ')'
+		switch n.DirectDeclarator.Case {
+		case DirectDeclaratorIdent:
+			for l := n.ParameterTypeList.ParameterList; l != nil; l = l.ParameterList {
+				switch n := l.ParameterDeclaration; n.Case {
+				//TODO case ParameterDeclarationAbstract: // DeclarationSpecifiers AbstractDeclaratorOpt
+				case ParameterDeclarationDeclarator: // DeclarationSpecifiers Declarator
+					r = append(r, n.Declarator.Name())
+				default:
+					panic(n.Case)
+				}
+			}
+			return r
+		default:
+			panic(n.DirectDeclarator.Case)
+		}
+	//TODO case DirectDeclaratorArraySize: // DirectDeclarator '[' "static" TypeQualifierListOpt Expr ']'
+	//TODO case DirectDeclaratorArraySize2: // DirectDeclarator '[' TypeQualifierList "static" Expr ']'
+	//TODO case DirectDeclaratorArrayVar: // DirectDeclarator '[' TypeQualifierListOpt '*' ']'
+	//TODO case DirectDeclaratorArray: // DirectDeclarator '[' TypeQualifierListOpt ExprOpt ']'
+	//TODO case DirectDeclaratorIdent: // IDENTIFIER
+	default:
+		panic(n.Case)
 	}
 }
 
@@ -1697,7 +1732,7 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 		// 3. If the declaration of a file scope identifier for an
 		// object or a function contains the storage-class specifier
 		// static, the identifier has internal linkage.
-		(isObject || isFunction) && n.scope == ctx.scope && ds.isStatic():
+		(isObject || isFunction) && n.scope == ctx.scope && ds.IsStatic():
 
 		n.Linkage = LinkageInternal
 	case
@@ -1744,22 +1779,22 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 		// only once, prior to program startup.
 		n.Linkage == LinkageExternal,
 		n.Linkage == LinkageInternal,
-		ds.isStatic():
+		ds.IsStatic():
 
 		n.StorageDuration = StorageDurationStatic
 	case
 		// 4. An object whose identifier is declared with no linkage
 		// and without the storage-class specifier static has automatic
 		// storage duration.
-		n.Linkage == LinkageNone && !ds.isStatic():
+		n.Linkage == LinkageNone && !ds.IsStatic():
 
 		n.StorageDuration = StorageDurationAutomatic
 	default:
 		panic(ctx.position(n))
 	}
 
-	nm := n.nm()
-	switch ex := n.scope.Idents[n.nm()]; ex := ex.(type) {
+	nm := n.Name()
+	switch ex := n.scope.Idents[n.Name()]; ex := ex.(type) {
 	case nil:
 		n.scope.insertDeclarator(ctx, n)
 	case *Declarator:
@@ -1779,16 +1814,23 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 			switch n.Linkage {
 			case LinkageExternal:
 				if !ex.Type.Equal(n.Type) {
-					//dbg("", ctx.position(ex), ex.Type)
-					//dbg("", ctx.position(n), n.Type)
-					if !(ex.Type.IsPointerType() && n.Type.IsPointerType() && ex.Type.IsCompatible(n.Type)) {
+					// dbg("", ctx.position(ex), ex.Type)
+					// dbg("", ctx.position(n), n.Type)
+					switch {
+					case ex.Type.Kind() == Function && n.Type.Kind() == Function:
+						ef := ex.Type.(*FunctionType)
+						nf := n.Type.(*FunctionType)
+						if !(ef.Result.Equal(nf.Result) && (len(ef.Params) == 0 || len(nf.Params) == 0)) {
+							panic(ctx.position(n))
+						}
+					case !(ex.Type.IsPointerType() && n.Type.IsPointerType() && ex.Type.IsCompatible(n.Type)):
 						panic(ctx.position(n))
 					}
 				}
 
-				if isFunction && n.isFnDefinition {
+				if isFunction && n.isFnDefinition() {
 					n.scope.Idents[nm] = n
-					if !ex.isFnDefinition {
+					if !ex.isFnDefinition() {
 						n.Type.(*FunctionType).Prototype = ex.Type.(*FunctionType)
 					}
 				}
@@ -1804,9 +1846,9 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 					}
 				}
 
-				if isFunction && n.isFnDefinition {
+				if isFunction && n.isFnDefinition() {
 					n.scope.Idents[nm] = n
-					if !ex.isFnDefinition {
+					if !ex.isFnDefinition() {
 						n.Type.(*FunctionType).Prototype = ex.Type.(*FunctionType)
 					}
 				}
@@ -1822,6 +1864,8 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 
 	return n.Type
 }
+
+func (n *Declarator) isFnDefinition() bool { return n.FunctionDefinition != nil }
 
 func (n *PointerOpt) check(ctx *context, t Type, tq *[]*TypeQualifier) Type {
 	if n == nil {
@@ -1863,7 +1907,19 @@ func (n *DirectDeclarator) check(ctx *context, t Type) Type {
 	switch n.Case {
 	case DirectDeclaratorParen: // '(' Declarator ')'
 		return n.Declarator.check(ctx, nil, t, false)
-	//TODO case DirectDeclaratorIdentList: // DirectDeclarator '(' IdentifierListOpt ')'
+	case DirectDeclaratorIdentList: // DirectDeclarator '(' IdentifierListOpt ')'
+		var params []Type
+		var variadic bool
+		names := n.IdentifierListOpt.check(ctx)
+		if len(names) != 0 {
+			panic("TODO")
+		}
+		t := &FunctionType{
+			Params:   params,
+			Result:   t,
+			Variadic: variadic,
+		}
+		return n.DirectDeclarator.check(ctx, t)
 	case DirectDeclaratorParamList: // DirectDeclarator '(' ParameterTypeList ')'
 		fp, variadic := n.ParameterTypeList.check(ctx)
 		t := &FunctionType{
@@ -1894,6 +1950,32 @@ func (n *DirectDeclarator) check(ctx *context, t Type) Type {
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	}
+}
+
+func (n *IdentifierListOpt) check(ctx *context) []int {
+	if n == nil {
+		return nil
+	}
+
+	return n.IdentifierList.check(ctx)
+}
+
+func (n *IdentifierList) check(ctx *context) (r []int) {
+	m := map[int]struct{}{}
+	for ; n != nil; n = n.IdentifierList {
+		nm := n.Token.Val
+		if n.Token.Rune == ',' {
+			nm = n.Token2.Val
+		}
+
+		if _, ok := m[nm]; ok {
+			panic("TODO")
+		}
+
+		m[nm] = struct{}{}
+		r = append(r, nm)
+	}
+	return r
 }
 
 func (n *ParameterTypeList) check(ctx *context) ([]Type, bool) {
@@ -2175,7 +2257,7 @@ func (n *StructDeclaratorList) check(ctx *context, ds *DeclarationSpecifier, fie
 func (n *StructDeclarator) check(ctx *context, ds *DeclarationSpecifier, field int) Field {
 	switch n.Case {
 	case StructDeclaratorBase: // Declarator
-		f := Field{Type: n.Declarator.check(ctx, ds, ds.typ(), false), Name: n.Declarator.nm()}
+		f := Field{Type: n.Declarator.check(ctx, ds, ds.typ(), false), Name: n.Declarator.Name()}
 		n.Declarator.field = field
 		return f
 	case StructDeclaratorBits: // DeclaratorOpt ':' ConstExpr

@@ -57,6 +57,20 @@ func newModel() (m Model, err error) {
 	}
 }
 
+// Equal returns whether m equals n.
+func (m Model) Equal(n Model) bool {
+	if len(m) != len(n) {
+		return false
+	}
+
+	for k, v := range m {
+		if v != n[k] {
+			return false
+		}
+	}
+	return true
+}
+
 // Sizeof returns the size in bytes of a variable of type t.
 func (m Model) Sizeof(t Type) int64 {
 	switch x := t.(type) {

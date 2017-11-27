@@ -5,12 +5,18 @@
 package ccgo
 
 import (
+	"bytes"
 	"fmt"
+	"go/token"
 	"os"
 	"path"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/cznic/ccir"
+	"github.com/cznic/sqlite2go/internal/c99"
 )
 
 func caller(s string, va ...interface{}) {
@@ -51,6 +57,46 @@ func init() {
 
 // ============================================================================
 
+const inject = `
+#define _CCGO 1
+#define __arch__ %s
+#define __os__ %s
+#include <builtin.h>
+`
+
 func Test(t *testing.T) {
-	t.Logf("TODO")
+	fset := token.NewFileSet()
+	tweaks := &c99.Tweaks{
+		EnableAnonymousStructFields: true,
+		EnableEmptyStructs:          true,
+		InjectFinalNL:               true,
+	}
+	inc := []string{"@", ccir.LibcIncludePath}
+	sysInc := []string{ccir.LibcIncludePath}
+	repo := filepath.FromSlash("../../_sqlite/sqlite-amalgamation-3210000/")
+	predefSource := c99.NewStringSource("<predefine>", fmt.Sprintf(inject, runtime.GOARCH, runtime.GOOS))
+	sqliteSource := c99.NewFileSource(filepath.Join(repo, "sqlite3.c"))
+	sqlite, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, sqliteSource)
+	if err != nil {
+		t.Fatal(errString(err))
+	}
+
+	crt0Source := c99.NewFileSource(filepath.Join(ccir.LibcIncludePath, "crt0.c"))
+	crt0, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, crt0Source)
+	if err != nil {
+		t.Fatal(errString(err))
+	}
+
+	shellSource := c99.NewFileSource(filepath.Join(repo, "shell.c"))
+	shell, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, shellSource)
+	if err != nil {
+		t.Fatal(errString(err))
+	}
+
+	var buf bytes.Buffer
+	if err = Command(&buf, []*c99.TranslationUnit{crt0, shell, sqlite}); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Logf("\n%s", buf.Bytes())
 }

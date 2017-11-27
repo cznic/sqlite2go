@@ -761,6 +761,7 @@ func TestTypecheckSQLiteShell(t *testing.T) {
 		[]string{"@", ccir.LibcIncludePath},
 		[]string{ccir.LibcIncludePath},
 		NewStringSource("<builtin>", fmt.Sprintf(inj, runtime.GOARCH, runtime.GOOS, predef)),
+		NewFileSource(filepath.Join(ccir.LibcIncludePath, "crt0.c")),
 		NewFileSource(shellc),
 	); err != nil {
 		t.Fatal(err)

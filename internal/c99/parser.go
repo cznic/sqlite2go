@@ -2421,6 +2421,7 @@ yynewstate:
 				ExternalDeclarationList: yyS[yypt-0].node.(*ExternalDeclarationList).reverse(),
 				FileScope:               lx.scope,
 				FileSet:                 lx.fset,
+				Model:                   lx.model,
 			}
 		}
 	case 3:
@@ -4239,7 +4240,7 @@ yynewstate:
 		{
 			lx := yylex.(*lexer)
 			lx.scope.typedef = false
-			lx.currFn = yyS[yypt-0].node.(*Declarator).nm()
+			lx.currFn = yyS[yypt-0].node.(*Declarator).Name()
 		}
 	case 229:
 		{
