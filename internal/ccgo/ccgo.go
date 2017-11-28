@@ -11,20 +11,28 @@ package ccgo
 
 import (
 	"bytes"
+	"container/list"
 	"fmt"
 	"go/scanner"
 	"go/token"
 	"io"
+	"os"
 	"runtime/debug"
 	"sort"
 	"strings"
 
+	"github.com/cznic/ir"
 	"github.com/cznic/sqlite2go/internal/c99"
 	"github.com/cznic/xc"
 )
 
+const (
+	crt = "crt"
+)
+
 var (
-	dict = xc.Dict
+	dict        = xc.Dict
+	traceWrites bool
 
 	idStart = dict.SID("_start")
 )
@@ -43,39 +51,30 @@ func Package(w io.Writer, in []*c99.TranslationUnit) error {
 	return newGen(w, in).gen(false)
 }
 
-type symbol struct {
-	decl  *c99.Declarator
-	iunit int
-	unit  *c99.TranslationUnit
-}
-
-func (e *symbol) position(n c99.Node) token.Position { return e.unit.FileSet.PositionFor(n.Pos(), true) }
-
-type queued struct {
-	n   c99.Node
-	num int // num > 0: _<num>name
-}
-
 type gen struct {
 	errs      scanner.ErrorList
-	externals map[int]symbol
+	externals map[int]*c99.Declarator
 	fset      *token.FileSet
 	in        []*c99.TranslationUnit
-	internals []map[int]symbol
+	internals []map[int]*c99.Declarator
 	model     c99.Model
-	out       io.Writer
-	produced  map[symbol]struct{}
-	queue     []queued
 	num       int
+	nums      map[*c99.Declarator]int
+	out       io.Writer
+	produced  map[*c99.Declarator]struct{}
+	queue     list.List
+	units     map[*c99.Declarator]int
 }
 
 func newGen(out io.Writer, in []*c99.TranslationUnit) *gen {
 	return &gen{
-		externals: map[int]symbol{},
+		externals: map[int]*c99.Declarator{},
 		in:        in,
-		internals: make([]map[int]symbol, len(in)),
+		internals: make([]map[int]*c99.Declarator, len(in)),
+		nums:      map[*c99.Declarator]int{},
 		out:       out,
-		produced:  map[symbol]struct{}{},
+		produced:  map[*c99.Declarator]struct{}{},
+		units:     map[*c99.Declarator]int{},
 	}
 }
 
@@ -154,26 +153,69 @@ func printError(w io.Writer, pref string, err error) {
 	}
 }
 
-func (g *gen) produce(sym symbol) {
-	if _, ok := g.produced[sym]; ok {
-		return
-	}
+func (g *gen) produce(n *c99.Declarator) {
+	for {
+		func() {
+			if _, ok := g.produced[n]; ok {
+				return
+			}
 
-	g.produced[sym] = struct{}{}
-	switch sym.decl.Type.Kind() {
-	case c99.Function:
-		g.functionDefinition(sym)
-	default:
-		todo("")
+			g.produced[n] = struct{}{}
+			switch n.Type.Kind() {
+			case c99.Function:
+				g.functionDefinition(n)
+			default:
+				g.tld(n)
+			}
+		}()
+
+		if x := g.queue.Front(); x != nil {
+			n = x.Value.(*c99.Declarator)
+			g.queue.Remove(x)
+			continue
+		}
+
+		return
 	}
 }
 
-func (g *gen) functionDefinition(sym symbol) {
-	d := sym.decl
-	nm := d.Name()
-	g.w("func %s(", mangleIdent(nm, sym.decl.Linkage == c99.LinkageExternal))
-	names := d.ParameterNames()
-	t := sym.decl.Type.(*c99.FunctionType)
+func (g *gen) tld(n *c99.Declarator) {
+	if n.Initializer.Type == nil {
+		todo("%v", g.position(n))
+	}
+
+	switch x := n.Type.(type) {
+	case *c99.ArrayType:
+		if x.Size.Type == nil {
+			todo("")
+		}
+
+		switch y := n.Initializer.Value.(type) {
+		default:
+			todo("%v: %T", g.position(n), y)
+		}
+	case *c99.PointerType:
+		g.w("\nvar %s %s\n", g.mangleDeclarator(n), g.typ(n.Type))
+		if a := n.Initializer.Addr; a != nil {
+			if a.Offset != 0 {
+				todo("")
+				break
+			}
+
+			todo("", a)
+			break
+		}
+
+		todo("", g.position(n))
+	default:
+		todo("%v: %T", g.position(n), x)
+	}
+}
+
+func (g *gen) functionDefinition(n *c99.Declarator) {
+	g.w("\nfunc %s(", g.mangleDeclarator(n))
+	names := n.ParameterNames()
+	t := n.Type.(*c99.FunctionType)
 	if len(names) != len(t.Params) {
 		todo("")
 	}
@@ -187,20 +229,52 @@ func (g *gen) functionDefinition(sym symbol) {
 	if t.Variadic {
 		todo("")
 	}
-	g.w(") ")
+	g.w(")")
 	if t.Result.Kind() != c99.Void {
-		todo("")
+		g.w(" %s", g.typ(t.Result))
 	}
-	g.functionBody(d.FunctionDefinition.FunctionBody)
+	g.functionBody(n.FunctionDefinition.FunctionBody, n.FunctionDefinition.LocalVariables())
 	g.w("\n")
 }
 
-func (g *gen) functionBody(n *c99.FunctionBody) {
-	g.compoundStmt(n.CompoundStmt)
+func mangleIdent(nm int, exported bool) string {
+	switch {
+	case exported:
+		return fmt.Sprintf("X%s", dict.S(nm))
+	default:
+		return fmt.Sprintf("_%s", dict.S(nm))
+	}
 }
 
-func (g *gen) compoundStmt(n *c99.CompoundStmt) {
-	g.w("{\n")
+func (g *gen) mangleDeclarator(n *c99.Declarator) string {
+	nm := n.Name()
+	switch n.Linkage {
+	case c99.LinkageNone:
+		if num, ok := g.nums[n]; ok {
+			return fmt.Sprintf("_%d%s", num, dict.S(nm))
+		}
+
+		return mangleIdent(nm, false)
+	case c99.LinkageExternal:
+		return mangleIdent(nm, true)
+	default:
+		todo("%s %v", dict.S(nm), n.Linkage)
+	}
+	panic("unreachable")
+}
+
+func (g *gen) functionBody(n *c99.FunctionBody, vars []*c99.Declarator) {
+	g.compoundStmt(n.CompoundStmt, vars)
+}
+
+func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator) {
+	g.w(" {\n")
+	for _, v := range vars {
+		if v.ScopeNum != 0 {
+			g.nums[v] = v.ScopeNum
+		}
+		g.declarator(v, true)
+	}
 	g.blockItemListOpt(n.BlockItemListOpt)
 	g.w("}\n")
 }
@@ -222,11 +296,11 @@ func (g *gen) blockItemList(n *c99.BlockItemList) {
 func (g *gen) blockItem(n *c99.BlockItem) {
 	switch n.Case {
 	case c99.BlockItemDecl: // Declaration
-		g.declaration(n.Declaration, true)
+		g.declaration(n.Declaration)
 	case c99.BlockItemStmt: // Stmt
 		g.stmt(n.Stmt)
 	default:
-		todo("", g.position(n), n.Case)
+		todo("", g.position0(n), n.Case)
 	}
 }
 
@@ -240,8 +314,9 @@ func (g *gen) stmt(n *c99.Stmt) {
 	//TODO case c99.StmtLabeled: // LabeledStmt
 	//TODO case c99.StmtSelect: // SelectionStmt
 	default:
-		todo("", g.position(n), n.Case)
+		todo("", g.position0(n), n.Case)
 	}
+	g.w("\n")
 }
 
 func (g *gen) exprStmt(n *c99.ExprStmt) {
@@ -263,20 +338,20 @@ func (g *gen) exprList(n *c99.ExprList, void bool) {
 			g.voidExpr(n.Expr)
 		}
 	default:
-		todo("", g.position(n))
+		todo("", g.position0(n))
 	}
 }
 
 func (g *gen) voidExpr(n *c99.Expr) {
 	switch {
 	case n.Operand.Type.Kind() == c99.Void:
-		g.expr0(n)
+		g.expr(n)
 	default:
-		todo("", g.position(n))
+		todo("", g.position0(n))
 	}
 }
 
-func (g *gen) expr0(n *c99.Expr) {
+func (g *gen) expr(n *c99.Expr) {
 	switch n.Case {
 	//TODO case c99.ExprPreInc: // "++" Expr
 	//TODO case c99.ExprPreDec: // "--" Expr
@@ -284,9 +359,16 @@ func (g *gen) expr0(n *c99.Expr) {
 	//TODO case c99.ExprSizeofExpr: // "sizeof" Expr
 	//TODO case c99.ExprNot: // '!' Expr
 	//TODO case c99.ExprAddrof: // '&' Expr
-	//TODO case c99.ExprPExprList: // '(' ExprList ')'
+	case c99.ExprPExprList: // '(' ExprList ')'
+		if n.ExprList.ExprList == nil { // sinngle expression list
+			g.expr(n.ExprList.Expr)
+			break
+		}
+
+		todo("")
 	//TODO case c99.ExprCompLit: // '(' TypeName ')' '{' InitializerList CommaOpt '}'
-	//TODO case c99.ExprCast: // '(' TypeName ')' Expr
+	case c99.ExprCast: // '(' TypeName ')' Expr
+		g.cast(n)
 	//TODO case c99.ExprDeref: // '*' Expr
 	//TODO case c99.ExprUnaryPlus: // '+' Expr
 	//TODO case c99.ExprUnaryMinus: // '-' Expr
@@ -316,7 +398,19 @@ func (g *gen) expr0(n *c99.Expr) {
 	//TODO case c99.ExprMod: // Expr '%' Expr
 	//TODO case c99.ExprAnd: // Expr '&' Expr
 	case c99.ExprCall: // Expr '(' ArgumentExprListOpt ')'
-		todo("", g.position(n), n.Case, n.Expr.Operand)
+		g.expr(n.Expr)
+		g.w("(")
+		if o := n.ArgumentExprListOpt; o != nil {
+			first := true
+			for n := o.ArgumentExprList; n != nil; n = n.ArgumentExprList {
+				if !first {
+					g.w(", ")
+				}
+				first = false
+				g.expr(n.Expr)
+			}
+		}
+		g.w(")")
 	//TODO case c99.ExprMul: // Expr '*' Expr
 	//TODO case c99.ExprAdd: // Expr '+' Expr
 	//TODO case c99.ExprSub: // Expr '-' Expr
@@ -330,69 +424,172 @@ func (g *gen) expr0(n *c99.Expr) {
 	//TODO case c99.ExprXor: // Expr '^' Expr
 	//TODO case c99.ExprOr: // Expr '|' Expr
 	//TODO case c99.ExprFloat: // FLOATCONST
-	//TODO case c99.ExprIdent: // IDENTIFIER
+	case c99.ExprIdent: // IDENTIFIER
+		if a := n.Operand.Addr; a != nil {
+			if a.Linkage != ir.ExternalLinkage {
+				todo("")
+			}
+
+			if a.Offset != 0 {
+				todo("")
+			}
+
+			nm := int(a.NameID)
+			d, ok := g.externals[nm]
+			if !ok {
+				g.w(" %s.", crt)
+				g.w("%s", mangleIdent(nm, true))
+				break
+			}
+
+			g.w("%s", mangleIdent(nm, true))
+			g.enqueue(d)
+			break
+		}
+
+		nm := n.Token.Val
+		switch x := n.Scope.LookupIdent(nm).(type) {
+		case *c99.Declarator:
+			if x.IsFunctionParameter {
+				g.w("%s", mangleIdent(nm, false))
+				break
+			}
+
+			todo("%v: %T", g.position0(n), x)
+		default:
+			todo("%v: %T", g.position0(n), x)
+		}
 	//TODO case c99.ExprInt: // INTCONST
 	//TODO case c99.ExprLChar: // LONGCHARCONST
 	//TODO case c99.ExprLString: // LONGSTRINGLITERAL
 	//TODO case c99.ExprString: // STRINGLITERAL
 	default:
-		todo("", g.position(n), n.Case)
+		todo("", g.position0(n), n.Case)
 	}
 }
 
-// debug only
-func (g *gen) position(n c99.Node) token.Position { return g.fset.PositionFor(n.Pos(), true) }
+func (g *gen) enqueue(n *c99.Declarator) { g.queue.PushBack(n) }
 
-func (g *gen) declaration(n *c99.Declaration, inBlock bool) {
-	// DeclarationSpecifiers InitDeclaratorListOpt ';'
-	g.initDeclaratorListOpt(n.InitDeclaratorListOpt, inBlock)
-}
+func (g *gen) cast(n *c99.Expr) {
+	// (' TypeName ')' Expr
+	to := normalizeType(n.TypeName.Type)
+	from := normalizeType(n.Expr.Operand.Type)
+	if a := n.Expr.Operand.Addr; a != nil {
+		if a.Linkage != ir.ExternalLinkage {
+			todo("")
+		}
 
-func (g *gen) initDeclaratorListOpt(n *c99.InitDeclaratorListOpt, inBlock bool) {
-	if n == nil {
-		return
+		if a.Offset != 0 {
+			todo("")
+		}
+
+		d, ok := g.externals[int(a.NameID)]
+		if !ok {
+			todo("")
+		}
+
+		from = normalizeType(d.Type)
 	}
-
-	g.initDeclaratorList(n.InitDeclaratorList, inBlock)
-}
-
-func (g *gen) initDeclaratorList(n *c99.InitDeclaratorList, inBlock bool) {
-	for ; n != nil; n = n.InitDeclaratorList {
-		g.initDeclarator(n.InitDeclarator, inBlock)
-	}
-}
-
-func (g *gen) initDeclarator(n *c99.InitDeclarator, inBlock bool) {
-	switch n.Case {
-	//TODO case InitDeclaratorBase: // Declarator
-	case c99.InitDeclaratorInit: // Declarator '=' Initializer
-		g.declarator(n.Declarator, inBlock)
-	default:
-		todo("", g.position(n), n.Case)
-	}
-}
-
-func (g *gen) declarator(n *c99.Declarator, inBlock bool) {
-	if n.DeclarationSpecifier.IsStatic() && inBlock {
-		g.enqueueNumbered(n)
+	if to.Equal(from) {
+		g.expr(n.Expr)
 		return
 	}
 
 	todo("")
 }
 
-func (g *gen) enqueueNumbered(n c99.Node) {
-	g.num++
-	g.queue = append(g.queue, queued{n, g.num})
+func normalizeType(t c99.Type) c99.Type {
+	switch x := t.(type) {
+	case *c99.FunctionType:
+		return x
+	case *c99.PointerType:
+		switch y := x.Item.(type) {
+		case *c99.FunctionType:
+			return y
+		default:
+			todo("%T", y)
+		}
+	default:
+		todo("%T", x)
+	}
+	panic("unreachable")
 }
 
-func (g *gen) enqueue(n c99.Node) { g.queue = append(g.queue, queued{n, 0}) }
+// dbg only
+func (g *gen) position0(n c99.Node) token.Position { return g.in[0].FileSet.PositionFor(n.Pos(), true) }
+
+func (g *gen) position(n *c99.Declarator) token.Position {
+	return g.in[g.units[n]].FileSet.PositionFor(n.Pos(), true)
+}
+
+func (g *gen) declaration(n *c99.Declaration) {
+	// DeclarationSpecifiers InitDeclaratorListOpt ';'
+	g.initDeclaratorListOpt(n.InitDeclaratorListOpt)
+}
+
+func (g *gen) initDeclaratorListOpt(n *c99.InitDeclaratorListOpt) {
+	if n == nil {
+		return
+	}
+
+	g.initDeclaratorList(n.InitDeclaratorList)
+}
+
+func (g *gen) initDeclaratorList(n *c99.InitDeclaratorList) {
+	for ; n != nil; n = n.InitDeclaratorList {
+		g.initDeclarator(n.InitDeclarator)
+	}
+}
+
+func (g *gen) initDeclarator(n *c99.InitDeclarator) {
+	switch n.Case {
+	//TODO case InitDeclaratorBase: // Declarator
+	case c99.InitDeclaratorInit: // Declarator '=' Initializer
+		g.declarator(n.Declarator, false)
+	default:
+		todo("", g.position0(n), n.Case)
+	}
+}
+
+func (g *gen) declarator(n *c99.Declarator, vars bool) {
+	if !n.IsReferenced {
+		return
+	}
+
+	if n.ScopeNum >= 0 {
+		if n.DeclarationSpecifier.IsStatic() {
+			g.enqueueNumbered(n)
+			return
+		}
+
+		if !vars {
+			return
+		}
+
+		g.w("var %s\n", g.mangleDeclarator(n))
+		//TODO todo("%v: %s", g.position(n), dict.S(n.Name()))
+		return
+	}
+
+	todo("", g.position(n))
+}
+
+func (g *gen) enqueueNumbered(n *c99.Declarator) {
+	g.num++
+	g.nums[n] = g.num
+	g.queue.PushBack(n)
+}
 
 func (g *gen) typ(t c99.Type) string {
 	var buf bytes.Buffer
 	switch x := t.(type) {
 	case *c99.PointerType:
+		if x.Item.Kind() == c99.Void {
+			return "uintptr"
+		}
+		fmt.Fprintf(&buf, "/* ")
 		g.typ0(&buf, x)
+		buf.WriteString(" */ uintptr")
 		return buf.String()
 	case c99.TypeKind:
 		switch x {
@@ -414,8 +611,8 @@ func (g *gen) typ0(buf *bytes.Buffer, t c99.Type) {
 	for {
 		switch x := t.(type) {
 		case *c99.PointerType:
-			buf.WriteByte('*')
 			t = x.Item
+			buf.WriteByte('*')
 		case c99.TypeKind:
 			switch x {
 			case c99.Char:
@@ -430,18 +627,12 @@ func (g *gen) typ0(buf *bytes.Buffer, t c99.Type) {
 	}
 }
 
-func mangleIdent(nm int, exported bool) string {
-	switch {
-	case exported:
-		return fmt.Sprintf("X%s", dict.S(nm))
-	default:
-		return fmt.Sprintf("_%s", dict.S(nm))
-	}
-}
-
 func (g *gen) w(s string, args ...interface{}) {
 	if _, err := fmt.Fprintf(g.out, s, args...); err != nil {
 		panic(err)
+	}
+	if traceWrites {
+		fmt.Fprintf(os.Stderr, s, args...)
 	}
 }
 
@@ -466,32 +657,46 @@ var (
 )
 
 func (g *gen) collectSymbols() error {
-	for it, t := range g.in {
-		internal := map[int]symbol{}
-		g.internals[it] = internal
+	for unit, t := range g.in {
+		internal := map[int]*c99.Declarator{}
+		g.internals[unit] = internal
 		for nm, n := range t.FileScope.Idents {
 			switch x := n.(type) {
 			case *c99.Declarator:
-				if x.Type.Kind() != c99.Function || x.FunctionDefinition == nil { //TODO-
+				if x.Type.Kind() == c99.Function && x.FunctionDefinition == nil {
 					continue
 				}
 
 				switch x.Linkage {
 				case c99.LinkageExternal:
-					extern := symbol{decl: x, unit: t, iunit: it}
 					if ex, ok := g.externals[nm]; ok {
-						if ex.position(ex.decl) == extern.position(x) {
-							break
+						if g.position(ex) == g.position(x) {
+							break // ok
 						}
 
-						todo("%v: %s %v, %v: %v", ex.position(ex.decl), dict.S(nm), ex.decl.Type, extern.position(x), x.Type)
+						if ex.Type.Kind() == c99.Function {
+							todo("")
+						}
+
+						if !ex.Type.IsCompatible(x.Type) {
+							todo("", g.position(ex), ex.Type, g.position(x), x.Type)
+						}
+
+						if ex.Initializer.Type != nil && x.Initializer.Type != nil {
+							todo("")
+						}
+
+						break // ok
 					}
-					g.externals[nm] = extern
+
+					g.externals[nm] = x
+					g.units[x] = unit
 				case c99.LinkageInternal:
 					if _, ok := internal[nm]; ok {
 						todo("")
 					}
-					internal[nm] = symbol{decl: x, unit: t, iunit: it}
+					internal[nm] = x
+					g.units[x] = unit
 				case c99.LinkageNone:
 					if x.DeclarationSpecifier.IsTypedef() {
 						// nop ATM

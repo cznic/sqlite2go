@@ -2917,7 +2917,7 @@ yynewstate:
 				Token: yyS[yypt-0].Token,
 			}
 			yyVAL.node = lhs
-			lhs.scope = lx.scope
+			lhs.Scope = lx.scope
 		}
 	case 60:
 		{

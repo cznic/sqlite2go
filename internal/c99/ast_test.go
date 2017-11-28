@@ -150,7 +150,7 @@ func ExampleBlockItem_decl() {
 	// · · · · · · Case: 1,
 	// · · · · · · Expr: &c99.Expr{
 	// · · · · · · · Case: ExprString,
-	// · · · · · · · Token: STRINGLITERAL "a",
+	// · · · · · · · Token: STRINGLITERAL "\"a\"",
 	// · · · · · · },
 	// · · · · · },
 	// · · · · · Token: '=',
@@ -227,7 +227,7 @@ func ExampleBlockItemList_case0() {
 	// · · · · · · · Case: 1,
 	// · · · · · · · Expr: &c99.Expr{
 	// · · · · · · · · Case: ExprString,
-	// · · · · · · · · Token: STRINGLITERAL "a",
+	// · · · · · · · · Token: STRINGLITERAL "\"a\"",
 	// · · · · · · · },
 	// · · · · · · },
 	// · · · · · · Token: '=',
@@ -291,7 +291,7 @@ func ExampleBlockItemList_case1() {
 	// · · · · · · · Case: 1,
 	// · · · · · · · Expr: &c99.Expr{
 	// · · · · · · · · Case: ExprString,
-	// · · · · · · · · Token: STRINGLITERAL "a",
+	// · · · · · · · · Token: STRINGLITERAL "\"a\"",
 	// · · · · · · · },
 	// · · · · · · },
 	// · · · · · · Token: '=',
@@ -374,7 +374,7 @@ func ExampleBlockItemListOpt_case1() {
 	// · · · · · · · · Case: 1,
 	// · · · · · · · · Expr: &c99.Expr{
 	// · · · · · · · · · Case: ExprString,
-	// · · · · · · · · · Token: STRINGLITERAL "a",
+	// · · · · · · · · · Token: STRINGLITERAL "\"a\"",
 	// · · · · · · · · },
 	// · · · · · · · },
 	// · · · · · · · Token: '=',
@@ -467,7 +467,7 @@ func ExampleCompoundStmt_case0() {
 	// · · · · · · · · · Case: 1,
 	// · · · · · · · · · Expr: &c99.Expr{
 	// · · · · · · · · · · Case: ExprString,
-	// · · · · · · · · · · Token: STRINGLITERAL "a",
+	// · · · · · · · · · · Token: STRINGLITERAL "\"a\"",
 	// · · · · · · · · · },
 	// · · · · · · · · },
 	// · · · · · · · · Token: '=',
@@ -2129,7 +2129,7 @@ func ExampleExternalDeclaration_func() {
 	// · · · · · · · · · · · · Case: 1,
 	// · · · · · · · · · · · · Expr: &c99.Expr{
 	// · · · · · · · · · · · · · Case: ExprString,
-	// · · · · · · · · · · · · · Token: STRINGLITERAL "a",
+	// · · · · · · · · · · · · · Token: STRINGLITERAL "\"a\"",
 	// · · · · · · · · · · · · },
 	// · · · · · · · · · · · },
 	// · · · · · · · · · · · Token: '=',
@@ -2253,7 +2253,7 @@ func ExampleFunctionBody_case0() {
 	// · · · · · · · · · · Case: 1,
 	// · · · · · · · · · · Expr: &c99.Expr{
 	// · · · · · · · · · · · Case: ExprString,
-	// · · · · · · · · · · · Token: STRINGLITERAL "a",
+	// · · · · · · · · · · · Token: STRINGLITERAL "\"a\"",
 	// · · · · · · · · · · },
 	// · · · · · · · · · },
 	// · · · · · · · · · Token: '=',
@@ -2341,7 +2341,7 @@ func ExampleFunctionDefinition_case0() {
 	// · · · · · · · · · · · Case: 1,
 	// · · · · · · · · · · · Expr: &c99.Expr{
 	// · · · · · · · · · · · · Case: ExprString,
-	// · · · · · · · · · · · · Token: STRINGLITERAL "a",
+	// · · · · · · · · · · · · Token: STRINGLITERAL "\"a\"",
 	// · · · · · · · · · · · },
 	// · · · · · · · · · · },
 	// · · · · · · · · · · Token: '=',

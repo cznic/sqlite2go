@@ -308,7 +308,7 @@ func (l *lexer) declareFuncName() {
 		xc.Token{Char: lex.NewChar(pos, '[')},
 		xc.Token{Char: lex.NewChar(pos, ']')},
 		xc.Token{Char: lex.NewChar(pos, '=')},
-		xc.Token{Char: lex.NewChar(pos, STRINGLITERAL), Val: l.currFn},
+		xc.Token{Char: lex.NewChar(pos, STRINGLITERAL), Val: dict.SID(`"` + string(dict.S(l.currFn)) + `"`)},
 		xc.Token{Char: lex.NewChar(pos, ';')},
 	)
 }

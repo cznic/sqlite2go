@@ -265,7 +265,7 @@ import (
 
                         // [0]6.5.16
 			//yy:field	Operand	Operand
-			//yy:field	scope	*Scope	// case Ident
+			//yy:field	Scope	*Scope	// case Ident
 /*yy:case PreInc     */ Expr:
                         	"++" Expr
 /*yy:case PreDec     */ |	"--" Expr
@@ -320,7 +320,7 @@ import (
 /*yy:case Float      */ |	FLOATCONST
 /*yy:case Ident      */ |	IDENTIFIER %prec NOSEMI
 				{
-					lhs.scope = lx.scope
+					lhs.Scope = lx.scope
 				}
 /*yy:case Int        */ |	INTCONST
 /*yy:case LChar      */ |	LONGCHARCONST
@@ -515,13 +515,16 @@ import (
 			//yy:field	FunctionDefinition	*FunctionDefinition	// When the declarator defines a function.
 			//yy:field	Initializer		Operand			// Only when part of an InitDeclarator.
 			//yy:field	Linkage			Linkage			// Linkage of the declared name, [0]6.2.2.
+			//yy:field	ScopeNum		int			// Sequential scope number within function body.
 			//yy:field	StorageDuration		StorageDuration		// Storage duration of the declared name, [0]6.2.4.
 			//yy:field	Type			Type			// Declared type.
 			//yy:field	TypeQualifiers		[]*TypeQualifier	// From the PointerOpt production, if any.
 			//yy:field	field			int			// Declaration order#.
 			//yy:field	scope			*Scope			// Declare the name in scope.
+			//yy:field	vars			[]*Declarator
 			//yy:field	Embedded		bool			// [0]6.7.5-3: Not a full declarator.
-			//yy:field	isFnParamater		bool
+			//yy:field	IsFunctionParameter	bool
+			//yy:field	IsReferenced		bool
                         Declarator:
                         	PointerOpt DirectDeclarator
 				{

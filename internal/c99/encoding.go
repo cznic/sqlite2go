@@ -58,12 +58,12 @@ func init() {
 		(*ir.Int32Value)(nil),
 		(*ir.Int64Value)(nil),
 		(*ir.StringValue)(nil),
-		(*PointerType)(nil), //TODO- ?
 		DirectDeclaratorCase(0),
 		ExprCase(0),
 		Linkage(0),
 		StorageDuration(0),
 		TypeKind(0),
+		ir.Linkage(0),
 	} {
 		printHooks[reflect.TypeOf(v)] = func(f strutil.Formatter, v interface{}, prefix, suffix string) {
 			f.Format(prefix)

@@ -592,13 +592,16 @@ type Declarator struct {
 	FunctionDefinition   *FunctionDefinition   // When the declarator defines a function.
 	Initializer          Operand               // Only when part of an InitDeclarator.
 	Linkage              Linkage               // Linkage of the declared name, [0]6.2.2.
+	ScopeNum             int                   // Sequential scope number within function body.
 	StorageDuration      StorageDuration       // Storage duration of the declared name, [0]6.2.4.
 	Type                 Type                  // Declared type.
 	TypeQualifiers       []*TypeQualifier      // From the PointerOpt production, if any.
 	field                int                   // Declaration order#.
 	scope                *Scope                // Declare the name in scope.
-	Embedded             bool                  // [0]6.7.5-3: Not a full declarator.
-	isFnParamater        bool
+	vars                 []*Declarator
+	Embedded             bool // [0]6.7.5-3: Not a full declarator.
+	IsFunctionParameter  bool
+	IsReferenced         bool
 	DirectDeclarator     *DirectDeclarator
 	PointerOpt           *PointerOpt
 }
@@ -1405,7 +1408,7 @@ func (n ExprCase) String() string {
 //	|       STRINGLITERAL                                      // Case ExprString
 type Expr struct {
 	Operand             Operand
-	scope               *Scope // case Ident
+	Scope               *Scope // case Ident
 	ArgumentExprListOpt *ArgumentExprListOpt
 	Case                ExprCase
 	CommaOpt            *CommaOpt

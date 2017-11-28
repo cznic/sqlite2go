@@ -390,7 +390,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				}
 			}
 
-			return Operand{Type: Int}
+			n.Operand = Operand{Type: Int}
 		case
 			// one operand is a pointer and the other is a null
 			// pointer constant.
@@ -402,11 +402,12 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				}
 
 				if lhs.isNonzero() {
-					return Operand{Type: Int, Value: &ir.Int64Value{Value: 1}}
+					n.Operand = Operand{Type: Int, Value: &ir.Int64Value{Value: 1}}
+					break
 				}
 			}
 
-			return Operand{Type: Int}
+			n.Operand = Operand{Type: Int}
 		default:
 			panic(fmt.Errorf("%v: %v %v", ctx.position(n), lhs, rhs))
 		}
@@ -522,7 +523,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				n.Operand = Operand{Type: x.Fields[d.field].Type}
 				if a := op.Addr; a != nil {
 					layout := ctx.model.Layout(x)
-					n.Operand.Addr = &ir.AddressValue{NameID: a.NameID, Offset: a.Offset + uintptr(layout[d.field].Offset)}
+					n.Operand.Addr = &ir.AddressValue{Linkage: a.Linkage, NameID: a.NameID, Offset: a.Offset + uintptr(layout[d.field].Offset)}
 				}
 				break out
 			case *TaggedStructType:
@@ -577,12 +578,21 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			}
 
 			if lhs.Addr != nil {
-				if rhs.Value != nil || rhs.Addr != nil {
+				if rhs.Value != nil {
 					panic(ctx.position(n))
+				}
+
+				if rhs.Addr != nil {
+					var val int64
+					if lhs.Addr == rhs.Addr {
+						val = 1
+					}
+					n.Operand = Operand{Type: Int, Value: &ir.Int64Value{Value: val}}
+					break
 				}
 			}
 
-			return Operand{Type: Int}
+			n.Operand = Operand{Type: Int}
 		case
 			// one operand is a pointer and the other is a null
 			// pointer constant.
@@ -592,7 +602,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				panic(ctx.position(n))
 			}
 
-			return Operand{Type: Int}
+			n.Operand = Operand{Type: Int}
 		case
 			// one operand is a pointer and the other is a null
 			// pointer constant.
@@ -602,7 +612,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				panic(ctx.position(n))
 			}
 
-			return Operand{Type: Int}
+			n.Operand = Operand{Type: Int}
 		default:
 			panic(fmt.Errorf("%v: %v %v", ctx.position(n), lhs, rhs))
 		}
@@ -811,7 +821,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				panic("TODO")
 			}
 
-			return Operand{Type: ctx.ptrDiff()}
+			n.Operand = Operand{Type: ctx.ptrDiff()}
 		case
 			// the left operand is a pointer to an object type and
 			// the right operand has integer type.
@@ -844,7 +854,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				n.Operand = Operand{Type: x.Fields[d.field].Type}
 				if a := op.Addr; a != nil {
 					layout := ctx.model.Layout(x)
-					n.Operand.Addr = &ir.AddressValue{NameID: a.NameID, Offset: a.Offset + uintptr(layout[d.field].Offset)}
+					n.Operand.Addr = &ir.AddressValue{Linkage: a.Linkage, NameID: a.NameID, Offset: a.Offset + uintptr(layout[d.field].Offset)}
 				}
 				break out3
 			case *TaggedStructType:
@@ -964,7 +974,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		if a := op.Addr; a != nil {
 			switch {
 			case index.Value != nil:
-				n.Operand.Addr = &ir.AddressValue{NameID: a.NameID, Offset: a.Offset + uintptr(index.Value.(*ir.Int64Value).Value*ctx.model.Sizeof(n.Operand.Type))}
+				n.Operand.Addr = &ir.AddressValue{Linkage: a.Linkage, NameID: a.NameID, Offset: a.Offset + uintptr(index.Value.(*ir.Int64Value).Value*ctx.model.Sizeof(n.Operand.Type))}
 			default:
 				op.Addr = nil
 			}
@@ -1012,8 +1022,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 	case ExprIdent: // IDENTIFIER
 		// [0]6.5.1
 		nm := n.Token.Val
-		switch x := n.scope.LookupIdent(nm).(type) {
+		switch x := n.Scope.LookupIdent(nm).(type) {
 		case *Declarator:
+			x.IsReferenced = true
 			t := x.Type
 			t0 := t
 		more2:
@@ -1261,13 +1272,17 @@ func (n *ExternalDeclarationList) check(ctx *context) (err error) {
 func (n *ExternalDeclaration) check(ctx *context) {
 	switch n.Case {
 	case ExternalDeclarationDecl: // Declaration
-		n.Declaration.check(ctx)
+		n.Declaration.check(ctx, nil, nil)
 	case ExternalDeclarationFunc: // FunctionDefinition
 		n.FunctionDefinition.check(ctx)
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	}
 }
+
+// LocalVariables returns all local variables declared in a function in the
+// order of appearance. The result does not include function parameters.
+func (n *FunctionDefinition) LocalVariables() []*Declarator { return n.Declarator.vars }
 
 func (n *FunctionDefinition) check(ctx *context) {
 	// DeclarationSpecifiers Declarator DeclarationListOpt FunctionBody
@@ -1276,7 +1291,7 @@ func (n *FunctionDefinition) check(ctx *context) {
 	if len(ds.TypeSpecifiers) == 0 { // [0]6.7.2-2
 		panic("TODO")
 	}
-	n.Declarator.check(ctx, ds, ds.typ(), false)
+	n.Declarator.check(ctx, ds, ds.typ(), false, nil, nil)
 	if n.Declarator.Type.Kind() != Function {
 		panic("TODO")
 	}
@@ -1285,12 +1300,15 @@ func (n *FunctionDefinition) check(ctx *context) {
 
 func (n *FunctionBody) check(ctx *context, fn *Declarator) {
 	// CompoundStmt *CompoundStmt
-	n.CompoundStmt.check(ctx, fn, true, false, false)
+	seq := -1
+	n.CompoundStmt.check(ctx, fn, &seq, nil, false, false)
 }
 
-func (n *CompoundStmt) check(ctx *context, fn *Declarator, outermost bool, inSwitch, inLoop bool) {
+func (n *CompoundStmt) check(ctx *context, fn *Declarator, seq *int, sc []int, inSwitch, inLoop bool) {
 	// '{' BlockItemListOpt '}'
-	if outermost { // Pull function parameters into the outermost block scope.
+	*seq++
+	sc = append(sc, *seq)
+	if *seq == 0 { // Pull function parameters into the outermost block scope.
 		for _, v := range fn.fpScope(ctx).Idents {
 			d := v.(*Declarator)
 			nm := d.Name()
@@ -1301,7 +1319,7 @@ func (n *CompoundStmt) check(ctx *context, fn *Declarator, outermost bool, inSwi
 			n.scope.insertDeclarator(ctx, d)
 		}
 	}
-	n.BlockItemListOpt.check(ctx, fn, inSwitch, inLoop)
+	n.BlockItemListOpt.check(ctx, fn, seq, sc, inSwitch, inLoop)
 }
 
 func (n *Declarator) fpScope(ctx *context) *Scope { return n.DirectDeclarator.fpScope(ctx) }
@@ -1363,51 +1381,51 @@ func (n *DirectDeclarator) parameterNames() (r []int) {
 	}
 }
 
-func (n *BlockItemListOpt) check(ctx *context, fn *Declarator, inSwitch, inLoop bool) {
+func (n *BlockItemListOpt) check(ctx *context, fn *Declarator, seq *int, sc []int, inSwitch, inLoop bool) {
 	if n == nil {
 		return
 	}
 
-	n.BlockItemList.check(ctx, fn, inSwitch, inLoop)
+	n.BlockItemList.check(ctx, fn, seq, sc, inSwitch, inLoop)
 }
 
-func (n *BlockItemList) check(ctx *context, fn *Declarator, inSwitch, inLoop bool) {
+func (n *BlockItemList) check(ctx *context, fn *Declarator, seq *int, sc []int, inSwitch, inLoop bool) {
 	for ; n != nil; n = n.BlockItemList {
-		n.BlockItem.check(ctx, fn, inSwitch, inLoop)
+		n.BlockItem.check(ctx, fn, seq, sc, inSwitch, inLoop)
 	}
 }
 
-func (n *BlockItem) check(ctx *context, fn *Declarator, inSwitch, inLoop bool) {
+func (n *BlockItem) check(ctx *context, fn *Declarator, seq *int, sc []int, inSwitch, inLoop bool) {
 	switch n.Case {
 	case BlockItemDecl: // Declaration
-		n.Declaration.check(ctx)
+		n.Declaration.check(ctx, sc, fn)
 	case BlockItemStmt: // Stmt
-		n.Stmt.check(ctx, fn, inSwitch, inLoop)
+		n.Stmt.check(ctx, fn, seq, sc, inSwitch, inLoop)
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	}
 }
 
-func (n *Stmt) check(ctx *context, fn *Declarator, inSwitch, inLoop bool) {
+func (n *Stmt) check(ctx *context, fn *Declarator, seq *int, sc []int, inSwitch, inLoop bool) {
 	switch n.Case {
 	case StmtBlock: // CompoundStmt
-		n.CompoundStmt.check(ctx, fn, false, inSwitch, inLoop)
+		n.CompoundStmt.check(ctx, fn, seq, sc, inSwitch, inLoop)
 	case StmtExpr: // ExprStmt
 		n.ExprStmt.check(ctx)
 	case StmtIter: // IterationStmt
-		n.IterationStmt.check(ctx, fn, inSwitch, inLoop)
+		n.IterationStmt.check(ctx, fn, seq, sc, inSwitch, inLoop)
 	case StmtJump: // JumpStmt
 		n.JumpStmt.check(ctx, fn, inSwitch, inLoop)
 	case StmtLabeled: // LabeledStmt
-		n.LabeledStmt.check(ctx, fn, inSwitch, inLoop)
+		n.LabeledStmt.check(ctx, fn, seq, sc, inSwitch, inLoop)
 	case StmtSelect: // SelectionStmt
-		n.SelectionStmt.check(ctx, fn, inSwitch, inLoop)
+		n.SelectionStmt.check(ctx, fn, seq, sc, inSwitch, inLoop)
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	}
 }
 
-func (n *LabeledStmt) check(ctx *context, fn *Declarator, inSwitch, inLoop bool) {
+func (n *LabeledStmt) check(ctx *context, fn *Declarator, seq *int, sc []int, inSwitch, inLoop bool) {
 	//[0]6.8.1
 	switch n.Case {
 	case LabeledStmtSwitchCase: // "case" ConstExpr ':' Stmt
@@ -1418,47 +1436,47 @@ func (n *LabeledStmt) check(ctx *context, fn *Declarator, inSwitch, inLoop bool)
 		if !inSwitch {
 			panic("TODO")
 		}
-		n.Stmt.check(ctx, fn, inSwitch, inLoop)
+		n.Stmt.check(ctx, fn, seq, sc, inSwitch, inLoop)
 	case LabeledStmtDefault: // "default" ':' Stmt
 		if !inSwitch {
 			panic("TODO")
 		}
-		n.Stmt.check(ctx, fn, inSwitch, inLoop)
+		n.Stmt.check(ctx, fn, seq, sc, inSwitch, inLoop)
 	case LabeledStmtLabel: // IDENTIFIER ':' Stmt
-		n.Stmt.check(ctx, fn, inSwitch, inLoop)
+		n.Stmt.check(ctx, fn, seq, sc, inSwitch, inLoop)
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	}
 }
 
-func (n *SelectionStmt) check(ctx *context, fn *Declarator, inSwitch, inLoop bool) {
+func (n *SelectionStmt) check(ctx *context, fn *Declarator, seq *int, sc []int, inSwitch, inLoop bool) {
 	switch n.Case {
 	case SelectionStmtIfElse: // "if" '(' ExprList ')' Stmt "else" Stmt
 		if !n.ExprList.eval(ctx, true).isScalarType() {
 			panic("TODO")
 		}
-		n.Stmt.check(ctx, fn, inSwitch, inLoop)
-		n.Stmt2.check(ctx, fn, inSwitch, inLoop)
+		n.Stmt.check(ctx, fn, seq, sc, inSwitch, inLoop)
+		n.Stmt2.check(ctx, fn, seq, sc, inSwitch, inLoop)
 	case SelectionStmtIf: // "if" '(' ExprList ')' Stmt
 		if !n.ExprList.eval(ctx, true).isScalarType() {
 			panic("TODO")
 		}
-		n.Stmt.check(ctx, fn, inSwitch, inLoop)
+		n.Stmt.check(ctx, fn, seq, sc, inSwitch, inLoop)
 	case SelectionStmtSwitch: // "switch" '(' ExprList ')' Stmt
 		// [0]6.8.4.2
 		if !n.ExprList.eval(ctx, true).isIntegerType() {
 			panic("TODO")
 		}
-		n.Stmt.check(ctx, fn, true, inLoop)
+		n.Stmt.check(ctx, fn, seq, sc, true, inLoop)
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	}
 }
 
-func (n *IterationStmt) check(ctx *context, fn *Declarator, inSwitch, inLoop bool) {
+func (n *IterationStmt) check(ctx *context, fn *Declarator, seq *int, sc []int, inSwitch, inLoop bool) {
 	switch n.Case {
 	case IterationStmtDo: // "do" Stmt "while" '(' ExprList ')' ';'
-		n.Stmt.check(ctx, fn, inSwitch, true)
+		n.Stmt.check(ctx, fn, seq, sc, inSwitch, true)
 		if !n.ExprList.eval(ctx, true).isScalarType() {
 			panic(ctx.position)
 		}
@@ -1470,12 +1488,12 @@ func (n *IterationStmt) check(ctx *context, fn *Declarator, inSwitch, inLoop boo
 			panic(ctx.position(n))
 		}
 		n.ExprListOpt3.eval(ctx, true)
-		n.Stmt.check(ctx, fn, inSwitch, true)
+		n.Stmt.check(ctx, fn, seq, sc, inSwitch, true)
 	case IterationStmtWhile: // "while" '(' ExprList ')' Stmt
 		if e := n.ExprListOpt2.eval(ctx, true); e.Type != nil && !e.isScalarType() {
 			panic(ctx.position(n))
 		}
-		n.Stmt.check(ctx, fn, inSwitch, true)
+		n.Stmt.check(ctx, fn, seq, sc, inSwitch, true)
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	}
@@ -1542,53 +1560,52 @@ func (n *ExprList) check(ctx *context, arr2ptr bool) (r Operand) {
 	return r
 }
 
-func (n *Declaration) check(ctx *context) {
+func (n *Declaration) check(ctx *context, sc []int, fn *Declarator) {
 	// DeclarationSpecifiers InitDeclaratorListOpt ';'
 	ds := &DeclarationSpecifier{}
 	n.DeclarationSpecifiers.check(ctx, ds)
 	if len(ds.TypeSpecifiers) == 0 { // [0]6.7.2-2
 		panic("TODO")
 	}
-	n.InitDeclaratorListOpt.check(ctx, ds)
+	n.InitDeclaratorListOpt.check(ctx, ds, sc, fn)
 }
 
-func (n *InitDeclaratorListOpt) check(ctx *context, ds *DeclarationSpecifier) {
+func (n *InitDeclaratorListOpt) check(ctx *context, ds *DeclarationSpecifier, sc []int, fn *Declarator) {
 	if n == nil {
 		return
 	}
 
-	n.InitDeclaratorList.check(ctx, ds)
+	n.InitDeclaratorList.check(ctx, ds, sc, fn)
 }
 
-func (n *InitDeclaratorList) check(ctx *context, ds *DeclarationSpecifier) {
+func (n *InitDeclaratorList) check(ctx *context, ds *DeclarationSpecifier, sc []int, fn *Declarator) {
 	for ; n != nil; n = n.InitDeclaratorList {
-		n.InitDeclarator.check(ctx, ds)
+		n.InitDeclarator.check(ctx, ds, sc, fn)
 	}
 }
 
-func (n *InitDeclarator) check(ctx *context, ds *DeclarationSpecifier) {
+func (n *InitDeclarator) check(ctx *context, ds *DeclarationSpecifier, sc []int, fn *Declarator) {
 	switch n.Case {
 	case InitDeclaratorBase: // Declarator
-		n.Declarator.check(ctx, ds, ds.typ(), !ds.IsTypedef())
+		n.Declarator.check(ctx, ds, ds.typ(), !ds.IsTypedef(), sc, fn)
 	case InitDeclaratorInit: // Declarator '=' Initializer
 		if ds.IsTypedef() {
 			panic(ctx.position(n)) // error
 		}
-		n.Declarator.check(ctx, ds, ds.typ(), true)
+		n.Declarator.check(ctx, ds, ds.typ(), true, sc, fn)
 		n.Declarator.Initializer = n.Initializer.check(ctx, n.Declarator.Type)
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	}
 }
 
-func (n *Initializer) check(ctx *context, t Type) Operand {
+func (n *Initializer) check(ctx *context, t Type) (r Operand) {
 	// [0]6.7.8
 	switch n.Case {
 	case InitializerCompLit: // '{' InitializerList CommaOpt '}'
 		return n.InitializerList.check(ctx, t)
 	case InitializerExpr: // Expr
 		op := n.Expr.eval(ctx, true)
-		//dbg("", ctx.position(n.Expr))
 		if t.IsScalarType() {
 			// 11. The initializer for a scalar shall be a single
 			// expression, optionally enclosed in braces. The
@@ -1716,11 +1733,17 @@ func (n *InitializerList) check(ctx *context, t Type) Operand {
 	}
 }
 
-func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObject bool) Type {
+func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObject bool, sc []int, fn *Declarator) Type {
 	// PointerOpt DirectDeclarator
+	if l := len(sc); l != 0 {
+		n.ScopeNum = sc[l-1]
+	}
 	n.DeclarationSpecifier = ds
+	if fn != nil && !n.Embedded {
+		fn.vars = append(fn.vars, n)
+	}
 	t = n.PointerOpt.check(ctx, t, &n.TypeQualifiers)
-	n.Type = n.DirectDeclarator.check(ctx, t)
+	n.Type = n.DirectDeclarator.check(ctx, t, sc, fn)
 	isFunction := n.Type.Kind() == Function && !ds.IsTypedef()
 	if n.Embedded {
 		return n.Type
@@ -1761,7 +1784,7 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 		// scope identifier for an object declared without the
 		// storage-class specifier extern.
 		!(isObject || isFunction),
-		n.isFnParamater,
+		n.IsFunctionParameter,
 		n.scope != ctx.scope && !ds.isExtern():
 
 		n.Linkage = LinkageNone
@@ -1903,10 +1926,10 @@ func (n *TypeQualifierList) check(ctx *context, tq *[]*TypeQualifier) {
 	*tq = s
 }
 
-func (n *DirectDeclarator) check(ctx *context, t Type) Type {
+func (n *DirectDeclarator) check(ctx *context, t Type, sc []int, fn *Declarator) Type {
 	switch n.Case {
 	case DirectDeclaratorParen: // '(' Declarator ')'
-		return n.Declarator.check(ctx, nil, t, false)
+		return n.Declarator.check(ctx, nil, t, false, sc, fn)
 	case DirectDeclaratorIdentList: // DirectDeclarator '(' IdentifierListOpt ')'
 		var params []Type
 		var variadic bool
@@ -1919,7 +1942,7 @@ func (n *DirectDeclarator) check(ctx *context, t Type) Type {
 			Result:   t,
 			Variadic: variadic,
 		}
-		return n.DirectDeclarator.check(ctx, t)
+		return n.DirectDeclarator.check(ctx, t, sc, fn)
 	case DirectDeclaratorParamList: // DirectDeclarator '(' ParameterTypeList ')'
 		fp, variadic := n.ParameterTypeList.check(ctx)
 		t := &FunctionType{
@@ -1927,7 +1950,7 @@ func (n *DirectDeclarator) check(ctx *context, t Type) Type {
 			Result:   t,
 			Variadic: variadic,
 		}
-		return n.DirectDeclarator.check(ctx, t)
+		return n.DirectDeclarator.check(ctx, t, sc, fn)
 	//TODO case DirectDeclaratorArraySize: // DirectDeclarator '[' "static" TypeQualifierListOpt Expr ']'
 	//TODO case DirectDeclaratorArraySize2: // DirectDeclarator '[' TypeQualifierList "static" Expr ']'
 	//TODO case DirectDeclaratorArrayVar: // DirectDeclarator '[' TypeQualifierListOpt '*' ']'
@@ -1944,7 +1967,7 @@ func (n *DirectDeclarator) check(ctx *context, t Type) Type {
 			Size:           sz,
 			TypeQualifiers: tq,
 		}
-		return n.DirectDeclarator.check(ctx, t)
+		return n.DirectDeclarator.check(ctx, t, sc, fn)
 	case DirectDeclaratorIdent: // IDENTIFIER
 		return t
 	default:
@@ -2010,8 +2033,8 @@ func (n *ParameterDeclaration) check(ctx *context) Type {
 	case ParameterDeclarationDeclarator: // DeclarationSpecifiers Declarator
 		ds := &DeclarationSpecifier{}
 		n.DeclarationSpecifiers.check(ctx, ds)
-		n.Declarator.isFnParamater = true
-		return n.Declarator.check(ctx, ds, ds.typ(), true)
+		n.Declarator.IsFunctionParameter = true
+		return n.Declarator.check(ctx, ds, ds.typ(), true, nil, nil)
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	}
@@ -2257,7 +2280,7 @@ func (n *StructDeclaratorList) check(ctx *context, ds *DeclarationSpecifier, fie
 func (n *StructDeclarator) check(ctx *context, ds *DeclarationSpecifier, field int) Field {
 	switch n.Case {
 	case StructDeclaratorBase: // Declarator
-		f := Field{Type: n.Declarator.check(ctx, ds, ds.typ(), false), Name: n.Declarator.Name()}
+		f := Field{Type: n.Declarator.check(ctx, ds, ds.typ(), false, nil, nil), Name: n.Declarator.Name()}
 		n.Declarator.field = field
 		return f
 	case StructDeclaratorBits: // DeclaratorOpt ':' ConstExpr
@@ -2266,7 +2289,7 @@ func (n *StructDeclarator) check(ctx *context, ds *DeclarationSpecifier, field i
 		if n.DeclaratorOpt != nil {
 			d = n.DeclaratorOpt.Declarator
 			d.field = field
-			t = d.check(ctx, ds, t, false)
+			t = d.check(ctx, ds, t, false, nil, nil)
 		} else {
 			panic(ctx.position(n))
 		}

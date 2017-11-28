@@ -6,6 +6,7 @@ package ccgo
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"go/token"
 	"os"
@@ -53,6 +54,7 @@ func use(...interface{}) {}
 
 func init() {
 	use(caller, dbg, TODO) //TODOOK
+	flag.BoolVar(&traceWrites, "tw", false, "")
 }
 
 // ============================================================================
@@ -97,6 +99,4 @@ func Test(t *testing.T) {
 	if err = Command(&buf, []*c99.TranslationUnit{crt0, shell, sqlite}); err != nil {
 		t.Fatal(err)
 	}
-
-	t.Logf("\n%s", buf.Bytes())
 }

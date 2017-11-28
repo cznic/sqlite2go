@@ -369,7 +369,30 @@ func (t *ArrayType) IsArithmeticType() bool {
 }
 
 // IsCompatible implements Type.
-func (t *ArrayType) IsCompatible(u Type) bool { panic("TODO") }
+func (t *ArrayType) IsCompatible(u Type) bool {
+	// [0]6.7.5.2
+	//
+	// 6. For two array types to be compatible, both shall have compatible
+	// element types, and if both size specifiers are present, and are
+	// integer constant expressions, then both size specifiers shall have
+	// the same constant value. If the two array types are used in a
+	// context which requires them to be compatible, it is undefined
+	// behavior if the two size specifiers evaluate to unequal values.
+	switch x := u.(type) {
+	case *ArrayType:
+		if !t.Item.IsCompatible(x.Item) {
+			return false
+		}
+
+		if t.Size.Type != nil && x.Size.Type != nil {
+			panic("TODO")
+		}
+
+		return true
+	default:
+		panic(x)
+	}
+}
 
 // Equal implements Type.
 func (t *ArrayType) Equal(u Type) bool {
@@ -674,7 +697,12 @@ func (t *PointerType) Equal(u Type) bool {
 func (t *PointerType) Kind() TypeKind { return Ptr }
 
 // assign implements Type.
-func (t *PointerType) assign(ctx *context, op Operand) Operand {
+func (t *PointerType) assign(ctx *context, op Operand) (r Operand) {
+	//TODO- if op.Addr != nil {
+	//TODO- 	defer func() {
+	//TODO- 		println("type.go:703", op.String(), "->", r.String())
+	//TODO- 	}()
+	//TODO- }
 	// [0]6.5.16.1
 	switch {
 	// One of the following shall hold:

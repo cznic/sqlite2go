@@ -244,7 +244,7 @@ func (o Operand) and(ctx *context, p Operand) (r Operand) {
 	}
 }
 
-func (o Operand) convertTo(ctx *context, t Type) Operand {
+func (o Operand) convertTo(ctx *context, t Type) (r Operand) {
 	if o.Type.Equal(t) {
 		return o
 	}
@@ -280,7 +280,8 @@ func (o Operand) convertTo(ctx *context, t Type) Operand {
 	}
 
 	if o.Value == nil {
-		return Operand{Type: t}
+		o.Type = t
+		return o
 	}
 
 	if o.isIntegerType() {
