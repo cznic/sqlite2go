@@ -599,6 +599,7 @@ type Declarator struct {
 	field                int                   // Declaration order#.
 	scope                *Scope                // Declare the name in scope.
 	vars                 []*Declarator
+	AddressTaken         bool
 	Embedded             bool // [0]6.7.5-3: Not a full declarator.
 	IsFunctionParameter  bool
 	IsReferenced         bool
@@ -1408,7 +1409,7 @@ func (n ExprCase) String() string {
 //	|       STRINGLITERAL                                      // Case ExprString
 type Expr struct {
 	Operand             Operand
-	Scope               *Scope // case Ident
+	Scope               *Scope // case Addrof, Ident
 	ArgumentExprListOpt *ArgumentExprListOpt
 	Case                ExprCase
 	CommaOpt            *CommaOpt

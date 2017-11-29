@@ -153,7 +153,7 @@ func (d *DeclarationSpecifier) IsTypedef() bool {
 	return false
 }
 
-// IsTypedef return true when the storage class specifier "static" is present.
+// IsStatic return true when the storage class specifier "static" is present.
 func (d *DeclarationSpecifier) IsStatic() bool {
 	if d == nil {
 		return false
@@ -267,6 +267,16 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		// [0]6.5.3.2
 		op := n.Expr.eval(ctx, false) // [0]6.3.2.1-3
 		n.Operand = Operand{Type: &PointerType{op.Type}, Addr: op.Addr}
+		if op.Addr != nil {
+			switch m := n.Scope.LookupIdent(int(op.Addr.NameID)); x := m.(type) {
+			case nil:
+				// nop, eg.: #define offsetof(STRUCTURE,FIELD) ((int)((char*)&((STRUCTURE*)0)->FIELD))
+			case *Declarator:
+				x.AddressTaken = true
+			default:
+				panic(ctx.position(n))
+			}
+		}
 	case ExprPExprList: // '(' ExprList ')'
 		n.Operand = n.ExprList.eval(ctx, arr2ptr)
 	//TODO case ExprCompLit: // '(' TypeName ')' '{' InitializerList CommaOpt '}'

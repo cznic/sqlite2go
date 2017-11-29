@@ -2499,11 +2499,14 @@ yynewstate:
 		}
 	case 13:
 		{
-			yyVAL.node = &Expr{
+			lx := yylex.(*lexer)
+			lhs := &Expr{
 				Case:  ExprAddrof,
 				Token: yyS[yypt-1].Token,
 				Expr:  yyS[yypt-0].node.(*Expr),
 			}
+			yyVAL.node = lhs
+			lhs.Scope = lx.scope
 		}
 	case 14:
 		{

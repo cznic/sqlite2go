@@ -265,7 +265,7 @@ import (
 
                         // [0]6.5.16
 			//yy:field	Operand	Operand
-			//yy:field	Scope	*Scope	// case Ident
+			//yy:field	Scope	*Scope	// case Addrof, Ident
 /*yy:case PreInc     */ Expr:
                         	"++" Expr
 /*yy:case PreDec     */ |	"--" Expr
@@ -273,6 +273,9 @@ import (
 /*yy:case SizeofExpr */ |	"sizeof" Expr
 /*yy:case Not        */ |	'!' Expr
 /*yy:case Addrof     */ |	'&' Expr %prec UNARY
+				{
+					lhs.Scope = lx.scope
+				}
 /*yy:case PExprList  */ |	'(' ExprList ')'
 /*yy:case CompLit    */ |	'(' TypeName ')' '{' InitializerList CommaOpt '}'
 /*yy:case Cast       */ |	'(' TypeName ')' Expr %prec CAST
@@ -522,6 +525,7 @@ import (
 			//yy:field	field			int			// Declaration order#.
 			//yy:field	scope			*Scope			// Declare the name in scope.
 			//yy:field	vars			[]*Declarator
+			//yy:field	AddressTaken		bool
 			//yy:field	Embedded		bool			// [0]6.7.5-3: Not a full declarator.
 			//yy:field	IsFunctionParameter	bool
 			//yy:field	IsReferenced		bool

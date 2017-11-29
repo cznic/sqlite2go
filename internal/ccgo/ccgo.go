@@ -52,6 +52,7 @@ func Package(w io.Writer, in []*c99.TranslationUnit) error {
 }
 
 type gen struct {
+	bss       int64
 	errs      scanner.ErrorList
 	externals map[int]*c99.Declarator
 	fset      *token.FileSet
@@ -181,34 +182,67 @@ func (g *gen) produce(n *c99.Declarator) {
 
 func (g *gen) tld(n *c99.Declarator) {
 	if n.Initializer.Type == nil {
-		todo("%v", g.position(n))
+		switch x := n.Type.(type) {
+		case *c99.ArrayType:
+			if x.Size.Type == nil {
+				todo("")
+			}
+			g.w("\nvar %s /* %s */ = bss + %d\n", g.mangleDeclarator(n), g.typ(n.Type), g.allocBSS(n.Type))
+		default:
+			todo("%v: %T", g.position(n), x)
+		}
+		return
 	}
 
 	switch x := n.Type.(type) {
-	case *c99.ArrayType:
-		if x.Size.Type == nil {
-			todo("")
-		}
-
-		switch y := n.Initializer.Value.(type) {
-		default:
-			todo("%v: %T", g.position(n), y)
-		}
 	case *c99.PointerType:
-		g.w("\nvar %s %s\n", g.mangleDeclarator(n), g.typ(n.Type))
-		if a := n.Initializer.Addr; a != nil {
-			if a.Offset != 0 {
-				todo("")
-				break
-			}
+		if n.AddressTaken {
+			todo("")
+			break
+		}
 
-			todo("", a)
+		if d := g.findAddrValue(n.Initializer.Addr); d != nil {
+			switch x := d.Type.(type) {
+			case *c99.ArrayType:
+				g.w("\nvar %s /* %s */ = %s + %d\n", g.mangleDeclarator(n), g.typ(n.Type), g.mangleDeclarator(d), n.Initializer.Addr.Offset)
+				g.produce(d)
+			default:
+				todo("%v: %T", g.position(n), x)
+			}
 			break
 		}
 
 		todo("", g.position(n))
 	default:
 		todo("%v: %T", g.position(n), x)
+	}
+}
+
+func (g *gen) allocBSS(t c99.Type) int64 {
+	g.bss = roundup(g.bss, int64(g.model.Alignof(t)))
+	r := g.bss
+	g.bss += g.model.Sizeof(t)
+	return r
+}
+
+func roundup(n, to int64) int64 {
+	if r := n % to; r != 0 {
+		return n + to - r
+	}
+
+	return n
+}
+
+func (g *gen) findAddrValue(a *ir.AddressValue) *c99.Declarator {
+	if a == nil {
+		return nil
+	}
+
+	switch a.Linkage {
+	case ir.ExternalLinkage:
+		return g.externals[int(a.NameID)]
+	default:
+		panic(a.Linkage)
 	}
 }
 
@@ -343,11 +377,17 @@ func (g *gen) exprList(n *c99.ExprList, void bool) {
 }
 
 func (g *gen) voidExpr(n *c99.Expr) {
-	switch {
-	case n.Operand.Type.Kind() == c99.Void:
-		g.expr(n)
+	switch x := n.Operand.Type.(type) {
+	case c99.TypeKind:
+		switch x {
+		case c99.Void:
+			g.expr(n)
+		default:
+			g.w("_ = ")
+			g.expr(n)
+		}
 	default:
-		todo("", g.position0(n))
+		todo("%v: %T", g.position0(n), x)
 	}
 }
 
@@ -459,7 +499,8 @@ func (g *gen) expr(n *c99.Expr) {
 		default:
 			todo("%v: %T", g.position0(n), x)
 		}
-	//TODO case c99.ExprInt: // INTCONST
+	case c99.ExprInt: // INTCONST
+		g.w(" %s(%d)", g.typ(n.Operand.Type), n.Operand.Value.(*ir.Int64Value).Value)
 	//TODO case c99.ExprLChar: // LONGCHARCONST
 	//TODO case c99.ExprLString: // LONGSTRINGLITERAL
 	//TODO case c99.ExprString: // STRINGLITERAL
@@ -543,15 +584,17 @@ func (g *gen) initDeclaratorList(n *c99.InitDeclaratorList) {
 
 func (g *gen) initDeclarator(n *c99.InitDeclarator) {
 	switch n.Case {
-	//TODO case InitDeclaratorBase: // Declarator
-	case c99.InitDeclaratorInit: // Declarator '=' Initializer
+	case
+		c99.InitDeclaratorBase, // Declarator
+		c99.InitDeclaratorInit: // Declarator '=' Initializer
+
 		g.declarator(n.Declarator, false)
 	default:
 		todo("", g.position0(n), n.Case)
 	}
 }
 
-func (g *gen) declarator(n *c99.Declarator, vars bool) {
+func (g *gen) declarator(n *c99.Declarator, declaringLocalVariables bool) {
 	if !n.IsReferenced {
 		return
 	}
@@ -562,8 +605,12 @@ func (g *gen) declarator(n *c99.Declarator, vars bool) {
 			return
 		}
 
-		if !vars {
+		if !declaringLocalVariables {
 			return
+		}
+
+		if n.AddressTaken {
+			todo("%v: %s", g.position(n), dict.S(n.Name()))
 		}
 
 		g.w("var %s\n", g.mangleDeclarator(n))
@@ -583,6 +630,9 @@ func (g *gen) enqueueNumbered(n *c99.Declarator) {
 func (g *gen) typ(t c99.Type) string {
 	var buf bytes.Buffer
 	switch x := t.(type) {
+	case *c99.ArrayType:
+		g.typ0(&buf, x)
+		return buf.String()
 	case *c99.PointerType:
 		if x.Item.Kind() == c99.Void {
 			return "uintptr"
@@ -610,6 +660,16 @@ func (g *gen) typ(t c99.Type) string {
 func (g *gen) typ0(buf *bytes.Buffer, t c99.Type) {
 	for {
 		switch x := t.(type) {
+		case *c99.ArrayType:
+			if x.Size.Type == nil {
+				todo("")
+			}
+			fmt.Fprintf(buf, "[%d]", x.Size.Value.(*ir.Int64Value).Value)
+			t = x.Item
+		case *c99.NamedType:
+			//TODO produce the defintion
+			fmt.Fprintf(buf, "T%s", dict.S(x.Name))
+			return
 		case *c99.PointerType:
 			t = x.Item
 			buf.WriteByte('*')
@@ -622,7 +682,7 @@ func (g *gen) typ0(buf *bytes.Buffer, t c99.Type) {
 				todo("", x)
 			}
 		default:
-			todo("%T", x)
+			todo("%T(%v)", x, x)
 		}
 	}
 }
