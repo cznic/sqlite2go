@@ -255,12 +255,12 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 	case ExprNot: // '!' Expr
 		n.Operand = Operand{Type: Int}
 		a := n.Expr.eval(ctx, arr2ptr)
-		if a.isZero() {
+		if a.IsZero() {
 			n.Operand.Value = &ir.Int64Value{Value: 1}
 			break
 		}
 
-		if a.isNonzero() {
+		if a.IsNonzero() {
 			n.Operand.Value = &ir.Int64Value{Value: 0}
 		}
 	case ExprAddrof: // '&' Expr
@@ -394,7 +394,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				panic(ctx.position(n))
 			}
 
-			if lhs.Addr != nil {
+			if lhs.Addr != nil && lhs.Addr.Linkage != 0 {
 				if rhs.Value != nil || rhs.Addr != nil {
 					panic(ctx.position(n))
 				}
@@ -404,14 +404,14 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		case
 			// one operand is a pointer and the other is a null
 			// pointer constant.
-			lhs.isPointerType() && rhs.isIntegerType() && rhs.isZero():
+			lhs.isPointerType() && rhs.isIntegerType() && rhs.IsZero():
 
 			if lhs.Value != nil {
-				if lhs.isZero() {
+				if lhs.IsZero() {
 					panic(fmt.Errorf("%v: %v %v", ctx.position(n), lhs, rhs))
 				}
 
-				if lhs.isNonzero() {
+				if lhs.IsNonzero() {
 					n.Operand = Operand{Type: Int, Value: &ir.Int64Value{Value: 1}}
 					break
 				}
@@ -428,18 +428,18 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 	case ExprLAnd: // Expr "&&" Expr
 		n.Operand = Operand{Type: Int}
 		a := n.Expr.eval(ctx, arr2ptr)
-		if a.isZero() {
+		if a.IsZero() {
 			n.Operand.Value = &ir.Int64Value{Value: 0}
 			break
 		}
 
 		b := n.Expr2.eval(ctx, arr2ptr)
-		if b.isZero() {
+		if b.IsZero() {
 			n.Operand.Value = &ir.Int64Value{Value: 0}
 			break
 		}
 
-		if a.isNonzero() && b.isNonzero() {
+		if a.IsNonzero() && b.IsNonzero() {
 			n.Operand.Value = &ir.Int64Value{Value: 1}
 		}
 	case ExprAndAssign: // Expr "&=" Expr
@@ -549,7 +549,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				}
 				d := d0.(*Declarator)
 				n.Operand = Operand{Type: x.Fields[d.field].Type}
-				if a := op.Addr; a != nil {
+				if a := op.Addr; a != nil && a.Linkage != 0 {
 					panic("TODO")
 				}
 				break out
@@ -587,7 +587,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				panic(ctx.position(n))
 			}
 
-			if lhs.Addr != nil {
+			if lhs.Addr != nil && lhs.Addr.Linkage != 0 {
 				if rhs.Value != nil {
 					panic(ctx.position(n))
 				}
@@ -606,7 +606,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		case
 			// one operand is a pointer and the other is a null
 			// pointer constant.
-			lhs.isPointerType() && rhs.isIntegerType() && rhs.isZero():
+			lhs.isPointerType() && rhs.isIntegerType() && rhs.IsZero():
 
 			if lhs.Value != nil {
 				panic(ctx.position(n))
@@ -616,7 +616,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		case
 			// one operand is a pointer and the other is a null
 			// pointer constant.
-			lhs.isIntegerType() && lhs.isZero() && rhs.isPointerType():
+			lhs.isIntegerType() && lhs.IsZero() && rhs.isPointerType():
 
 			if rhs.Value != nil {
 				panic(ctx.position(n))
@@ -642,18 +642,18 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 	case ExprLOr: // Expr "||" Expr
 		n.Operand = Operand{Type: Int}
 		a := n.Expr.eval(ctx, arr2ptr)
-		if a.isNonzero() {
+		if a.IsNonzero() {
 			n.Operand.Value = &ir.Int64Value{Value: 1}
 			break
 		}
 
 		b := n.Expr2.eval(ctx, arr2ptr)
-		if b.isNonzero() {
+		if b.IsNonzero() {
 			n.Operand.Value = &ir.Int64Value{Value: 1}
 			break
 		}
 
-		if a.isZero() && b.isZero() {
+		if a.IsZero() && b.IsZero() {
 			n.Operand.Value = &ir.Int64Value{Value: 0}
 		}
 	case ExprMod: // Expr '%' Expr
@@ -799,12 +799,12 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			//dbg("", ctx.position(n))
 			n.Operand = lhs.add(ctx, rhs)
 		case lhs.isPointerType() && rhs.isIntegerType():
-			if lhs.Addr != nil {
+			if lhs.Addr != nil && lhs.Addr.Linkage != 0 {
 				panic(ctx.position(n))
 			}
 			n.Operand = lhs
 		case lhs.isIntegerType() && rhs.isPointerType():
-			if rhs.Addr != nil {
+			if rhs.Addr != nil && rhs.Addr.Linkage != 0 {
 				panic(ctx.position(n))
 			}
 			n.Operand = rhs
@@ -827,7 +827,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			// unqualified versions of compatible object types;
 			lhs.isPointerType() && rhs.isPointerType() && lhs.Type.IsCompatible(rhs.Type):
 
-			if lhs.Addr != nil && rhs.Addr != nil {
+			if lhs.Addr != nil && lhs.Addr.Linkage != 0 && rhs.Addr != nil && rhs.Addr.Linkage != 0 {
 				panic("TODO")
 			}
 
@@ -837,7 +837,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			// the right operand has integer type.
 			lhs.isPointerType() && rhs.isIntegerType():
 
-			if lhs.Addr != nil {
+			if lhs.Addr != nil && lhs.Addr.Linkage != 0 {
 				panic("TODO")
 			}
 
@@ -933,19 +933,19 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			n.Operand = Operand{Type: a.Type}
 		case
 			// one operand is a pointer and the other is a null pointer constant
-			a.isIntegerType() && a.isZero() && b.isPointerType():
+			a.isIntegerType() && a.IsZero() && b.isPointerType():
 
 			n.Operand = Operand{Type: b.Type}
-			if cond.isNonzero() {
+			if cond.IsNonzero() {
 				n.Operand.Addr = Null
 				done = true
 			}
 		case
 			// one operand is a pointer and the other is a null pointer constant
-			a.isPointerType() && b.isIntegerType() && b.isZero():
+			a.isPointerType() && b.isIntegerType() && b.IsZero():
 
 			n.Operand = Operand{Type: a.Type}
-			if cond.isZero() {
+			if cond.IsZero() {
 				n.Operand.Addr = Null
 				done = true
 			}
@@ -958,9 +958,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		}
 
 		switch {
-		case cond.isNonzero():
+		case cond.IsNonzero():
 			n.Operand = a
-		case cond.isZero():
+		case cond.IsZero():
 			n.Operand = b
 		}
 	case ExprIndex: // Expr '[' ExprList ']'
@@ -1078,9 +1078,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				//dbg("", ctx.position(n))
 				panic(y)
 			}
-			if x.StorageDuration == StorageDurationStatic {
-				n.Operand.Addr = &ir.AddressValue{Linkage: ir.Linkage(x.Linkage), NameID: ir.NameID(nm)}
-			}
+			n.Operand.Addr = &ir.AddressValue{Linkage: ir.Linkage(x.Linkage), NameID: ir.NameID(nm)}
 		case *EnumerationConstant:
 			n.Operand = x.Operand
 		default:
@@ -1603,7 +1601,8 @@ func (n *InitDeclarator) check(ctx *context, ds *DeclarationSpecifier, sc []int,
 			panic(ctx.position(n)) // error
 		}
 		n.Declarator.check(ctx, ds, ds.typ(), true, sc, fn)
-		n.Declarator.Initializer = n.Initializer.check(ctx, n.Declarator.Type)
+		n.Initializer.check(ctx, n.Declarator.Type)
+		n.Declarator.Initializer = n.Initializer
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	}
@@ -1624,7 +1623,8 @@ func (n *Initializer) check(ctx *context, t Type) (r Operand) {
 			// constraints and conversions as for simple assignment
 			// apply, taking the type of the scalar to be the
 			// unqualified version of its declared type.
-			return t.assign(ctx, op)
+			n.Expr.Operand = t.assign(ctx, op)
+			return n.Expr.Operand
 		}
 
 		if t.Kind() == Struct || t.Kind() == Union {
@@ -1675,6 +1675,7 @@ func (n *InitializerList) check(ctx *context, t Type) Operand {
 	// |       InitializerList ',' Initializer              // Case 3
 	// |       InitializerList ',' Designation Initializer  // Case 4
 	r := &ir.CompositeValue{}
+	n.Operand = Operand{Type: t, Value: r}
 	n0 := n
 	for {
 		switch x := t.(type) {

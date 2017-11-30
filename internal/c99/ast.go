@@ -590,7 +590,7 @@ type Declarator struct {
 	Bits                 int                   // StructDeclarator: bit width when a bit field.
 	DeclarationSpecifier *DeclarationSpecifier // Nil for embedded declarators.
 	FunctionDefinition   *FunctionDefinition   // When the declarator defines a function.
-	Initializer          Operand               // Only when part of an InitDeclarator.
+	Initializer          *Initializer          // Only when part of an InitDeclarator.
 	Linkage              Linkage               // Linkage of the declared name, [0]6.2.2.
 	ScopeNum             int                   // Sequential scope number within function body.
 	StorageDuration      StorageDuration       // Storage duration of the declared name, [0]6.2.4.
@@ -2055,6 +2055,7 @@ func (n *Initializer) Pos() token.Pos {
 //	|       InitializerList ',' Initializer              // Case 3
 //	|       InitializerList ',' Designation Initializer  // Case 4
 type InitializerList struct {
+	Operand         Operand
 	Case            int
 	Designation     *Designation
 	Initializer     *Initializer

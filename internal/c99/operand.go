@@ -291,7 +291,7 @@ func (o Operand) convertTo(ctx *context, t Type) (r Operand) {
 
 		if t.IsPointerType() {
 			// [0]6.3.2.3
-			if o.isZero() {
+			if o.IsZero() {
 				// 3. An integer constant expression with the
 				// value 0, or such an expression cast to type
 				// void *, is called a null pointer constant.
@@ -354,7 +354,7 @@ func (o Operand) cpl(ctx *context) Operand {
 
 func (o Operand) div(ctx *context, p Operand) (r Operand) {
 	o, p = usualArithmeticConversions(ctx, o, p)
-	if p.isZero() {
+	if p.IsZero() {
 		panic("TODO")
 	}
 	if o.Value == nil || p.Value == nil {
@@ -485,7 +485,8 @@ func (o Operand) integerPromotion(ctx *context) Operand {
 	}
 }
 
-func (o Operand) isNonzero() bool {
+// IsNonzero returns true when the value of o is known to be non-zero.
+func (o Operand) IsNonzero() bool {
 	switch x := o.Value.(type) {
 	case nil:
 		return false
@@ -496,7 +497,8 @@ func (o Operand) isNonzero() bool {
 	}
 }
 
-func (o Operand) isZero() bool {
+// IsZero returns true when the value of o is known to be zero.
+func (o Operand) IsZero() bool {
 	switch x := o.Value.(type) {
 	case nil:
 		return false
@@ -583,7 +585,7 @@ func (o Operand) lt(ctx *context, p Operand) (r Operand) {
 
 func (o Operand) mod(ctx *context, p Operand) (r Operand) {
 	o, p = usualArithmeticConversions(ctx, o, p)
-	if p.isZero() {
+	if p.IsZero() {
 		panic("TODO")
 	}
 	if o.Value == nil || p.Value == nil {

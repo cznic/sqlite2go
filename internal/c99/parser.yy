@@ -516,7 +516,7 @@ import (
 			//yy:field	Bits			int			// StructDeclarator: bit width when a bit field.
 			//yy:field	DeclarationSpecifier	*DeclarationSpecifier	// Nil for embedded declarators.
 			//yy:field	FunctionDefinition	*FunctionDefinition	// When the declarator defines a function.
-			//yy:field	Initializer		Operand			// Only when part of an InitDeclarator.
+			//yy:field	Initializer		*Initializer		// Only when part of an InitDeclarator.
 			//yy:field	Linkage			Linkage			// Linkage of the declared name, [0]6.2.2.
 			//yy:field	ScopeNum		int			// Sequential scope number within function body.
 			//yy:field	StorageDuration		StorageDuration		// Storage duration of the declared name, [0]6.2.4.
@@ -666,6 +666,7 @@ import (
 /*yy:case Expr       */ |	Expr
 
                         // [0]6.7.8
+			//yy:field	Operand	Operand
                         InitializerList:
                         	/* empty */ {}
                         |	Initializer
