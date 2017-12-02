@@ -21,6 +21,7 @@ var (
 	_ Type = (*StructType)(nil)
 	_ Type = (*TaggedStructType)(nil)
 	_ Type = (*TaggedUnionType)(nil)
+	_ Type = (*TaggedEnumType)(nil)
 	_ Type = (*UnionType)(nil)
 	_ Type = (*undefinedType)(nil)
 	_ Type = TypeKind(0)
@@ -114,6 +115,7 @@ func (t TypeKind) IsPointerType() bool {
 	case
 		Char,
 		Double,
+		Float,
 		Int,
 		LongDouble,
 		LongLong,
@@ -149,6 +151,7 @@ func (t TypeKind) IsIntegerType() bool {
 		return true
 	case
 		Double,
+		Float,
 		LongDouble:
 
 		return false
@@ -163,6 +166,7 @@ func (t TypeKind) IsScalarType() bool {
 	case
 		Char,
 		Double,
+		Float,
 		Int,
 		Long,
 		LongDouble,
@@ -261,6 +265,7 @@ func (t TypeKind) Equal(u Type) bool {
 		case
 			Char,
 			Double,
+			Float,
 			Int,
 			Long,
 			LongDouble,
@@ -698,11 +703,6 @@ func (t *PointerType) Kind() TypeKind { return Ptr }
 
 // assign implements Type.
 func (t *PointerType) assign(ctx *context, op Operand) (r Operand) {
-	//TODO- if op.Addr != nil {
-	//TODO- 	defer func() {
-	//TODO- 		println("type.go:703", op.String(), "->", r.String())
-	//TODO- 	}()
-	//TODO- }
 	// [0]6.5.16.1
 	switch {
 	// One of the following shall hold:
@@ -855,6 +855,72 @@ func (t *StructType) String() string {
 	}
 	buf.WriteByte('}')
 	return buf.String()
+}
+
+// TaggedEnumType represents an enum type described by a tag name.
+type TaggedEnumType struct {
+	Tag   int
+	Type  Type
+	scope *Scope
+}
+
+// Equal implements Type.
+func (t *TaggedEnumType) Equal(u Type) bool { panic("TODO") }
+
+// IsArithmeticType implements Type.
+func (t *TaggedEnumType) IsArithmeticType() bool { panic("TODO") }
+
+// IsCompatible implements Type.
+func (t *TaggedEnumType) IsCompatible(u Type) bool { panic("TODO") }
+
+// IsIntegerType implements Type.
+func (t *TaggedEnumType) IsIntegerType() bool { return true }
+
+// IsPointerType implements Type.
+func (t *TaggedEnumType) IsPointerType() bool { panic("TODO") }
+
+// IsScalarType implements Type.
+func (t *TaggedEnumType) IsScalarType() bool { panic("TODO") }
+
+// IsVoidPointerType implements Type.
+func (t *TaggedEnumType) IsVoidPointerType() bool { panic("TODO") }
+
+// Kind implements Type.
+func (t *TaggedEnumType) Kind() TypeKind { return Int }
+
+func (t *TaggedEnumType) String() string { return fmt.Sprintf("enum %s", dict.S(t.Tag)) }
+
+// assign implements Type.
+func (t *TaggedEnumType) assign(ctx *context, op Operand) Operand {
+	switch x := op.Type.(type) {
+	case TypeKind:
+		switch x {
+		case
+			Char,
+			Int:
+
+			op.Type = t
+			return op
+		default:
+			panic(x)
+		}
+	default:
+		panic(fmt.Errorf("%T", x))
+	}
+}
+
+func (t *TaggedEnumType) getType() Type {
+	if t.Type != nil {
+		return t.Type
+	}
+
+	s := t.scope.lookupEnumTag(t.Tag)
+	if s == nil {
+		return t
+	}
+
+	t.Type = s.typ
+	return t.Type
 }
 
 // TaggedStructType represents a struct type described by a tag name.
@@ -1111,6 +1177,7 @@ func AdjustedParameterType(t Type) Type {
 			case
 				Char,
 				Double,
+				Float,
 				Int,
 				Long,
 				LongLong,

@@ -55,11 +55,14 @@ type TranslationUnit struct {
 
 // Tweaks amend the behavior of the parser.
 type Tweaks struct {
-	cppExpandTest               bool // Fake includes
 	EnableAnonymousStructFields bool // struct{int;}
+	EnableBinaryLiterals        bool // 0b101010 == 42
 	EnableEmptyStructs          bool // struct{}
+	EnableImplicitDeclarations  bool // eg. using exit(1) w/o #include <stdlib.h>
+	EnableReturnExprInVoidFunc  bool // void f() { return 1; }
 	EnableTrigraphs             bool
 	InjectFinalNL               bool // Specs want the source to always end in a newline.
+	cppExpandTest               bool // Fake includes
 }
 
 // Translate preprocesses, parses and type checks a translation unit using fset
@@ -193,7 +196,7 @@ func (c *context) popScope() (old, new *Scope) {
 func (c *context) ptrDiff() Type {
 	d, ok := c.scope.LookupIdent(idPtrdiffT).(*Declarator)
 	if !ok {
-		panic("TODO")
+		return LongLong
 	}
 
 	if !d.DeclarationSpecifier.IsTypedef() {
@@ -316,9 +319,9 @@ func (s *StringSource) ReadCloser() (io.ReadCloser, error) {
 
 // Scope binds names to declarations.
 type Scope struct {
-	EnumTags   map[int]Type         // name ID: Type
-	Idents     map[int]Node         // name ID: Node in {*Declarator, EnumerationConstant}
-	Labels     map[int]*LabeledStmt // name ID: label
+	EnumTags   map[int]*EnumSpecifier // name ID: *EnumSpecifier
+	Idents     map[int]Node           // name ID: Node in {*Declarator, EnumerationConstant}
+	Labels     map[int]*LabeledStmt   // name ID: label
 	Parent     *Scope
 	StructTags map[int]*StructOrUnionSpecifier // name ID: *StructOrUnionSpecifier
 
@@ -343,22 +346,22 @@ func (s *Scope) insertLabel(ctx *context, st *LabeledStmt) {
 	s.Labels[st.Token.Val] = st
 }
 
-func (s *Scope) insertEnumTag(ctx *context, nm int, t Type) {
+func (s *Scope) insertEnumTag(ctx *context, nm int, es *EnumSpecifier) {
 	for s.Parent != nil {
 		s = s.Parent
 	}
 	if s.EnumTags == nil {
-		s.EnumTags = map[int]Type{}
+		s.EnumTags = map[int]*EnumSpecifier{}
 	}
 	if ex := s.EnumTags[nm]; ex != nil {
-		if ex == t {
+		if ex == es {
 			return
 		}
 
 		panic("TODO")
 	}
 
-	s.EnumTags[nm] = t
+	s.EnumTags[nm] = es
 }
 
 func (s *Scope) insertDeclarator(ctx *context, d *Declarator) {
@@ -444,6 +447,17 @@ func (s *Scope) LookupLabel(nm int) Node {
 				panic("internal error")
 			}
 
+			return n
+		}
+
+		s = s.Parent
+	}
+	return nil
+}
+
+func (s *Scope) lookupEnumTag(nm int) *EnumSpecifier {
+	for s != nil {
+		if n := s.EnumTags[nm]; n != nil {
 			return n
 		}
 

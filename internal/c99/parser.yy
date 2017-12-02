@@ -487,6 +487,9 @@ import (
 			//yy:field	typ	Type
 /*yy:case Tag        */ EnumSpecifier:
                         	"enum" IDENTIFIER
+				{
+					lhs.scope = lx.scope
+				}
 /*yy:case Define     */ |	"enum" IdentifierOpt '{' EnumeratorList  CommaOpt '}'
 				{
 					lhs.scope = lx.scope

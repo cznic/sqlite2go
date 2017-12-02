@@ -77,6 +77,8 @@ func (d *DeclarationSpecifier) typ() Type {
 			return UInt
 		case TypeSpecifierVoid:
 			return Void
+		case TypeSpecifierEnum:
+			return d.TypeSpecifiers[0].EnumSpecifier.typ
 		default:
 			panic(d.typeSpecifiers)
 		}
@@ -239,7 +241,13 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				Char,
 				Double,
 				Int,
-				UChar:
+				Long,
+				LongLong,
+				Short,
+				UChar,
+				UInt,
+				ULong,
+				ULongLong:
 
 				n.Operand = ctx.sizeof(t)
 			default:
@@ -512,11 +520,16 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 	case ExprPSelect: // Expr "->" IDENTIFIER
 		op := n.Expr.eval(ctx, arr2ptr)
 		t := op.Type
-		switch x := t.(type) {
-		case *PointerType:
-			t = x.Item
-		default:
-			panic(x)
+		for done := false; !done; {
+			switch x := t.(type) {
+			case *NamedType:
+				t = x.Type
+			case *PointerType:
+				t = x.Item
+				done = true
+			default:
+				panic(fmt.Errorf("%T", x))
+			}
 		}
 	out:
 		for {
@@ -679,11 +692,24 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				default:
 					panic(ctx.position)
 				}
+			case nil:
+				if ctx.tweaks.EnableImplicitDeclarations {
+					n.Operand = Operand{Type: Int}
+					n.ArgumentExprListOpt.eval(ctx)
+					done = true
+					break
+				}
+
+				panic(ctx.position(n))
 			default:
 				//dbg("", x)
 				panic(ctx.position(n))
 			}
 		}
+		if t == nil {
+			break
+		}
+
 		if _, ok := t.Result.(*ArrayType); ok {
 			panic(ctx.position)
 		}
@@ -727,9 +753,12 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 					// ok
 				case len(args) == 0 && len(t.Prototype.Params) == 1 && t.Prototype.Params[0] == Void:
 					// ok
+				case len(t.Prototype.Params) == 0:
+					break out2
 				default:
 					panic(ctx.position(n))
 				}
+
 				for i, rhs := range args {
 					AdjustedParameterType(t.Params[i]).assign(ctx, rhs)
 				}
@@ -764,8 +793,14 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				// ok
 			case len(args) == 0 && len(t.Params) == 1 && t.Params[0] == Void:
 				// ok
+			case len(t.Params) == 0:
+				// ok
 			default:
+				// dbg("", len(args), len(t.Params))
 				panic(ctx.position(n))
+			}
+			if len(t.Params) == 0 {
+				break
 			}
 
 			// 6. If the expression that denotes the called
@@ -774,6 +809,10 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			// each argument, and arguments that have type float
 			// are promoted to double.
 			for i, rhs := range args {
+				if rhs.Type == nil && ctx.tweaks.EnableImplicitDeclarations {
+					continue
+				}
+
 				switch {
 				case rhs.isIntegerType():
 					rhs = rhs.integerPromotion(ctx)
@@ -966,7 +1005,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 	case ExprIndex: // Expr '[' ExprList ']'
 		// [0]6.5.2.1
 		op := n.Expr.eval(ctx, arr2ptr)
-		index := n.ExprList.eval(ctx, arr2ptr)
+		index := n.ExprList.eval(ctx, true)
 		switch t := op.Type.(type) {
 		case *ArrayType:
 			if arr2ptr {
@@ -1043,12 +1082,13 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				*ArrayType,
 				*PointerType,
 				*StructType,
+				*TaggedEnumType,
 				*TaggedStructType,
 				*UnionType:
 
 				n.Operand = Operand{Type: t0}
 			case *FunctionType:
-				n.Operand = Operand{Type: &PointerType{t0}}
+				n.Operand = Operand{Type: t0}
 			case *NamedType:
 				t = y.Type
 				goto more2
@@ -1057,6 +1097,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				case
 					Char,
 					Double,
+					Float,
 					Int,
 					Long,
 					LongDouble,
@@ -1081,7 +1122,12 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			n.Operand.Addr = &ir.AddressValue{Linkage: ir.Linkage(x.Linkage), NameID: ir.NameID(nm)}
 		case *EnumerationConstant:
 			n.Operand = x.Operand
+		case nil:
+			if !ctx.tweaks.EnableImplicitDeclarations {
+				panic(fmt.Errorf("%v: %T", ctx.position(n), x))
+			}
 		default:
+
 			//dbg("%s", dict.S(nm))
 			panic(fmt.Errorf("%v: %T", ctx.position(n), x))
 		}
@@ -1100,7 +1146,13 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		decadic := s == "0" || !strings.HasPrefix(s, "0")
 		v, err := strconv.ParseUint(s, 0, 64)
 		if err != nil {
-			panic(fmt.Errorf("%v: %v", ctx.position(n), n.Case))
+			if ctx.tweaks.EnableBinaryLiterals && (strings.HasPrefix(s, "0b") || strings.HasPrefix(s, "0B")) {
+				decadic = false
+				v, err = strconv.ParseUint(s[2:], 2, 64)
+			}
+			if err != nil {
+				panic(fmt.Errorf("%v: %v %v", ctx.position(n), n.Case, err))
+			}
 		}
 
 		// [0]6.4.4.1
@@ -1123,13 +1175,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 	//TODO case ExprLChar: // LONGCHARCONST
 	//TODO case ExprLString: // LONGSTRINGLITERAL
 	case ExprString: // STRINGLITERAL
-		s := dict.S(n.Token.Val)
-		n.Operand = Operand{Type: &PointerType{Item: Char}, Value: &ir.StringValue{StringID: ir.StringID(dict.ID(s[1 : len(s)-1]))}}
+		n.Operand = strConst(n.Token)
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
-	}
-	if n.Operand.Type.Kind() == Function {
-		n.Operand = Operand{Type: &PointerType{n.Operand.Type}}
 	}
 	if !arr2ptr {
 		return n.Operand
@@ -1150,11 +1198,15 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		case *ArrayType:
 			n.Operand.Type = &PointerType{x.Item}
 			return n.Operand
+		case *FunctionType:
+			n.Operand.Type = &PointerType{x}
+			return n.Operand
 		case *NamedType:
 			t = x.Type
 		case
 			*PointerType,
 			*StructType,
+			*TaggedEnumType,
 			*TaggedStructType,
 			*UnionType:
 
@@ -1164,6 +1216,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			case
 				Char,
 				Double,
+				Float,
 				Int,
 				Long,
 				LongDouble,
@@ -1182,6 +1235,12 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				//dbg("", ctx.position(n))
 				panic(x)
 			}
+		case nil:
+			if ctx.tweaks.EnableImplicitDeclarations {
+				return n.Operand
+			}
+
+			panic(fmt.Errorf("%T", x))
 		default:
 			//dbg("", ctx.position(n))
 			panic(fmt.Errorf("%T", x))
@@ -1335,7 +1394,13 @@ func (n *Declarator) fpScope(ctx *context) *Scope { return n.DirectDeclarator.fp
 func (n *DirectDeclarator) fpScope(ctx *context) *Scope {
 	switch n.Case {
 	//TODO case DirectDeclaratorParen: // '(' Declarator ')'
-	//TODO case DirectDeclaratorIdentList: // DirectDeclarator '(' IdentifierListOpt ')'
+	case DirectDeclaratorIdentList: // DirectDeclarator '(' IdentifierListOpt ')'
+		switch n.DirectDeclarator.Case {
+		case DirectDeclaratorIdent:
+			return n.paramScope
+		default:
+			panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.DirectDeclarator.Case))
+		}
 	case DirectDeclaratorParamList: // DirectDeclarator '(' ParameterTypeList ')'
 		switch n.DirectDeclarator.Case {
 		case DirectDeclaratorParen:
@@ -1362,7 +1427,13 @@ func (n *Declarator) ParameterNames() []int { return n.DirectDeclarator.paramete
 func (n *DirectDeclarator) parameterNames() (r []int) {
 	switch n.Case {
 	//TODO case DirectDeclaratorParen: // '(' Declarator ')'
-	//TODO case DirectDeclaratorIdentList: // DirectDeclarator '(' IdentifierListOpt ')'
+	case DirectDeclaratorIdentList: // DirectDeclarator '(' IdentifierListOpt ')'
+		switch n.DirectDeclarator.Case {
+		case DirectDeclaratorIdent:
+			return n.IdentifierListOpt.check()
+		default:
+			panic(n.DirectDeclarator.Case)
+		}
 	case DirectDeclaratorParamList: // DirectDeclarator '(' ParameterTypeList ')'
 		switch n.DirectDeclarator.Case {
 		case DirectDeclaratorIdent:
@@ -1535,6 +1606,10 @@ func (n *JumpStmt) check(ctx *context, fn *Declarator, inSwitch, inLoop bool) {
 		switch t := fn.Type.(*FunctionType).Result; t.Kind() {
 		case Void:
 			if op.Type != nil {
+				if ctx.tweaks.EnableReturnExprInVoidFunc {
+					break
+				}
+
 				panic(ctx.position(n))
 			}
 		default:
@@ -1848,13 +1923,23 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 			switch n.Linkage {
 			case LinkageExternal:
 				if !ex.Type.Equal(n.Type) {
-					// dbg("", ctx.position(ex), ex.Type)
-					// dbg("", ctx.position(n), n.Type)
 					switch {
 					case ex.Type.Kind() == Function && n.Type.Kind() == Function:
 						ef := ex.Type.(*FunctionType)
 						nf := n.Type.(*FunctionType)
 						if !(ef.Result.Equal(nf.Result) && (len(ef.Params) == 0 || len(nf.Params) == 0)) {
+							if n.Name() == idMain && n.Linkage == LinkageExternal && n.scope.Parent == nil {
+								if n.FunctionDefinition != nil {
+									// [0]5.1.2.2.1-1
+									//
+									// ... or in some other implementation-defined manner.
+									n.scope.Idents[idMain] = n
+								}
+								break
+							}
+
+							//dbg("", ctx.position(ex), ex.Type)
+							//dbg("", ctx.position(n), n.Type)
 							panic(ctx.position(n))
 						}
 					case !(ex.Type.IsPointerType() && n.Type.IsPointerType() && ex.Type.IsCompatible(n.Type)):
@@ -1944,7 +2029,7 @@ func (n *DirectDeclarator) check(ctx *context, t Type, sc []int, fn *Declarator)
 	case DirectDeclaratorIdentList: // DirectDeclarator '(' IdentifierListOpt ')'
 		var params []Type
 		var variadic bool
-		names := n.IdentifierListOpt.check(ctx)
+		names := n.IdentifierListOpt.check()
 		if len(names) != 0 {
 			panic("TODO")
 		}
@@ -1986,15 +2071,15 @@ func (n *DirectDeclarator) check(ctx *context, t Type, sc []int, fn *Declarator)
 	}
 }
 
-func (n *IdentifierListOpt) check(ctx *context) []int {
+func (n *IdentifierListOpt) check() []int {
 	if n == nil {
 		return nil
 	}
 
-	return n.IdentifierList.check(ctx)
+	return n.IdentifierList.check()
 }
 
-func (n *IdentifierList) check(ctx *context) (r []int) {
+func (n *IdentifierList) check() (r []int) {
 	m := map[int]struct{}{}
 	for ; n != nil; n = n.IdentifierList {
 		nm := n.Token.Val
@@ -2162,7 +2247,8 @@ func (n *TypeSpecifier) check(ctx *context, ds *DeclarationSpecifier) {
 
 func (n *EnumSpecifier) check(ctx *context) { // [0]6.7.2.2
 	switch n.Case {
-	//TODO case EnumSpecifierTag: // "enum" IDENTIFIER
+	case EnumSpecifierTag: // "enum" IDENTIFIER
+		n.typ = &TaggedEnumType{Tag: n.Token2.Val, scope: n.scope}
 	case EnumSpecifierDefine: // "enum" IdentifierOpt '{' EnumeratorList CommaOpt '}'
 		t := n.EnumeratorList.check(ctx, n.scope)
 		var max uint64
@@ -2181,7 +2267,7 @@ func (n *EnumSpecifier) check(ctx *context) { // [0]6.7.2.2
 			t.Enums[i].Operand.Type = x.Type
 		}
 		if n.IdentifierOpt != nil {
-			n.scope.insertEnumTag(ctx, n.IdentifierOpt.Token.Val, t)
+			n.scope.insertEnumTag(ctx, n.IdentifierOpt.Token.Val, n)
 		}
 		n.typ = t
 	default:

@@ -47,6 +47,7 @@ var (
 	isArithmeticType = [maxTypeKind]bool{
 		Bool:      true,
 		Char:      true,
+		Enum:      true,
 		Int:       true,
 		Long:      true,
 		LongLong:  true,
@@ -222,6 +223,8 @@ func (o Operand) add(ctx *context, p Operand) (r Operand) {
 	switch x := o.Value.(type) {
 	case *ir.Int64Value:
 		return Operand{Type: o.Type, Value: &ir.Int64Value{Value: x.Value + p.Value.(*ir.Int64Value).Value}}.normalize(ctx)
+	case *ir.Float64Value:
+		return Operand{Type: o.Type, Value: &ir.Float64Value{Value: x.Value + p.Value.(*ir.Float64Value).Value}}.normalize(ctx)
 	default:
 		panic(fmt.Errorf("TODO %T", x))
 	}
@@ -257,6 +260,7 @@ func (o Operand) convertTo(ctx *context, t Type) (r Operand) {
 		case
 			Char,
 			Double,
+			Float,
 			Int,
 			Long,
 			LongDouble,
@@ -309,6 +313,8 @@ func (o Operand) convertTo(ctx *context, t Type) (r Operand) {
 		switch t.Kind() {
 		case Double:
 			return Operand{Type: t, Value: &ir.Float64Value{Value: float64(o.Value.(*ir.Int64Value).Value)}}
+		case Float:
+			return Operand{Type: t, Value: &ir.Float32Value{Value: float32(o.Value.(*ir.Int64Value).Value)}}
 		default:
 			panic(t)
 		}
@@ -318,6 +324,13 @@ func (o Operand) convertTo(ctx *context, t Type) (r Operand) {
 		switch x := t.(type) {
 		case TypeKind:
 			switch x {
+			case
+				Char,
+				Int:
+
+				return Operand{Type: t, Value: &ir.Int64Value{Value: int64(o.Value.(*ir.Float64Value).Value)}}.normalize(ctx)
+			case Float:
+				return Operand{Type: t, Value: &ir.Float32Value{Value: float32(o.Value.(*ir.Float64Value).Value)}}
 			case LongDouble:
 				return Operand{Type: t, Value: o.Value}
 			default:
@@ -385,6 +398,12 @@ func (o Operand) eq(ctx *context, p Operand) (r Operand) {
 			val = 1
 		}
 		r.Value = &ir.Int64Value{Value: val}
+	case *ir.Float64Value:
+		var val int64
+		if x.Value == p.Value.(*ir.Float64Value).Value {
+			val = 1
+		}
+		r.Value = &ir.Int64Value{Value: val}
 	default:
 		panic(fmt.Errorf("TODO %T", x))
 	}
@@ -410,6 +429,12 @@ func (o Operand) ge(ctx *context, p Operand) (r Operand) {
 			if uint64(x.Value) >= uint64(p.Value.(*ir.Int64Value).Value) {
 				val = 1
 			}
+		}
+		r.Value = &ir.Int64Value{Value: val}
+	case *ir.Float64Value:
+		var val int64
+		if x.Value >= p.Value.(*ir.Float64Value).Value {
+			val = 1
 		}
 		r.Value = &ir.Int64Value{Value: val}
 	default:
@@ -439,6 +464,12 @@ func (o Operand) gt(ctx *context, p Operand) (r Operand) {
 			}
 		}
 		r.Value = &ir.Int64Value{Value: val}
+	case *ir.Float64Value:
+		var val int64
+		if x.Value > p.Value.(*ir.Float64Value).Value {
+			val = 1
+		}
+		r.Value = &ir.Int64Value{Value: val}
 	default:
 		panic(fmt.Errorf("TODO %T", x))
 	}
@@ -457,6 +488,8 @@ func (o Operand) integerPromotion(ctx *context) Operand {
 		switch x := t.(type) {
 		case *NamedType:
 			t = x.Type
+		case *TaggedEnumType:
+			return o
 		case TypeKind:
 			switch x {
 			case
@@ -532,6 +565,12 @@ func (o Operand) le(ctx *context, p Operand) (r Operand) {
 			}
 		}
 		r.Value = &ir.Int64Value{Value: val}
+	case *ir.Float64Value:
+		var val int64
+		if x.Value <= p.Value.(*ir.Float64Value).Value {
+			val = 1
+		}
+		r.Value = &ir.Int64Value{Value: val}
 	default:
 		panic(fmt.Errorf("TODO %T", x))
 	}
@@ -575,6 +614,12 @@ func (o Operand) lt(ctx *context, p Operand) (r Operand) {
 			if uint64(x.Value) < uint64(p.Value.(*ir.Int64Value).Value) {
 				val = 1
 			}
+		}
+		r.Value = &ir.Int64Value{Value: val}
+	case *ir.Float64Value:
+		var val int64
+		if x.Value < p.Value.(*ir.Float64Value).Value {
+			val = 1
 		}
 		r.Value = &ir.Int64Value{Value: val}
 	default:
@@ -625,6 +670,12 @@ func (o Operand) ne(ctx *context, p Operand) (r Operand) {
 	case *ir.Int64Value:
 		var val int64
 		if x.Value != p.Value.(*ir.Int64Value).Value {
+			val = 1
+		}
+		r.Value = &ir.Int64Value{Value: val}
+	case *ir.Float64Value:
+		var val int64
+		if x.Value != p.Value.(*ir.Float64Value).Value {
 			val = 1
 		}
 		r.Value = &ir.Int64Value{Value: val}
@@ -680,6 +731,8 @@ func (o Operand) normalize(ctx *context) Operand {
 		default:
 			panic(fmt.Errorf("TODO %v", sz))
 		}
+	case *ir.Float64Value:
+		// nop
 	default:
 		panic(fmt.Errorf("TODO %T", x))
 	}
@@ -730,6 +783,8 @@ func (o Operand) sub(ctx *context, p Operand) (r Operand) {
 	switch x := o.Value.(type) {
 	case *ir.Int64Value:
 		return Operand{Type: o.Type, Value: &ir.Int64Value{Value: x.Value - p.Value.(*ir.Int64Value).Value}}.normalize(ctx)
+	case *ir.Float64Value:
+		return Operand{Type: o.Type, Value: &ir.Float64Value{Value: x.Value - p.Value.(*ir.Float64Value).Value}}.normalize(ctx)
 	default:
 		panic(fmt.Errorf("TODO %T", x))
 	}

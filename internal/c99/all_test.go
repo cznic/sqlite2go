@@ -757,7 +757,10 @@ func TestTypecheckSQLite(t *testing.T) {
 func TestTypecheckSQLiteShell(t *testing.T) {
 	if _, err := Translate(
 		token.NewFileSet(),
-		&Tweaks{EnableAnonymousStructFields: true, EnableEmptyStructs: true},
+		&Tweaks{
+			EnableAnonymousStructFields: true,
+			EnableEmptyStructs:          true,
+		},
 		[]string{"@", ccir.LibcIncludePath},
 		[]string{ccir.LibcIncludePath},
 		NewStringSource("<builtin>", fmt.Sprintf(inj, runtime.GOARCH, runtime.GOOS, predef)),
@@ -765,5 +768,31 @@ func TestTypecheckSQLiteShell(t *testing.T) {
 		NewFileSource(shellc),
 	); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestTypecheckTCCTests(t *testing.T) {
+	m, err := filepath.Glob("testdata/tcc-0.9.26/tests/tests2/*.c")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, pth := range m {
+		if _, err := Translate(
+			token.NewFileSet(),
+			&Tweaks{
+				EnableBinaryLiterals:       true,
+				EnableEmptyStructs:         true,
+				EnableImplicitDeclarations: true,
+				EnableReturnExprInVoidFunc: true,
+			},
+			[]string{"@", ccir.LibcIncludePath},
+			[]string{ccir.LibcIncludePath},
+			NewStringSource("<builtin>", fmt.Sprintf(inj, runtime.GOARCH, runtime.GOOS, predef)),
+			NewFileSource(filepath.Join(ccir.LibcIncludePath, "crt0.c")),
+			NewFileSource(pth),
+		); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

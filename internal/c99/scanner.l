@@ -33,7 +33,10 @@ func (l *lexer) scan() (r int) {
         c := l.Enter()
 %}
 
+binary-constant                 {binary-prefix}{binary-digit}+
+binary-digit                    [01]
 binary-exponent-part            [pP]{sign}?{digit-sequence}
+binary-prefix                   0[bB]
 c-char                          [^'\n\x80\\]|{escape-sequence}
 c-char-sequence                 {c-char}+
 character-constant              '{c-char-sequence}'

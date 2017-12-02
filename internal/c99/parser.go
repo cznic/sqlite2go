@@ -3384,11 +3384,14 @@ yynewstate:
 		}
 	case 123:
 		{
-			yyVAL.node = &EnumSpecifier{
+			lx := yylex.(*lexer)
+			lhs := &EnumSpecifier{
 				Case:   EnumSpecifierTag,
 				Token:  yyS[yypt-1].Token,
 				Token2: yyS[yypt-0].Token,
 			}
+			yyVAL.node = lhs
+			lhs.scope = lx.scope
 		}
 	case 124:
 		{

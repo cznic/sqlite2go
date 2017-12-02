@@ -5,6 +5,7 @@
 package c99
 
 import (
+	"bytes"
 	"encoding/binary"
 	"go/token"
 	"reflect"
@@ -94,6 +95,7 @@ var (
 	idIfndef   = dict.SID("ifndef")
 	idInclude  = dict.SID("include")
 	idLine     = dict.SID("__LINE__")
+	idMain     = dict.SID("main")
 	idOne      = dict.SID("1")
 	idPragma   = dict.SID("pragma")
 	idPtrdiffT = dict.SID("ptrdiff_t")
@@ -405,4 +407,33 @@ func decodeHexQuad(runes []rune) int {
 		n = n<<4 | decodeHex(r)
 	}
 	return n
+}
+
+func strConst(t xc.Token) Operand {
+	s := t.S()
+	var buf bytes.Buffer
+	switch t.Rune {
+	case STRINGLITERAL:
+		s = s[1 : len(s)-1] // Remove outer "s.
+		runes := []rune(string(s))
+		for i := 0; i < len(runes); {
+			switch r := runes[i]; {
+			case r == '\\':
+				r, n := decodeEscapeSequence(runes[i:])
+				switch {
+				case r < 0:
+					buf.WriteByte(byte(-r))
+				default:
+					buf.WriteRune(r)
+				}
+				i += n
+			default:
+				buf.WriteByte(byte(r))
+				i++
+			}
+		}
+		return Operand{Type: &PointerType{Item: Char}, Value: &ir.StringValue{StringID: ir.StringID(dict.ID(buf.Bytes()))}}
+	default:
+		panic("internal error")
+	}
 }

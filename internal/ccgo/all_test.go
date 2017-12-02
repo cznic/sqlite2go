@@ -5,11 +5,14 @@
 package ccgo
 
 import (
+	"bufio"
 	"bytes"
 	"flag"
 	"fmt"
 	"go/token"
+	"io/ioutil"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"runtime"
@@ -66,7 +69,136 @@ const inject = `
 #include <builtin.h>
 `
 
-func Test(t *testing.T) {
+func testTCC(t *testing.T, pth string) {
+	fset := token.NewFileSet()
+	predefSource := c99.NewStringSource("<predefine>", fmt.Sprintf(inject, runtime.GOARCH, runtime.GOOS))
+	crt0Source := c99.NewFileSource(filepath.Join(ccir.LibcIncludePath, "crt0.c"))
+	mainSource := c99.NewFileSource(pth)
+	inc := []string{"@", ccir.LibcIncludePath}
+	sysInc := []string{ccir.LibcIncludePath}
+	tweaks := &c99.Tweaks{
+		EnableBinaryLiterals:       true,
+		EnableEmptyStructs:         true,
+		EnableImplicitDeclarations: true,
+		EnableReturnExprInVoidFunc: true,
+	}
+	crt0, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, crt0Source)
+	if err != nil {
+		t.Fatal(errString(err))
+	}
+
+	main, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, mainSource)
+	if err != nil {
+		t.Fatal(errString(err))
+	}
+
+	dir, err := ioutil.TempDir("", "test-ccgo-")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() {
+		if err := os.RemoveAll(dir); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	t.Log(pth)
+	build(t, dir, []*c99.TranslationUnit{crt0, main})
+	out := run(t, dir)
+	fn := pth[:len(pth)-len(filepath.Ext(pth))] + ".expect"
+	s, err := ioutil.ReadFile(fn)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return
+		}
+	}
+
+	if !bytes.Equal(out, s) {
+		t.Fatalf("\ngot\n%s\nexp\n%s", out, s)
+	}
+}
+
+func build(t *testing.T, dir string, in []*c99.TranslationUnit) {
+	f, err := os.Create(filepath.Join(dir, "main.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() {
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	w := bufio.NewWriter(f)
+
+	defer func() {
+		if err := w.Flush(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	w.WriteString(`package main
+	
+import (
+	"github.com/cznic/crt"
+)
+
+`)
+	if err = Command(w, in); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func run(t *testing.T, dir string) []byte {
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() {
+		if err := os.Chdir(cwd); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+
+	cmd := exec.Command("go", "run", "main.go")
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err = cmd.Run()
+	if err != nil {
+		var log bytes.Buffer
+		if b := stdout.Bytes(); len(b) != 0 {
+			fmt.Fprintf(&log, "stdout:\n%s\n", b)
+		}
+		if b := stderr.Bytes(); len(b) != 0 {
+			fmt.Fprintf(&log, "stderr:\n%s\n", b)
+		}
+		t.Fatalf("err %v\n%s", err, log.Bytes())
+	}
+
+	return append(stdout.Bytes(), stderr.Bytes()...)
+}
+
+func TestTCC(t *testing.T) {
+	m, err := filepath.Glob("../c99/testdata/tcc-0.9.26/tests/tests2/*.c")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, pth := range m {
+		testTCC(t, pth)
+	}
+}
+
+func TestSQLiteShell(t *testing.T) {
+	return //TODO-
 	fset := token.NewFileSet()
 	tweaks := &c99.Tweaks{
 		EnableAnonymousStructFields: true,
