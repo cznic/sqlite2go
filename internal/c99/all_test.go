@@ -88,15 +88,7 @@ const (
 		#include <builtin.h>
 		%s
 `
-	predef = `
-		#define HAVE_MALLOC_H 1
-		#define HAVE_MALLOC_USABLE_SIZE 1
-		#define HAVE_USLEEP 1
-		#define SQLITE_DEBUG 1 //TODOOK
-		#define SQLITE_ENABLE_API_ARMOR 1
-		#define SQLITE_USE_URI 1
-		#define SQLITE_WITHOUT_MSIZE 1
-`
+	predef = ""
 )
 
 var (

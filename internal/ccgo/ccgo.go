@@ -71,6 +71,7 @@ type gen struct {
 	text          []int
 	ts            int64
 	units         map[*c99.Declarator]int
+	nextLabel     int
 }
 
 func newGen(out io.Writer, in []*c99.TranslationUnit) *gen {
@@ -155,6 +156,15 @@ func (g *gen) gen(cmd bool) (err error) {
 		g.w("%s\\x00", s[1:len(s)-1])
 	}
 	g.w("\")\n)\n")
+	g.w(`
+func bool2int(b bool) int32 {
+	if b {
+		return 1
+	}
+
+	return 0
+}
+`)
 	return nil
 }
 
@@ -279,6 +289,7 @@ func (g *gen) findAddrValue(a *ir.AddressValue) *c99.Declarator {
 }
 
 func (g *gen) functionDefinition(n *c99.Declarator) {
+	g.nextLabel = 0
 	g.w("\nfunc %s(tls *%s.TLS", g.mangleDeclarator(n), crt)
 	names := n.ParameterNames()
 	t := n.Type.(*c99.FunctionType)
@@ -535,11 +546,36 @@ func (g *gen) iterationStmt(n *c99.IterationStmt) {
 	switch n.Case {
 	//TODO case c99.IterationStmtDo: // "do" Stmt "while" '(' ExprList ')' ';'
 	//TODO case c99.IterationStmtForDecl: // "for" '(' Declaration ExprListOpt ';' ExprListOpt ')' Stmt
-	//TODO case c99.IterationStmtFor: // "for" '(' ExprListOpt ';' ExprListOpt ';' ExprListOpt ')' Stmt
+	case c99.IterationStmtFor: // "for" '(' ExprListOpt ';' ExprListOpt ';' ExprListOpt ')' Stmt
+		// ExprListOpt
+		// a:
+		// if ExprListOpt2 == 0 { goto b }
+		// Stmt
+		// ExprListOpt3
+		// goto a
+		// b:
+		g.exprListOpt(n.ExprListOpt, true)
+		a := g.label()
+		b := g.label()
+		g.w("\n_%d:\n", a)
+		if n.ExprListOpt2 != nil {
+			g.w("if ")
+			g.exprListOpt(n.ExprListOpt2, false)
+			g.w(" == 0 { goto _%d }\n", b)
+		}
+		g.stmt(n.Stmt)
+		g.exprListOpt(n.ExprListOpt3, true)
+		g.w("\ngoto _%d\n_%d:\n", a, b)
 	//TODO case c99.IterationStmtWhile: // "while" '(' ExprList ')' Stmt
 	default:
 		todo("", g.position0(n), n.Case)
 	}
+}
+
+func (g *gen) label() int {
+	r := g.nextLabel
+	g.nextLabel++
+	return r
 }
 
 func (g *gen) selectionStmt(n *c99.SelectionStmt) {
@@ -601,7 +637,10 @@ func (g *gen) voidExpr(n *c99.Expr) {
 
 	if n.Operand.Addr != nil {
 		switch n.Case {
-		case c99.ExprAssign:
+		case
+			c99.ExprAssign,
+			c99.ExprPostInc:
+
 			// ok
 		default:
 			todo("%v: %v: %v", g.position0(n), n.Case, n.Operand)
@@ -643,7 +682,9 @@ func (g *gen) voidExpr(n *c99.Expr) {
 	//TODO case c99.ExprLAnd: // Expr "&&" Expr
 	//TODO case c99.ExprAndAssign: // Expr "&=" Expr
 	//TODO case c99.ExprMulAssign: // Expr "*=" Expr
-	//TODO case c99.ExprPostInc: // Expr "++"
+	case c99.ExprPostInc: // Expr "++"
+		g.expr(n.Expr)
+		g.w("++ ")
 	//TODO case c99.ExprAddAssign: // Expr "+=" Expr
 	//TODO case c99.ExprPostDec: // Expr "--"
 	//TODO case c99.ExprSubAssign: // Expr "-=" Expr
@@ -757,7 +798,12 @@ func (g *gen) expr(n *c99.Expr) {
 	//TODO case c99.ExprDivAssign: // Expr "/=" Expr
 	//TODO case c99.ExprLsh: // Expr "<<" Expr
 	//TODO case c99.ExprLshAssign: // Expr "<<=" Expr
-	//TODO case c99.ExprLe: // Expr "<=" Expr
+	case c99.ExprLe: // Expr "<=" Expr
+		g.w(" bool2int(")
+		g.expr(n.Expr)
+		g.w(" <= ")
+		g.expr(n.Expr2)
+		g.w(")")
 	//TODO case c99.ExprEq: // Expr "==" Expr
 	//TODO case c99.ExprGe: // Expr ">=" Expr
 	//TODO case c99.ExprRsh: // Expr ">>" Expr
@@ -943,6 +989,9 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
 
 		g.typ0(&buf, t)
 		return buf.String()
+	case *c99.TaggedStructType:
+		//TODO produce the definition
+		return fmt.Sprintf("S%s", dict.S(x.Tag))
 	case c99.TypeKind:
 		switch x {
 		case
@@ -975,6 +1024,10 @@ func (g *gen) typ0(buf *bytes.Buffer, t c99.Type) {
 		case *c99.PointerType:
 			t = x.Item
 			buf.WriteByte('*')
+		case *c99.TaggedStructType:
+			//TODO produce the definition
+			fmt.Fprintf(buf, "S%s", dict.S(x.Tag))
+			return
 		case c99.TypeKind:
 			switch x {
 			case c99.Char:
