@@ -2879,13 +2879,16 @@ yynewstate:
 		}
 	case 55:
 		{
-			yyVAL.node = &Expr{
+			lx := yylex.(*lexer)
+			lhs := &Expr{
 				Case:     ExprIndex,
 				Expr:     yyS[yypt-3].node.(*Expr),
 				Token:    yyS[yypt-2].Token,
 				ExprList: yyS[yypt-1].node.(*ExprList).reverse(),
 				Token2:   yyS[yypt-0].Token,
 			}
+			yyVAL.node = lhs
+			lhs.Scope = lx.scope
 		}
 	case 56:
 		{

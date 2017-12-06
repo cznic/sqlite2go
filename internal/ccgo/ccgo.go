@@ -53,38 +53,40 @@ func Package(w io.Writer, in []*c99.TranslationUnit) error {
 }
 
 type gen struct {
-	bss           int64
-	ds            int64
-	errs          scanner.ErrorList
-	externals     map[int]*c99.Declarator
-	fset          *token.FileSet
-	in            []*c99.TranslationUnit
-	internalNames map[int]struct{}
-	internals     []map[int]*c99.Declarator
-	model         c99.Model
-	num           int
-	nums          map[*c99.Declarator]int
-	out           io.Writer
-	produced      map[*c99.Declarator]struct{}
-	queue         list.List
-	strings       map[int]int64
-	text          []int
-	ts            int64
-	units         map[*c99.Declarator]int
-	nextLabel     int
+	bss                int64
+	ds                 int64
+	errs               scanner.ErrorList
+	externals          map[int]*c99.Declarator
+	fset               *token.FileSet
+	in                 []*c99.TranslationUnit
+	internalNames      map[int]struct{}
+	internals          []map[int]*c99.Declarator
+	model              c99.Model
+	nextLabel          int
+	num                int
+	nums               map[*c99.Declarator]int
+	out                io.Writer
+	produced           map[*c99.Declarator]struct{}
+	producedStructTags map[int]struct{}
+	queue              list.List
+	strings            map[int]int64
+	text               []int
+	ts                 int64
+	units              map[*c99.Declarator]int
 }
 
 func newGen(out io.Writer, in []*c99.TranslationUnit) *gen {
 	return &gen{
-		externals:     map[int]*c99.Declarator{},
-		in:            in,
-		internalNames: map[int]struct{}{},
-		internals:     make([]map[int]*c99.Declarator, len(in)),
-		nums:          map[*c99.Declarator]int{},
-		out:           out,
-		produced:      map[*c99.Declarator]struct{}{},
-		strings:       map[int]int64{},
-		units:         map[*c99.Declarator]int{},
+		externals:          map[int]*c99.Declarator{},
+		in:                 in,
+		internalNames:      map[int]struct{}{},
+		internals:          make([]map[int]*c99.Declarator, len(in)),
+		nums:               map[*c99.Declarator]int{},
+		out:                out,
+		produced:           map[*c99.Declarator]struct{}{},
+		producedStructTags: map[int]struct{}{},
+		strings:            map[int]int64{},
+		units:              map[*c99.Declarator]int{},
 	}
 }
 
@@ -123,7 +125,7 @@ func (g *gen) gen(cmd bool) (err error) {
 		}
 
 		g.w("\nfunc main() { X_start(%s.NewTLS(), 0, 0) } //TODO real args\n", crt)
-		g.produce(sym)
+		g.produceDeclarator(sym)
 	default:
 		var a []string
 		for nm := range g.externals {
@@ -131,7 +133,7 @@ func (g *gen) gen(cmd bool) (err error) {
 		}
 		sort.Strings(a)
 		for _, nm := range a {
-			g.produce(g.externals[dict.SID(nm)])
+			g.produceDeclarator(g.externals[dict.SID(nm)])
 		}
 		todo("")
 	}
@@ -190,7 +192,7 @@ func printError(w io.Writer, pref string, err error) {
 	}
 }
 
-func (g *gen) produce(n *c99.Declarator) {
+func (g *gen) produceDeclarator(n *c99.Declarator) {
 	for {
 		func() {
 			if _, ok := g.produced[n]; ok {
@@ -207,13 +209,28 @@ func (g *gen) produce(n *c99.Declarator) {
 		}()
 
 		if x := g.queue.Front(); x != nil {
-			n = x.Value.(*c99.Declarator)
 			g.queue.Remove(x)
-			continue
+			switch y := x.Value.(type) {
+			case *c99.Declarator:
+				n = y
+				continue
+			case *c99.TaggedStructType:
+				g.produceTaggedStructType(y)
+			default:
+				todo("%T", y)
+			}
 		}
-
 		return
 	}
+}
+
+func (g *gen) produceTaggedStructType(t *c99.TaggedStructType) {
+	if _, ok := g.producedStructTags[t.Tag]; ok {
+		return
+	}
+
+	g.producedStructTags[t.Tag] = struct{}{}
+	g.w("\ntype S%s %s\n", dict.S(t.Tag), g.typ(t.Type))
 }
 
 func (g *gen) tld(n *c99.Declarator) {
@@ -244,7 +261,7 @@ func (g *gen) tld(n *c99.Declarator) {
 				switch x := d.Type.(type) {
 				case *c99.ArrayType:
 					g.w("\nvar %s = %s + %d\n", g.mangleDeclarator(n), g.mangleDeclarator(d), a.Offset)
-					g.produce(d)
+					g.produceDeclarator(d)
 				default:
 					todo("%v: %T", g.position(n), x)
 				}
@@ -731,9 +748,9 @@ func (g *gen) voidExpr(n *c99.Expr) {
 }
 
 func (g *gen) expr(n *c99.Expr) {
-	if a := n.Operand.Addr; a != nil && a.Offset != 0 {
-		todo("", g.position0(n))
-	}
+	g.w("(")
+
+	defer g.w(")")
 
 	switch x := n.Operand.Value.(type) {
 	case nil:
@@ -780,12 +797,7 @@ func (g *gen) expr(n *c99.Expr) {
 	//TODO case c99.ExprUnaryMinus: // '-' Expr
 	//TODO case c99.ExprCpl: // '~' Expr
 	//TODO case c99.ExprChar: // CHARCONST
-	case c99.ExprNe: // Expr "!=" Expr
-		g.w(" bool2int(")
-		g.expr(n.Expr)
-		g.w(" != ")
-		g.expr(n.Expr2)
-		g.w(")")
+	//TODO case c99.ExprNe: // Expr "!=" Expr
 	//TODO case c99.ExprModAssign: // Expr "%=" Expr
 	//TODO case c99.ExprLAnd: // Expr "&&" Expr
 	//TODO case c99.ExprAndAssign: // Expr "&=" Expr
@@ -798,12 +810,11 @@ func (g *gen) expr(n *c99.Expr) {
 	//TODO case c99.ExprDivAssign: // Expr "/=" Expr
 	//TODO case c99.ExprLsh: // Expr "<<" Expr
 	//TODO case c99.ExprLshAssign: // Expr "<<=" Expr
-	case c99.ExprLe: // Expr "<=" Expr
-		g.w(" bool2int(")
-		g.expr(n.Expr)
-		g.w(" <= ")
-		g.expr(n.Expr2)
-		g.w(")")
+	case
+		c99.ExprLe, // Expr "<=" Expr
+		c99.ExprLt: // Expr '<' Expr
+
+		g.relop(n)
 	//TODO case c99.ExprEq: // Expr "==" Expr
 	//TODO case c99.ExprGe: // Expr ">=" Expr
 	//TODO case c99.ExprRsh: // Expr ">>" Expr
@@ -823,12 +834,16 @@ func (g *gen) expr(n *c99.Expr) {
 			}
 		}
 		g.w(")")
-	//TODO case c99.ExprMul: // Expr '*' Expr
+	case
+		c99.ExprMul, // Expr '*' Expr
+		c99.ExprSub: // Expr '-' Expr
+
+		g.binop(n)
 	//TODO case c99.ExprAdd: // Expr '+' Expr
-	//TODO case c99.ExprSub: // Expr '-' Expr
-	//TODO case c99.ExprSelect: // Expr '.' IDENTIFIER
+	case c99.ExprSelect: // Expr '.' IDENTIFIER
+		g.expr(n.Expr)
+		g.w(".%s", mangleIdent(n.Token2.Val, true))
 	//TODO case c99.ExprDiv: // Expr '/' Expr
-	//TODO case c99.ExprLt: // Expr '<' Expr
 	//TODO case c99.ExprAssign: // Expr '=' Expr
 	//TODO case c99.ExprGt: // Expr '>' Expr
 	//TODO case c99.ExprCond: // Expr '?' ExprList ':' Expr
@@ -847,6 +862,21 @@ func (g *gen) expr(n *c99.Expr) {
 			g.w(" + %d*(", g.model.Sizeof(t))
 			g.exprList(n.ExprList, false)
 			g.w(")))")
+		case *c99.TaggedStructType:
+			g.expr(n.Expr)
+			g.w("[")
+			g.exprList(n.ExprList, false)
+			g.w("]")
+		case c99.TypeKind:
+			switch x {
+			case c99.Int:
+				g.expr(n.Expr)
+				g.w("[")
+				g.exprList(n.ExprList, false)
+				g.w("]")
+			default:
+				todo("%v: %v", g.position0(n), x)
+			}
 		default:
 			todo("%v: %T", g.position0(n), x)
 		}
@@ -889,6 +919,29 @@ func (g *gen) expr(n *c99.Expr) {
 	}
 }
 
+func (g *gen) relop(n *c99.Expr) {
+	g.w(" bool2int(")
+	g.binop(n)
+	g.w(")")
+}
+
+func (g *gen) binop(n *c99.Expr) {
+	lhs0, rhs0 := n.Expr.Operand, n.Expr2.Operand
+	lhs, rhs := c99.UsualArithmeticConversions(g.model, lhs0, rhs0)
+	g.expr2(n.Expr, lhs.Type)
+	g.w(" %s ", c99.TokSrc(n.Token))
+	g.expr2(n.Expr2, rhs.Type)
+}
+
+func (g *gen) expr2(n *c99.Expr, t c99.Type) {
+	g.expr(n)
+	if n.Operand.Type.Equal(t) {
+		return
+	}
+
+	todo("", g.position0(n), n.Operand, "->", t)
+}
+
 func (g *gen) allocString(s int) int64 {
 	if n, ok := g.strings[s]; ok {
 		return n
@@ -901,7 +954,7 @@ func (g *gen) allocString(s int) int64 {
 	return r
 }
 
-func (g *gen) enqueue(n *c99.Declarator) { g.queue.PushBack(n) }
+func (g *gen) enqueue(n interface{}) { g.queue.PushBack(n) }
 
 func (g *gen) cast(n *c99.Expr) {
 	// (' TypeName ')' Expr
@@ -980,6 +1033,7 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
 		g.typ0(&buf, x)
 		return buf.String()
 	case *c99.NamedType:
+		todo("")
 		//TODO produce the definition
 		return fmt.Sprintf("T%s", dict.S(x.Name))
 	case *c99.PointerType:
@@ -989,8 +1043,17 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
 
 		g.typ0(&buf, t)
 		return buf.String()
+	case *c99.StructType:
+		buf.WriteString(" struct{")
+		for _, v := range x.Fields {
+			fmt.Fprintf(&buf, "%s ", mangleIdent(v.Name, true))
+			g.typ0(&buf, v.Type)
+			buf.WriteByte(';')
+		}
+		buf.WriteByte('}')
+		return buf.String()
 	case *c99.TaggedStructType:
-		//TODO produce the definition
+		g.enqueue(x)
 		return fmt.Sprintf("S%s", dict.S(x.Tag))
 	case c99.TypeKind:
 		switch x {
@@ -1018,6 +1081,7 @@ func (g *gen) typ0(buf *bytes.Buffer, t c99.Type) {
 			fmt.Fprintf(buf, "[%d]", x.Size.Value.(*ir.Int64Value).Value)
 			t = x.Item
 		case *c99.NamedType:
+			todo("")
 			//TODO produce the definition
 			fmt.Fprintf(buf, "T%s", dict.S(x.Name))
 			return
@@ -1025,12 +1089,15 @@ func (g *gen) typ0(buf *bytes.Buffer, t c99.Type) {
 			t = x.Item
 			buf.WriteByte('*')
 		case *c99.TaggedStructType:
-			//TODO produce the definition
+			g.enqueue(x)
 			fmt.Fprintf(buf, "S%s", dict.S(x.Tag))
 			return
 		case c99.TypeKind:
 			switch x {
-			case c99.Char:
+			case
+				c99.Char,
+				c99.Int:
+
 				buf.WriteString(g.ptyp(x, false))
 				return
 			default:

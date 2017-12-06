@@ -264,8 +264,9 @@ import (
                         |	ArgumentExprList
 
                         // [0]6.5.16
-			//yy:field	Operand	Operand
-			//yy:field	Scope	*Scope	// case Addrof, Ident
+			//yy:field	Operand		Operand
+			//yy:field	Scope		*Scope	// case Addrof, Ident, Index
+			//yy:field	AssignedTo	bool	// Expression appears at the left side of assignment.
 /*yy:case PreInc     */ Expr:
                         	"++" Expr
 /*yy:case PreDec     */ |	"--" Expr
@@ -318,6 +319,9 @@ import (
 /*yy:case Gt         */ |	Expr '>' Expr
 /*yy:case Cond       */ |	Expr '?' ExprList ':' Expr
 /*yy:case Index      */ |	Expr '[' ExprList ']'
+				{
+					lhs.Scope = lx.scope
+				}
 /*yy:case Xor        */ |	Expr '^' Expr
 /*yy:case Or         */ |	Expr '|' Expr
 /*yy:case Float      */ |	FLOATCONST

@@ -36,7 +36,7 @@ editor: ast.go parser.go scanner.go trigraphs.go stringer.go
 	gofmt -l -s -w *.go
 	go test -i
 	go test -short 2>&1 | tee log
-	go build
+	go install
 
 internalError:
 	egrep -ho '"internal error.*"' *.go | sort | cat -n

@@ -1409,7 +1409,8 @@ func (n ExprCase) String() string {
 //	|       STRINGLITERAL                                      // Case ExprString
 type Expr struct {
 	Operand             Operand
-	Scope               *Scope // case Addrof, Ident
+	Scope               *Scope // case Addrof, Ident, Index
+	AssignedTo          bool   // Expression appears at the left side of assignment.
 	ArgumentExprListOpt *ArgumentExprListOpt
 	Case                ExprCase
 	CommaOpt            *CommaOpt
