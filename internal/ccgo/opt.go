@@ -119,11 +119,20 @@ func (o *opt) stmt(n *ast.Stmt) {
 		}
 		for i := range x.Rhs {
 			o.expr(&x.Rhs[i])
+			switch x2 := x.Rhs[i].(type) {
+			case *ast.ParenExpr:
+				x.Rhs[i] = x2.X
+			}
 		}
 	case *ast.BlockStmt:
 		o.blockStmt(x)
 	case *ast.BranchStmt:
 		// nop
+	case *ast.CaseClause:
+		for i := range x.List {
+			o.expr(&x.List[i])
+		}
+		o.body(x.Body)
 	case *ast.DeclStmt:
 		o.decl(&x.Decl)
 	case *ast.DeferStmt:
@@ -147,6 +156,10 @@ func (o *opt) stmt(n *ast.Stmt) {
 		for i := range x.Results {
 			o.expr(&x.Results[i])
 		}
+	case *ast.SwitchStmt:
+		o.stmt(&x.Init)
+		o.expr(&x.Tag)
+		o.blockStmt(x.Body)
 	default:
 		todo("%v: %T", o.pos(x), x)
 	}
@@ -210,11 +223,29 @@ func (o *opt) expr(n *ast.Expr) {
 			case *ast.Ident:
 				*n = x2
 			}
+		case *ast.UnaryExpr:
+			switch x2.Op {
+			case token.AND:
+				switch x2.X.(type) {
+				case
+					*ast.Ident,
+					*ast.SelectorExpr:
+
+					*n = x2
+				}
+			}
 		}
 	case *ast.SelectorExpr:
 		o.expr(&x.X)
 	case *ast.StarExpr:
-		// nop
+		o.expr(&x.X)
+		switch x2 := x.X.(type) {
+		case *ast.UnaryExpr:
+			switch x2.Op {
+			case token.AND:
+				*n = x2.X
+			}
+		}
 	case *ast.UnaryExpr:
 		o.expr(&x.X)
 	default:

@@ -309,7 +309,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		switch x := t.(type) {
 		case *PointerType:
 			//dbg("", ctx.position(n), t, op)
-			n.Operand = op.convertTo(ctx, t)
+			n.Operand = op.convertTo(ctx.model, t)
 		case *NamedType:
 			t = x.Type
 			goto more
@@ -331,7 +331,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				UShort:
 
 				//dbg("", ctx.position(n), t, op)
-				n.Operand = op.convertTo(ctx, t)
+				n.Operand = op.convertTo(ctx.model, t)
 			default:
 				panic(x)
 			}
@@ -543,10 +543,10 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 					panic(ctx.position(n))
 				}
 				d := d0.(*Declarator)
-				n.Operand = Operand{Type: x.Fields[d.field].Type}
+				n.Operand = Operand{Type: x.Fields[d.Field].Type}
 				if a := op.Addr; a != nil {
 					layout := ctx.model.Layout(x)
-					n.Operand.Addr = &ir.AddressValue{Linkage: a.Linkage, NameID: a.NameID, Offset: a.Offset + uintptr(layout[d.field].Offset)}
+					n.Operand.Addr = &ir.AddressValue{Linkage: a.Linkage, NameID: a.NameID, Offset: a.Offset + uintptr(layout[d.Field].Offset)}
 				}
 				break out
 			case *TaggedStructType:
@@ -561,7 +561,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 					panic(ctx.position(n))
 				}
 				d := d0.(*Declarator)
-				n.Operand = Operand{Type: x.Fields[d.field].Type}
+				n.Operand = Operand{Type: x.Fields[d.Field].Type}
 				if a := op.Addr; a != nil && a.Linkage != 0 {
 					panic("TODO")
 				}
@@ -777,9 +777,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			for i, rhs := range args {
 				switch {
 				case rhs.isIntegerType():
-					rhs = rhs.integerPromotion(ctx)
+					rhs = rhs.integerPromotion(ctx.model)
 				case rhs.Type.Kind() == Float:
-					rhs = rhs.convertTo(ctx, Double)
+					rhs = rhs.convertTo(ctx.model, Double)
 				}
 				if i >= len(t.Params) {
 					continue
@@ -815,9 +815,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 
 				switch {
 				case rhs.isIntegerType():
-					rhs = rhs.integerPromotion(ctx)
+					rhs = rhs.integerPromotion(ctx.model)
 				case rhs.Type.Kind() == Float:
-					rhs = rhs.convertTo(ctx, Double)
+					rhs = rhs.convertTo(ctx.model, Double)
 				}
 				AdjustedParameterType(t.Params[i]).assign(ctx, rhs)
 			}
@@ -901,10 +901,10 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 					panic(ctx.position(n))
 				}
 				d := d0.(*Declarator)
-				n.Operand = Operand{Type: x.Fields[d.field].Type}
+				n.Operand = Operand{Type: x.Fields[d.Field].Type}
 				if a := op.Addr; a != nil {
 					layout := ctx.model.Layout(x)
-					n.Operand.Addr = &ir.AddressValue{Linkage: a.Linkage, NameID: a.NameID, Offset: a.Offset + uintptr(layout[d.field].Offset)}
+					n.Operand.Addr = &ir.AddressValue{Linkage: a.Linkage, NameID: a.NameID, Offset: a.Offset + uintptr(layout[d.Field].Offset)}
 				}
 				break out3
 			case *TaggedStructType:
@@ -920,7 +920,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 					panic(ctx.position(n))
 				}
 				d := d0.(*Declarator)
-				n.Operand = Operand{Type: x.Fields[d.field].Type}
+				n.Operand = Operand{Type: x.Fields[d.Field].Type}
 				break out3
 			default:
 				//dbg("%v: %T", ctx.position(n), x)
@@ -959,7 +959,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			// determined by the usual arithmetic conversions, were
 			// they applied to those two operands, is the type of
 			// the result.
-			n.Operand, _ = usualArithmeticConversions(ctx, a, b)
+			n.Operand, _ = UsualArithmeticConversions(ctx.model, a, b)
 		case
 			// both operands have the same structure or union type
 			a.Type.Kind() == Struct && b.Type.Kind() == Struct && a.Type.Equal(b.Type),
@@ -1370,10 +1370,10 @@ func (n *FunctionDefinition) check(ctx *context) {
 func (n *FunctionBody) check(ctx *context, fn *Declarator) {
 	// CompoundStmt *CompoundStmt
 	seq := -1
-	n.CompoundStmt.check(ctx, fn, &seq, nil, false, false)
+	n.CompoundStmt.check(ctx, fn, &seq, nil, nil, false)
 }
 
-func (n *CompoundStmt) check(ctx *context, fn *Declarator, seq *int, sc []int, inSwitch, inLoop bool) {
+func (n *CompoundStmt) check(ctx *context, fn *Declarator, seq *int, sc []int, inSwitch *SelectionStmt, inLoop bool) {
 	// '{' BlockItemListOpt '}'
 	*seq++
 	sc = append(sc, *seq)
@@ -1462,7 +1462,7 @@ func (n *DirectDeclarator) parameterNames() (r []int) {
 	}
 }
 
-func (n *BlockItemListOpt) check(ctx *context, fn *Declarator, seq *int, sc []int, inSwitch, inLoop bool) {
+func (n *BlockItemListOpt) check(ctx *context, fn *Declarator, seq *int, sc []int, inSwitch *SelectionStmt, inLoop bool) {
 	if n == nil {
 		return
 	}
@@ -1470,13 +1470,13 @@ func (n *BlockItemListOpt) check(ctx *context, fn *Declarator, seq *int, sc []in
 	n.BlockItemList.check(ctx, fn, seq, sc, inSwitch, inLoop)
 }
 
-func (n *BlockItemList) check(ctx *context, fn *Declarator, seq *int, sc []int, inSwitch, inLoop bool) {
+func (n *BlockItemList) check(ctx *context, fn *Declarator, seq *int, sc []int, inSwitch *SelectionStmt, inLoop bool) {
 	for ; n != nil; n = n.BlockItemList {
 		n.BlockItem.check(ctx, fn, seq, sc, inSwitch, inLoop)
 	}
 }
 
-func (n *BlockItem) check(ctx *context, fn *Declarator, seq *int, sc []int, inSwitch, inLoop bool) {
+func (n *BlockItem) check(ctx *context, fn *Declarator, seq *int, sc []int, inSwitch *SelectionStmt, inLoop bool) {
 	switch n.Case {
 	case BlockItemDecl: // Declaration
 		n.Declaration.check(ctx, sc, fn)
@@ -1487,7 +1487,7 @@ func (n *BlockItem) check(ctx *context, fn *Declarator, seq *int, sc []int, inSw
 	}
 }
 
-func (n *Stmt) check(ctx *context, fn *Declarator, seq *int, sc []int, inSwitch, inLoop bool) {
+func (n *Stmt) check(ctx *context, fn *Declarator, seq *int, sc []int, inSwitch *SelectionStmt, inLoop bool) {
 	switch n.Case {
 	case StmtBlock: // CompoundStmt
 		n.CompoundStmt.check(ctx, fn, seq, sc, inSwitch, inLoop)
@@ -1506,7 +1506,7 @@ func (n *Stmt) check(ctx *context, fn *Declarator, seq *int, sc []int, inSwitch,
 	}
 }
 
-func (n *LabeledStmt) check(ctx *context, fn *Declarator, seq *int, sc []int, inSwitch, inLoop bool) {
+func (n *LabeledStmt) check(ctx *context, fn *Declarator, seq *int, sc []int, inSwitch *SelectionStmt, inLoop bool) {
 	//[0]6.8.1
 	switch n.Case {
 	case LabeledStmtSwitchCase: // "case" ConstExpr ':' Stmt
@@ -1514,14 +1514,16 @@ func (n *LabeledStmt) check(ctx *context, fn *Declarator, seq *int, sc []int, in
 		if op.Value == nil {
 			panic("TODO")
 		}
-		if !inSwitch {
+		if inSwitch == nil {
 			panic("TODO")
 		}
+		inSwitch.Cases = append(inSwitch.Cases, n)
 		n.Stmt.check(ctx, fn, seq, sc, inSwitch, inLoop)
 	case LabeledStmtDefault: // "default" ':' Stmt
-		if !inSwitch {
+		if inSwitch == nil {
 			panic("TODO")
 		}
+		inSwitch.Cases = append(inSwitch.Cases, n)
 		n.Stmt.check(ctx, fn, seq, sc, inSwitch, inLoop)
 	case LabeledStmtLabel: // IDENTIFIER ':' Stmt
 		n.Stmt.check(ctx, fn, seq, sc, inSwitch, inLoop)
@@ -1530,7 +1532,7 @@ func (n *LabeledStmt) check(ctx *context, fn *Declarator, seq *int, sc []int, in
 	}
 }
 
-func (n *SelectionStmt) check(ctx *context, fn *Declarator, seq *int, sc []int, inSwitch, inLoop bool) {
+func (n *SelectionStmt) check(ctx *context, fn *Declarator, seq *int, sc []int, inSwitch *SelectionStmt, inLoop bool) {
 	switch n.Case {
 	case SelectionStmtIfElse: // "if" '(' ExprList ')' Stmt "else" Stmt
 		if !n.ExprList.eval(ctx, true).isScalarType() {
@@ -1548,19 +1550,19 @@ func (n *SelectionStmt) check(ctx *context, fn *Declarator, seq *int, sc []int, 
 		if !n.ExprList.eval(ctx, true).isIntegerType() {
 			panic("TODO")
 		}
-		n.Stmt.check(ctx, fn, seq, sc, true, inLoop)
+		n.Stmt.check(ctx, fn, seq, sc, n, inLoop)
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	}
 }
 
-func (n *IterationStmt) check(ctx *context, fn *Declarator, seq *int, sc []int, inSwitch, inLoop bool) {
+func (n *IterationStmt) check(ctx *context, fn *Declarator, seq *int, sc []int, inSwitch *SelectionStmt, inLoop bool) {
 	switch n.Case {
 	case IterationStmtDo: // "do" Stmt "while" '(' ExprList ')' ';'
-		n.Stmt.check(ctx, fn, seq, sc, inSwitch, true)
 		if !n.ExprList.eval(ctx, true).isScalarType() {
 			panic(ctx.position)
 		}
+		n.Stmt.check(ctx, fn, seq, sc, inSwitch, true)
 	//TODO case IterationStmtForDecl: // "for" '(' Declaration ExprListOpt ';' ExprListOpt ')' Stmt
 	case IterationStmtFor: // "for" '(' ExprListOpt ';' ExprListOpt ';' ExprListOpt ')' Stmt
 		// [0]6.8.5.3
@@ -1571,7 +1573,7 @@ func (n *IterationStmt) check(ctx *context, fn *Declarator, seq *int, sc []int, 
 		n.ExprListOpt3.eval(ctx, true)
 		n.Stmt.check(ctx, fn, seq, sc, inSwitch, true)
 	case IterationStmtWhile: // "while" '(' ExprList ')' Stmt
-		if e := n.ExprListOpt2.eval(ctx, true); e.Type != nil && !e.isScalarType() {
+		if e := n.ExprList.eval(ctx, true); e.Type != nil && !e.isScalarType() {
 			panic(ctx.position(n))
 		}
 		n.Stmt.check(ctx, fn, seq, sc, inSwitch, true)
@@ -1580,14 +1582,14 @@ func (n *IterationStmt) check(ctx *context, fn *Declarator, seq *int, sc []int, 
 	}
 }
 
-func (n *JumpStmt) check(ctx *context, fn *Declarator, inSwitch, inLoop bool) {
+func (n *JumpStmt) check(ctx *context, fn *Declarator, inSwitch *SelectionStmt, inLoop bool) {
 	switch n.Case {
 	case JumpStmtBreak: // "break" ';'
 		// [0]6.8.6.3
 		//
 		// 1. A break statement shall appear only in or as a switch
 		// body or loop body.
-		if !inSwitch && !inLoop {
+		if inSwitch == nil && !inLoop {
 			panic(ctx.position)
 		}
 	case JumpStmtContinue: // "continue" ';'
@@ -1618,7 +1620,7 @@ func (n *JumpStmt) check(ctx *context, fn *Declarator, inSwitch, inLoop bool) {
 			if op.Type == nil {
 				panic(ctx.position(n))
 			}
-			n.ReturnOperand = op.convertTo(ctx, t)
+			n.ReturnOperand = op.convertTo(ctx.model, t)
 		}
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
@@ -2380,14 +2382,14 @@ func (n *StructDeclarator) check(ctx *context, ds *DeclarationSpecifier, field i
 	switch n.Case {
 	case StructDeclaratorBase: // Declarator
 		f := Field{Type: n.Declarator.check(ctx, ds, ds.typ(), false, nil, nil), Name: n.Declarator.Name()}
-		n.Declarator.field = field
+		n.Declarator.Field = field
 		return f
 	case StructDeclaratorBits: // DeclaratorOpt ':' ConstExpr
 		var d *Declarator
 		t := ds.typ()
 		if n.DeclaratorOpt != nil {
 			d = n.DeclaratorOpt.Declarator
-			d.field = field
+			d.Field = field
 			t = d.check(ctx, ds, t, false, nil, nil)
 		} else {
 			panic(ctx.position(n))
@@ -2448,3 +2450,6 @@ func (n *DeclarationSpecifiersOpt) check(ctx *context, ds *DeclarationSpecifier)
 
 	n.DeclarationSpecifiers.check(ctx, ds)
 }
+
+// IsTLD reports whether n is declared in file scope.
+func (n *Declarator) IsTLD() bool { return n.scope.Parent == nil }

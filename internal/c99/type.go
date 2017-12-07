@@ -103,7 +103,7 @@ func (t TypeKind) assign(ctx *context, op Operand) Operand {
 		// the left operand has qualified or unqualified arithmetic
 		// type and the right has arithmetic type;
 		t.IsArithmeticType() && op.Type.IsArithmeticType():
-		return op.convertTo(ctx, t)
+		return op.convertTo(ctx.model, t)
 	default:
 		panic("TODO")
 	}
@@ -713,7 +713,7 @@ func (t *PointerType) assign(ctx *context, op Operand) (r Operand) {
 		// right;
 		op.Type.IsPointerType() && t.IsCompatible(op.Type):
 
-		return op.convertTo(ctx, t)
+		return op.convertTo(ctx.model, t)
 	case
 		// one operand is a pointer to an object or incomplete type and
 		// the other is a pointer to a qualified or unqualified version

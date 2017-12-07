@@ -265,7 +265,7 @@ import (
 
                         // [0]6.5.16
 			//yy:field	Operand		Operand
-			//yy:field	Scope		*Scope	// case Addrof, Ident, Index
+			//yy:field	Scope		*Scope	// case Addrof, Assign, Ident, Index
 			//yy:field	AssignedTo	bool	// Expression appears at the left side of assignment.
 /*yy:case PreInc     */ Expr:
                         	"++" Expr
@@ -295,6 +295,9 @@ import (
 /*yy:case PostDec    */ |	Expr "--"
 /*yy:case SubAssign  */ |	Expr "-=" Expr
 /*yy:case PSelect    */ |	Expr "->" IDENTIFIER
+				{
+					lhs.Scope = lx.scope
+				}
 /*yy:case DivAssign  */ |	Expr "/=" Expr
 /*yy:case Lsh        */ |	Expr "<<" Expr
 /*yy:case LshAssign  */ |	Expr "<<=" Expr
@@ -313,9 +316,15 @@ import (
 /*yy:case Add        */ |	Expr '+' Expr
 /*yy:case Sub        */ |	Expr '-' Expr
 /*yy:case Select     */ |	Expr '.' IDENTIFIER
+				{
+					lhs.Scope = lx.scope
+				}
 /*yy:case Div        */ |	Expr '/' Expr
 /*yy:case Lt         */ |	Expr '<' Expr
 /*yy:case Assign     */ |	Expr '=' Expr
+				{
+					lhs.Scope = lx.scope
+				}
 /*yy:case Gt         */ |	Expr '>' Expr
 /*yy:case Cond       */ |	Expr '?' ExprList ':' Expr
 /*yy:case Index      */ |	Expr '[' ExprList ']'
@@ -522,6 +531,7 @@ import (
                         // [0]6.7.5
 			//yy:field	Bits			int			// StructDeclarator: bit width when a bit field.
 			//yy:field	DeclarationSpecifier	*DeclarationSpecifier	// Nil for embedded declarators.
+			//yy:field	Field			int			// Declaration order# if struct field declarator.
 			//yy:field	FunctionDefinition	*FunctionDefinition	// When the declarator defines a function.
 			//yy:field	Initializer		*Initializer		// Only when part of an InitDeclarator.
 			//yy:field	Linkage			Linkage			// Linkage of the declared name, [0]6.2.2.
@@ -529,7 +539,6 @@ import (
 			//yy:field	StorageDuration		StorageDuration		// Storage duration of the declared name, [0]6.2.4.
 			//yy:field	Type			Type			// Declared type.
 			//yy:field	TypeQualifiers		[]*TypeQualifier	// From the PointerOpt production, if any.
-			//yy:field	field			int			// Declaration order#.
 			//yy:field	scope			*Scope			// Declare the name in scope.
 			//yy:field	vars			[]*Declarator
 			//yy:field	AddressTaken		bool
@@ -744,6 +753,7 @@ import (
                         	ExprListOpt ';'
 
                         // [0]6.8.4
+			//yy:field	Cases	[]*LabeledStmt
 /*yy:case IfElse     */ SelectionStmt:
                         	"if" '(' ExprList ')' Stmt "else" Stmt
 /*yy:case If         */ |	"if" '(' ExprList ')' Stmt %prec NOELSE

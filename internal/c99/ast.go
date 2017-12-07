@@ -589,6 +589,7 @@ func (n *DeclarationSpecifiersOpt) Pos() token.Pos {
 type Declarator struct {
 	Bits                 int                   // StructDeclarator: bit width when a bit field.
 	DeclarationSpecifier *DeclarationSpecifier // Nil for embedded declarators.
+	Field                int                   // Declaration order# if struct field declarator.
 	FunctionDefinition   *FunctionDefinition   // When the declarator defines a function.
 	Initializer          *Initializer          // Only when part of an InitDeclarator.
 	Linkage              Linkage               // Linkage of the declared name, [0]6.2.2.
@@ -596,7 +597,6 @@ type Declarator struct {
 	StorageDuration      StorageDuration       // Storage duration of the declared name, [0]6.2.4.
 	Type                 Type                  // Declared type.
 	TypeQualifiers       []*TypeQualifier      // From the PointerOpt production, if any.
-	field                int                   // Declaration order#.
 	scope                *Scope                // Declare the name in scope.
 	vars                 []*Declarator
 	AddressTaken         bool
@@ -1409,7 +1409,7 @@ func (n ExprCase) String() string {
 //	|       STRINGLITERAL                                      // Case ExprString
 type Expr struct {
 	Operand             Operand
-	Scope               *Scope // case Addrof, Ident, Index
+	Scope               *Scope // case Addrof, Assign, Ident, Index
 	AssignedTo          bool   // Expression appears at the left side of assignment.
 	ArgumentExprListOpt *ArgumentExprListOpt
 	Case                ExprCase
@@ -2571,6 +2571,7 @@ func (n SelectionStmtCase) String() string {
 //	|       "if" '(' ExprList ')' Stmt              // Case SelectionStmtIf
 //	|       "switch" '(' ExprList ')' Stmt          // Case SelectionStmtSwitch
 type SelectionStmt struct {
+	Cases    []*LabeledStmt
 	Case     SelectionStmtCase
 	ExprList *ExprList
 	Stmt     *Stmt
