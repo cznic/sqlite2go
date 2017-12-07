@@ -57,6 +57,7 @@ func use(...interface{}) {}
 
 func init() {
 	use(caller, dbg, TODO) //TODOOK
+	flag.BoolVar(&traceOpt, "to", false, "")
 	flag.BoolVar(&traceWrites, "tw", false, "")
 }
 
@@ -141,6 +142,8 @@ func build(t *testing.T, dir string, in []*c99.TranslationUnit) {
 	w.WriteString(`package main
 	
 import (
+	"unsafe"
+
 	"github.com/cznic/crt"
 )
 

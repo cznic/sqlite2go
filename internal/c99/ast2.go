@@ -309,7 +309,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		switch x := t.(type) {
 		case *PointerType:
 			//dbg("", ctx.position(n), t, op)
-			n.Operand = op.convertTo(ctx.model, t)
+			n.Operand = op.convertTo(ctx, t)
 		case *NamedType:
 			t = x.Type
 			goto more
@@ -331,7 +331,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				UShort:
 
 				//dbg("", ctx.position(n), t, op)
-				n.Operand = op.convertTo(ctx.model, t)
+				n.Operand = op.convertTo(ctx, t)
 			default:
 				panic(x)
 			}
@@ -777,9 +777,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			for i, rhs := range args {
 				switch {
 				case rhs.isIntegerType():
-					rhs = rhs.integerPromotion(ctx.model)
+					rhs = rhs.integerPromotion(ctx)
 				case rhs.Type.Kind() == Float:
-					rhs = rhs.convertTo(ctx.model, Double)
+					rhs = rhs.convertTo(ctx, Double)
 				}
 				if i >= len(t.Params) {
 					continue
@@ -815,9 +815,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 
 				switch {
 				case rhs.isIntegerType():
-					rhs = rhs.integerPromotion(ctx.model)
+					rhs = rhs.integerPromotion(ctx)
 				case rhs.Type.Kind() == Float:
-					rhs = rhs.convertTo(ctx.model, Double)
+					rhs = rhs.convertTo(ctx, Double)
 				}
 				AdjustedParameterType(t.Params[i]).assign(ctx, rhs)
 			}
@@ -959,7 +959,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			// determined by the usual arithmetic conversions, were
 			// they applied to those two operands, is the type of
 			// the result.
-			n.Operand, _ = UsualArithmeticConversions(ctx.model, a, b)
+			n.Operand, _ = usualArithmeticConversions(ctx, a, b)
 		case
 			// both operands have the same structure or union type
 			a.Type.Kind() == Struct && b.Type.Kind() == Struct && a.Type.Equal(b.Type),
@@ -1618,7 +1618,7 @@ func (n *JumpStmt) check(ctx *context, fn *Declarator, inSwitch, inLoop bool) {
 			if op.Type == nil {
 				panic(ctx.position(n))
 			}
-			n.ReturnOperand = op.convertTo(ctx.model, t)
+			n.ReturnOperand = op.convertTo(ctx, t)
 		}
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))

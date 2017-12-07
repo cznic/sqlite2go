@@ -32,6 +32,7 @@ const (
 
 var (
 	dict        = xc.Dict
+	traceOpt    bool
 	traceWrites bool
 
 	idMain  = dict.SID("main")
@@ -65,6 +66,7 @@ type gen struct {
 	nextLabel          int
 	num                int
 	nums               map[*c99.Declarator]int
+	out0               bytes.Buffer
 	out                io.Writer
 	produced           map[*c99.Declarator]struct{}
 	producedStructTags map[int]struct{}
@@ -124,6 +126,7 @@ func (g *gen) gen(cmd bool) (err error) {
 			break
 		}
 
+		g.w("\nvar _ unsafe.Pointer\n")
 		g.w("\nfunc main() { X_start(%s.NewTLS(), 0, 0) } //TODO real args\n", crt)
 		g.produceDeclarator(sym)
 	default:
@@ -167,7 +170,7 @@ func bool2int(b bool) int32 {
 	return 0
 }
 `)
-	return nil
+	return newOpt().do(g.out, &g.out0)
 }
 
 func errString(err error) string {
@@ -362,11 +365,16 @@ func (g *gen) mangleDeclarator(n *c99.Declarator) string {
 }
 
 func (g *gen) functionBody(n *c99.FunctionBody, vars []*c99.Declarator) {
+	if vars == nil {
+		vars = []*c99.Declarator{}
+	}
 	g.compoundStmt(n.CompoundStmt, vars)
 }
 
 func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator) {
-	g.w(" {\n")
+	if vars != nil {
+		g.w(" {\n")
+	}
 	w := 0
 	for _, v := range vars {
 		if !v.IsReferenced {
@@ -397,7 +405,7 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator) {
 		g.w("var (\n")
 		for _, v := range vars {
 			initializer := v.Initializer
-			malloc := "Malloc"
+			malloc := "MustMalloc"
 			if initializer != nil && initializer.Case == c99.InitializerExpr {
 				o := initializer.Expr.Operand
 				if o.Type != nil && (o.IsZero() || o.Addr == c99.Null) {
@@ -407,7 +415,7 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator) {
 			}
 			if v.ScopeNum != 0 || initializer == nil {
 				switch {
-				case v.AddressTaken:
+				case v.AddressTaken || v.Type.Kind() == c99.Array:
 					free = append(free, v)
 					g.w("\t%s uintptr = %s.%s(%d) // *%s", g.mangleDeclarator(v), crt, malloc, g.model.Sizeof(v.Type), g.ptyp(v.Type, false))
 				default:
@@ -420,7 +428,7 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator) {
 				continue
 			}
 
-			if v.AddressTaken {
+			if v.AddressTaken || v.Type.Kind() == c99.Array {
 				todo("", g.position(v))
 			}
 			switch n := initializer; n.Case {
@@ -466,7 +474,9 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator) {
 		g.w("}()\n")
 	}
 	g.blockItemListOpt(n.BlockItemListOpt)
-	g.w("}\n")
+	if vars != nil {
+		g.w("}\n")
+	}
 }
 
 func (g *gen) blockItemListOpt(n *c99.BlockItemListOpt) {
@@ -528,6 +538,7 @@ func (g *gen) initDeclarator(n *c99.InitDeclarator) {
 }
 
 func (g *gen) stmt(n *c99.Stmt) {
+	g.w("\n")
 	switch n.Case {
 	case c99.StmtBlock: // CompoundStmt
 		g.compoundStmt(n.CompoundStmt, nil)
@@ -543,7 +554,6 @@ func (g *gen) stmt(n *c99.Stmt) {
 	default:
 		todo("", g.position0(n), n.Case)
 	}
-	g.w("\n")
 }
 
 func (g *gen) jumpStmt(n *c99.JumpStmt) {
@@ -574,15 +584,18 @@ func (g *gen) iterationStmt(n *c99.IterationStmt) {
 		g.exprListOpt(n.ExprListOpt, true)
 		a := g.label()
 		b := g.label()
-		g.w("\n_%d:\n", a)
+		g.w("\n_%d:", a)
 		if n.ExprListOpt2 != nil {
 			g.w("if ")
 			g.exprListOpt(n.ExprListOpt2, false)
 			g.w(" == 0 { goto _%d }\n", b)
 		}
 		g.stmt(n.Stmt)
+		if n.ExprListOpt3 != nil {
+			g.w("\n")
+		}
 		g.exprListOpt(n.ExprListOpt3, true)
-		g.w("\ngoto _%d\n_%d:\n", a, b)
+		g.w("\ngoto _%d\n\n_%d:", a, b)
 	//TODO case c99.IterationStmtWhile: // "while" '(' ExprList ')' Stmt
 	default:
 		todo("", g.position0(n), n.Case)
@@ -859,21 +872,23 @@ func (g *gen) expr(n *c99.Expr) {
 		case *c99.PointerType:
 			g.w("*(*uintptr)(unsafe.Pointer(")
 			g.expr(n.Expr)
-			g.w(" + %d*(", g.model.Sizeof(t))
+			g.w(" + %d*uintptr(", g.model.Sizeof(t))
 			g.exprList(n.ExprList, false)
 			g.w(")))")
 		case *c99.TaggedStructType:
+			g.w("*(*%s)(unsafe.Pointer(", g.typ(t))
 			g.expr(n.Expr)
-			g.w("[")
+			g.w(" + %d*uintptr(", g.model.Sizeof(t))
 			g.exprList(n.ExprList, false)
-			g.w("]")
+			g.w(")))")
 		case c99.TypeKind:
 			switch x {
 			case c99.Int:
+				g.w("*(*%s)(unsafe.Pointer(", g.typ(x))
 				g.expr(n.Expr)
-				g.w("[")
+				g.w(" + %d*uintptr(", g.model.Sizeof(x))
 				g.exprList(n.ExprList, false)
-				g.w("]")
+				g.w(")))")
 			default:
 				todo("%v: %v", g.position0(n), x)
 			}
@@ -926,11 +941,9 @@ func (g *gen) relop(n *c99.Expr) {
 }
 
 func (g *gen) binop(n *c99.Expr) {
-	lhs0, rhs0 := n.Expr.Operand, n.Expr2.Operand
-	lhs, rhs := c99.UsualArithmeticConversions(g.model, lhs0, rhs0)
-	g.expr2(n.Expr, lhs.Type)
+	g.expr2(n.Expr, n.Operand.Type)
 	g.w(" %s ", c99.TokSrc(n.Token))
-	g.expr2(n.Expr2, rhs.Type)
+	g.expr2(n.Expr2, n.Operand.Type)
 }
 
 func (g *gen) expr2(n *c99.Expr, t c99.Type) {
@@ -1110,7 +1123,7 @@ func (g *gen) typ0(buf *bytes.Buffer, t c99.Type) {
 }
 
 func (g *gen) w(s string, args ...interface{}) {
-	if _, err := fmt.Fprintf(g.out, s, args...); err != nil {
+	if _, err := fmt.Fprintf(&g.out0, s, args...); err != nil {
 		panic(err)
 	}
 	if traceWrites {

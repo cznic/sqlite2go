@@ -90,7 +90,7 @@ func (m Model) Sizeof(t Type) int64 {
 		}
 
 		lf := layout[len(layout)-1]
-		return roundup(lf.Offset+int64(lf.Padding), int64(m.Alignof(t)))
+		return roundup(lf.Offset+lf.Size+int64(lf.Padding), int64(m.Alignof(t)))
 	case *TaggedStructType:
 		u := x.getType()
 		if u == x {
