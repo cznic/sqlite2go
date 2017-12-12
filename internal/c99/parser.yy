@@ -265,7 +265,7 @@ import (
 
                         // [0]6.5.16
 			//yy:field	Operand		Operand
-			//yy:field	Scope		*Scope	// case Addrof, Assign, Ident, Index
+			//yy:field	Scope		*Scope	// case Addrof, Assign, Call, Cast, Ident, Index, PExprList.
 			//yy:field	AssignedTo	bool	// Expression appears at the left side of assignment.
 /*yy:case PreInc     */ Expr:
                         	"++" Expr
@@ -278,8 +278,14 @@ import (
 					lhs.Scope = lx.scope
 				}
 /*yy:case PExprList  */ |	'(' ExprList ')'
+				{
+					lhs.Scope = lx.scope
+				}
 /*yy:case CompLit    */ |	'(' TypeName ')' '{' InitializerList CommaOpt '}'
 /*yy:case Cast       */ |	'(' TypeName ')' Expr %prec CAST
+				{
+					lhs.Scope = lx.scope
+				}
 /*yy:case Deref      */ |	'*' Expr %prec UNARY
 /*yy:case UnaryPlus  */ |	'+' Expr %prec UNARY
 /*yy:case UnaryMinus */ |	'-' Expr %prec UNARY
@@ -312,6 +318,9 @@ import (
 /*yy:case Mod        */ |	Expr '%' Expr
 /*yy:case And        */ |	Expr '&' Expr
 /*yy:case Call       */ |	Expr '(' ArgumentExprListOpt ')'
+				{
+					lhs.Scope = lx.scope
+				}
 /*yy:case Mul        */ |	Expr '*' Expr
 /*yy:case Add        */ |	Expr '+' Expr
 /*yy:case Sub        */ |	Expr '-' Expr

@@ -247,6 +247,16 @@ func (t TypeKind) Equal(u Type) bool {
 		default:
 			panic(t)
 		}
+	case *TaggedEnumType:
+		switch t {
+		case
+			Char,
+			Int:
+
+			return false
+		default:
+			panic(t)
+		}
 	case *TaggedStructType:
 		switch t {
 		case
@@ -507,10 +517,9 @@ func (f Field) String() string { return fmt.Sprintf("%s %v", dict.S(f.Name), f.T
 
 // FunctionType represents a function type.
 type FunctionType struct {
-	Params    []Type
-	Prototype *FunctionType
-	Result    Type
-	Variadic  bool
+	Params   []Type
+	Result   Type
+	Variadic bool
 }
 
 // IsVoidPointerType implements Type.
@@ -865,7 +874,14 @@ type TaggedEnumType struct {
 }
 
 // Equal implements Type.
-func (t *TaggedEnumType) Equal(u Type) bool { panic("TODO") }
+func (t *TaggedEnumType) Equal(u Type) bool {
+	switch x := u.(type) {
+	case *TaggedEnumType:
+		return t.Tag == x.Tag
+	default:
+		panic(fmt.Errorf("%T", x))
+	}
+}
 
 // IsArithmeticType implements Type.
 func (t *TaggedEnumType) IsArithmeticType() bool { panic("TODO") }

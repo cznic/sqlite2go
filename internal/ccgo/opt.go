@@ -6,12 +6,14 @@ package ccgo
 
 import (
 	"bytes"
+	"fmt"
 	"go/ast"
 	"go/format"
 	"go/parser"
 	"go/token"
 	"io"
 	"os"
+	//"github.com/cznic/strutil"
 )
 
 var (
@@ -51,14 +53,15 @@ func (o *opt) pos(n ast.Node) token.Position {
 	return o.fset.Position(n.Pos())
 }
 
-func (o *opt) do(out io.Writer, in io.Reader) error {
+func (o *opt) do(out io.Writer, in io.Reader, fn string) error {
 	o.out = out
 	o.fset = token.NewFileSet()
-	ast, err := parser.ParseFile(o.fset, "", io.MultiReader(bytes.NewBufferString("package p\n"), in), parser.ParseComments)
+	ast, err := parser.ParseFile(o.fset, "", io.MultiReader(bytes.NewBufferString(fmt.Sprintf("package p // %s\n", fn)), in), parser.ParseComments)
 	if err != nil {
 		return err
 	}
 
+	//dbg("\n%s", strutil.PrettyString(ast, "", "", nil))
 	o.file(ast)
 	return format.Node(o, o.fset, ast)
 }
@@ -137,6 +140,8 @@ func (o *opt) stmt(n *ast.Stmt) {
 		o.decl(&x.Decl)
 	case *ast.DeferStmt:
 		o.call(x.Call)
+	case *ast.EmptyStmt:
+		// nop
 	case *ast.ExprStmt:
 		o.expr(&x.X)
 		switch x2 := x.X.(type) {
@@ -195,6 +200,20 @@ func (o *opt) expr(n *ast.Expr) {
 						}
 					}
 				}
+			case token.NEQ:
+				if rhs.Value != "0" {
+					break
+				}
+
+				switch x2 := x.X.(type) {
+				case *ast.CallExpr:
+					switch x3 := x2.Fun.(type) {
+					case *ast.Ident:
+						if x3.Name == "bool2int" {
+							*n = x2.Args[0].(*ast.BinaryExpr)
+						}
+					}
+				}
 			}
 		}
 	case *ast.CallExpr:
@@ -210,14 +229,11 @@ func (o *opt) expr(n *ast.Expr) {
 		o.expr(&x.X)
 		switch x2 := x.X.(type) {
 		case *ast.CallExpr:
-			switch x2.Fun.(type) {
-			case *ast.Ident:
-				*n = x2
-			}
+			*n = x2
 		case *ast.Ident:
 			*n = x2
 		case *ast.ParenExpr:
-			*n = x2.X //TODO 05_array.c
+			*n = x2.X
 		case *ast.SelectorExpr:
 			switch x2.X.(type) {
 			case *ast.Ident:
@@ -246,6 +262,8 @@ func (o *opt) expr(n *ast.Expr) {
 				*n = x2.X
 			}
 		}
+	case *ast.StructType:
+		// nop
 	case *ast.UnaryExpr:
 		o.expr(&x.X)
 	default:

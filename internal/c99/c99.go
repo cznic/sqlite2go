@@ -126,7 +126,14 @@ func newContext(fset *token.FileSet, t *Tweaks) (*context, error) {
 
 func (c *context) err(n Node, msg string, args ...interface{}) { c.errPos(n.Pos(), msg, args...) }
 func (c *context) newScope()                                   { c.scope = newScope(c.scope) }
-func (c *context) position(n Node) token.Position              { return c.fset.PositionFor(n.Pos(), true) }
+
+func (c *context) position(n Node) (r token.Position) {
+	if n != nil {
+		return c.fset.PositionFor(n.Pos(), true)
+	}
+
+	return r
+}
 
 func (c *context) errPos(pos token.Pos, msg string, args ...interface{}) {
 	c.Lock()

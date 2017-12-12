@@ -70,7 +70,26 @@ const inject = `
 #include <builtin.h>
 `
 
+func TestOpt(t *testing.T) {
+	for _, v := range []struct{ in, out string }{
+		{"var _ = (a(b))", "var _ = a(b)"},
+		{"var _ = ((a)(b))", "var _ = a(b)"},
+		{"var _ = *((*a)(b))", "var _ = *(*a)(b)"},
+	} {
+		in := bytes.NewBufferString(v.in)
+		var out bytes.Buffer
+		if err := newOpt().do(&out, in, "TestOp"); err != nil {
+			t.Fatal(err)
+		}
+
+		if g, e := bytes.TrimSpace(out.Bytes()), []byte(v.out); !bytes.Equal(g, e) {
+			t.Fatalf("got\n%s\nexp\n%s", g, e)
+		}
+	}
+}
+
 func testTCC(t *testing.T, pth string) {
+	testFn = pth
 	fset := token.NewFileSet()
 	predefSource := c99.NewStringSource("<predefine>", fmt.Sprintf(inject, runtime.GOARCH, runtime.GOOS))
 	crt0Source := c99.NewFileSource(filepath.Join(ccir.LibcIncludePath, "crt0.c"))

@@ -676,37 +676,14 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 	case ExprCall: // Expr '(' ArgumentExprListOpt ')'
 		// [0]6.5.2.2
 		op := n.Expr.eval(ctx, arr2ptr)
-		// 1. The expression that denotes the called function 80) shall
-		// have type pointer to function returning void or returning an
-		// object type other than an array type.
-		var t *FunctionType
-		for u, done := op.Type, false; !done; {
-			switch x := u.(type) {
-			case *NamedType:
-				u = x.Type
-			case *PointerType:
-				switch x := x.Item.(type) {
-				case *FunctionType:
-					t = x
-					done = true
-				default:
-					panic(ctx.position)
-				}
-			case nil:
-				if ctx.tweaks.EnableImplicitDeclarations {
-					n.Operand = Operand{Type: Int}
-					n.ArgumentExprListOpt.eval(ctx)
-					done = true
-					break
-				}
-
-				panic(ctx.position(n))
-			default:
-				//dbg("", x)
+		args := n.ArgumentExprListOpt.eval(ctx)
+		t := checkFn(ctx, op.Type)
+		if t == nil {
+			if !ctx.tweaks.EnableImplicitDeclarations {
 				panic(ctx.position(n))
 			}
-		}
-		if t == nil {
+
+			n.Operand = Operand{Type: Int}
 			break
 		}
 
@@ -714,58 +691,14 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			panic(ctx.position)
 		}
 
-		//TODO check the definition of "prototype". Consider
-		//
-		// void bar(); // OK, clear case, bar has prototype.
-		//
-		// void foo() { // Currently foo is considered prototype-less.
-		//	foo(); // Should be foo considered as having a prototype?
-		// }
-
 		n.Operand = Operand{Type: t.Result}
-		args := n.ArgumentExprListOpt.eval(ctx)
 		// 2. If the expression that denotes the called function has a
 		// type that includes a prototype, the number of arguments
 		// shall agree with the number of parameters. Each argument
 		// shall have a type such that its value may be assigned to an
 		// object with the unqualified version of the type of its
 		// corresponding parameter.
-		if t.Prototype != nil {
-		out2:
-			switch {
-			case t.Variadic:
-				switch {
-				case len(args) >= len(t.Params):
-					// ok
-				default:
-					panic(ctx.position(n))
-				}
-				for i, rhs := range args {
-					if i >= len(t.Params) {
-						continue
-					}
-
-					AdjustedParameterType(t.Params[i]).assign(ctx, rhs)
-				}
-			default:
-				switch {
-				case len(args) == len(t.Prototype.Params):
-					// ok
-				case len(args) == 0 && len(t.Prototype.Params) == 1 && t.Prototype.Params[0] == Void:
-					// ok
-				case len(t.Prototype.Params) == 0:
-					break out2
-				default:
-					panic(ctx.position(n))
-				}
-
-				for i, rhs := range args {
-					AdjustedParameterType(t.Params[i]).assign(ctx, rhs)
-				}
-				break out2
-			}
-		}
-
+	out2:
 		switch {
 		case t.Variadic:
 			switch {
@@ -775,12 +708,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				panic(ctx.position(n))
 			}
 			for i, rhs := range args {
-				switch {
-				case rhs.isIntegerType():
-					rhs = rhs.integerPromotion(ctx.model)
-				case rhs.Type.Kind() == Float:
-					rhs = rhs.convertTo(ctx.model, Double)
-				}
 				if i >= len(t.Params) {
 					continue
 				}
@@ -794,33 +721,19 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			case len(args) == 0 && len(t.Params) == 1 && t.Params[0] == Void:
 				// ok
 			case len(t.Params) == 0:
-				// ok
+				break out2
 			default:
-				// dbg("", len(args), len(t.Params))
 				panic(ctx.position(n))
 			}
-			if len(t.Params) == 0 {
-				break
-			}
 
-			// 6. If the expression that denotes the called
-			// function has a type that does not include a
-			// prototype, the integer promotions are performed on
-			// each argument, and arguments that have type float
-			// are promoted to double.
 			for i, rhs := range args {
-				if rhs.Type == nil && ctx.tweaks.EnableImplicitDeclarations {
+				if rhs.Type == nil {
 					continue
 				}
 
-				switch {
-				case rhs.isIntegerType():
-					rhs = rhs.integerPromotion(ctx.model)
-				case rhs.Type.Kind() == Float:
-					rhs = rhs.convertTo(ctx.model, Double)
-				}
 				AdjustedParameterType(t.Params[i]).assign(ctx, rhs)
 			}
+			break out2
 		}
 	case ExprMul: // Expr '*' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr).mul(ctx, n.Expr2.eval(ctx, arr2ptr))
@@ -1245,6 +1158,31 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			panic(fmt.Errorf("%T", x))
 		default:
 			//dbg("", ctx.position(n))
+			panic(fmt.Errorf("%T", x))
+		}
+	}
+}
+
+func checkFn(ctx *context, t Type) *FunctionType {
+	// 1. The expression that denotes the called function 80) shall
+	// have type pointer to function returning void or returning an
+	// object type other than an array type.
+	for {
+		switch x := t.(type) {
+		case *FunctionType:
+			return x
+		case *NamedType:
+			t = x.Type
+		case *PointerType:
+			switch x := x.Item.(type) {
+			case *FunctionType:
+				return x
+			default:
+				panic(ctx.position)
+			}
+		case nil:
+			return nil
+		default:
 			panic(fmt.Errorf("%T", x))
 		}
 	}
@@ -1953,9 +1891,6 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 
 				if isFunction && n.isFnDefinition() {
 					n.scope.Idents[nm] = n
-					if !ex.isFnDefinition() {
-						n.Type.(*FunctionType).Prototype = ex.Type.(*FunctionType)
-					}
 				}
 			default:
 				panic(n.Linkage)
@@ -1971,9 +1906,6 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 
 				if isFunction && n.isFnDefinition() {
 					n.scope.Idents[nm] = n
-					if !ex.isFnDefinition() {
-						n.Type.(*FunctionType).Prototype = ex.Type.(*FunctionType)
-					}
 				}
 			default:
 				panic(n.Linkage)
