@@ -86,7 +86,7 @@ var (
 // conversions:
 func UsualArithmeticConversions(m Model, a, b Operand) (Operand, Operand) {
 	if !a.isArithmeticType() || !b.isArithmeticType() {
-		panic("TODO")
+		panic(fmt.Sprint(a, b))
 	}
 
 	// First, if the corresponding real type of either operand is long
@@ -199,7 +199,6 @@ type Operand struct {
 }
 
 func newIntConst(c *context, n Node, v uint64, t ...TypeKind) (r Operand) {
-	r = Operand{Type: Undefined}
 	b := bits.Len64(v)
 	for _, t := range t {
 		if c.model[t].Size*8 >= b {
@@ -208,7 +207,7 @@ func newIntConst(c *context, n Node, v uint64, t ...TypeKind) (r Operand) {
 	}
 
 	c.err(n, "invalid integer constant")
-	return Operand{Type: Undefined}
+	return Operand{Type: Int}
 }
 
 func (o Operand) isArithmeticType() bool { return o.Type.IsArithmeticType() }
@@ -493,7 +492,7 @@ func (o Operand) integerPromotion(m Model) Operand {
 		case *NamedType:
 			t = x.Type
 		case *TaggedEnumType:
-			return o
+			t = x.getType().(*EnumType).Enums[0].Operand.Type
 		case TypeKind:
 			switch x {
 			case
@@ -543,6 +542,8 @@ func (o Operand) IsZero() bool {
 		return x.Value == 0
 	case *ir.Float64Value:
 		return x.Value == 0
+	case *ir.StringValue:
+		return false
 	default:
 		panic(fmt.Errorf("TODO %T", x))
 	}

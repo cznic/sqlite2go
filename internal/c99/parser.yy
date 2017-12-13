@@ -265,8 +265,9 @@ import (
 
                         // [0]6.5.16
 			//yy:field	Operand		Operand
-			//yy:field	Scope		*Scope	// case Addrof, Assign, Call, Cast, Ident, Index, PExprList.
-			//yy:field	AssignedTo	bool	// Expression appears at the left side of assignment.
+			//yy:field	Scope		*Scope		// case Addrof, Assign, Call, Cast, Ident, Index, PExprList.
+			//yy:field	CallArgs	[]Operand	// Promoted arguments of Call.
+			//yy:field	AssignedTo	bool		// Expression appears at the left side of assignment.
 /*yy:case PreInc     */ Expr:
                         	"++" Expr
 /*yy:case PreDec     */ |	"--" Expr

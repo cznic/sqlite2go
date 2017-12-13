@@ -72,13 +72,21 @@ func (d *DeclarationSpecifier) typ() Type {
 		case TypeSpecifierShort:
 			return Short
 		case TypeSpecifierStruct:
-			return d.TypeSpecifiers[0].StructOrUnionSpecifier.typ
+			t := d.TypeSpecifiers[0].StructOrUnionSpecifier.typ
+			if x, ok := t.(*TaggedStructType); ok {
+				x.getType()
+			}
+			return t
 		case TypeSpecifierUnsigned:
 			return UInt
 		case TypeSpecifierVoid:
 			return Void
 		case TypeSpecifierEnum:
-			return d.TypeSpecifiers[0].EnumSpecifier.typ
+			t := d.TypeSpecifiers[0].EnumSpecifier.typ
+			if x, ok := t.(*TaggedEnumType); ok {
+				x.getType()
+			}
+			return t
 		default:
 			panic(d.typeSpecifiers)
 		}
@@ -518,6 +526,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		}
 		n.Operand = lhs
 	case ExprPSelect: // Expr "->" IDENTIFIER
+		n.Expr.AssignedTo = n.AssignedTo
 		op := n.Expr.eval(ctx, arr2ptr)
 		t := op.Type
 		for done := false; !done; {
@@ -677,6 +686,8 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		// [0]6.5.2.2
 		op := n.Expr.eval(ctx, arr2ptr)
 		args := n.ArgumentExprListOpt.eval(ctx)
+		ops := make([]Operand, len(args))
+		n.CallArgs = ops
 		t := checkFn(ctx, op.Type)
 		if t == nil {
 			if !ctx.tweaks.EnableImplicitDeclarations {
@@ -709,10 +720,11 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			}
 			for i, rhs := range args {
 				if i >= len(t.Params) {
+					ops[i] = ctx.model.defaultArgumentPromotion(rhs)
 					continue
 				}
 
-				AdjustedParameterType(t.Params[i]).assign(ctx, rhs)
+				ops[i] = AdjustedParameterType(t.Params[i]).assign(ctx, rhs)
 			}
 		default:
 			switch {
@@ -728,10 +740,14 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 
 			for i, rhs := range args {
 				if rhs.Type == nil {
-					continue
-				}
+					if !ctx.tweaks.EnableImplicitDeclarations {
+						panic("TODO")
+					}
 
-				AdjustedParameterType(t.Params[i]).assign(ctx, rhs)
+					rhs.Type = Int
+					rhs.Value = &ir.Int64Value{Value: 0}
+				}
+				ops[i] = AdjustedParameterType(t.Params[i]).assign(ctx, rhs)
 			}
 			break out2
 		}
@@ -1733,7 +1749,7 @@ func (n *InitializerList) check(ctx *context, t Type) Operand {
 			return Operand{Type: t, Value: r}
 		case *TaggedStructType:
 			t = x.getType()
-			if t == Undefined {
+			if t == x {
 				panic("TODO")
 			}
 		case *UnionType:
@@ -1761,7 +1777,7 @@ func (n *InitializerList) check(ctx *context, t Type) Operand {
 	}
 }
 
-func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObject bool, sc []int, fn *Declarator) Type {
+func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObject bool, sc []int, fn *Declarator) (r Type) {
 	// PointerOpt DirectDeclarator
 	if l := len(sc); l != 0 {
 		n.ScopeNum = sc[l-1]

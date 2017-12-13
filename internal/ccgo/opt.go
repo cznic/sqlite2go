@@ -228,6 +228,8 @@ func (o *opt) expr(n *ast.Expr) {
 	case *ast.ParenExpr:
 		o.expr(&x.X)
 		switch x2 := x.X.(type) {
+		case *ast.BasicLit:
+			*n = x2
 		case *ast.CallExpr:
 			*n = x2
 		case *ast.Ident:
@@ -277,6 +279,10 @@ func invOP(op token.Token) token.Token {
 		return token.GEQ
 	case token.LEQ:
 		return token.GTR
+	case token.EQL:
+		return token.NEQ
+	case token.NEQ:
+		return token.EQL
 	default:
 		todo("", op)
 	}

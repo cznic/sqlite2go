@@ -15,6 +15,7 @@ import (
 
 var (
 	_ Type = (*ArrayType)(nil)
+	_ Type = (*EnumType)(nil)
 	_ Type = (*FunctionType)(nil)
 	_ Type = (*NamedType)(nil)
 	_ Type = (*PointerType)(nil)
@@ -23,16 +24,8 @@ var (
 	_ Type = (*TaggedUnionType)(nil)
 	_ Type = (*TaggedEnumType)(nil)
 	_ Type = (*UnionType)(nil)
-	_ Type = (*undefinedType)(nil)
 	_ Type = TypeKind(0)
-
-	// Undefined represents an instance of undefined type. R/O
-	Undefined = &undefinedType{}
 )
-
-type undefinedType struct {
-	Type
-}
 
 // Type represents a C type.
 type Type interface {
@@ -503,7 +496,9 @@ func (t *EnumType) IsIntegerType() bool { panic("TODO") }
 // IsScalarType implements Type.
 func (t *EnumType) IsScalarType() bool { panic("TODO") }
 
-func (t *EnumType) String() string { panic("TODO169b") }
+func (t *EnumType) String() string {
+	return fmt.Sprintf("%s enumeration", t.Enums[0].Operand.Type.String())
+}
 
 // Field represents a struct/union field.
 type Field struct {
@@ -878,6 +873,13 @@ func (t *TaggedEnumType) Equal(u Type) bool {
 	switch x := u.(type) {
 	case *TaggedEnumType:
 		return t.Tag == x.Tag
+	case TypeKind:
+		switch x {
+		case Int:
+			return false
+		default:
+			panic(fmt.Errorf("%v", x))
+		}
 	default:
 		panic(fmt.Errorf("%T", x))
 	}

@@ -234,3 +234,43 @@ func roundup(n, to int64) int64 {
 
 	return n
 }
+
+func (m Model) defaultArgumentPromotion(op Operand) (r Operand) {
+	u := op.Type
+	for {
+		switch x := u.(type) {
+		case *EnumType:
+			u = x.Enums[0].Operand.Type
+		case *NamedType:
+			u = x.Type
+		case *PointerType:
+			return op
+		case *TaggedEnumType:
+			u = x.getType()
+		case TypeKind:
+			switch x {
+			case Float:
+				return op.convertTo(m, Double)
+			case Double:
+				return op
+			case
+				Char,
+				Int,
+				LongLong,
+				SChar,
+				Short,
+				UChar,
+				UInt,
+				ULong,
+				ULongLong,
+				UShort:
+
+				return op.integerPromotion(m)
+			default:
+				panic(x)
+			}
+		default:
+			panic(x)
+		}
+	}
+}
