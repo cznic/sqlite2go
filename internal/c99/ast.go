@@ -587,22 +587,23 @@ func (n *DeclarationSpecifiersOpt) Pos() token.Pos {
 //	Declarator:
 //	        PointerOpt DirectDeclarator  // Case 0
 type Declarator struct {
+	AssignedTo           int                   // Declarator appears at the left side of assignment.
 	Bits                 int                   // StructDeclarator: bit width when a bit field.
 	DeclarationSpecifier *DeclarationSpecifier // Nil for embedded declarators.
 	Field                int                   // Declaration order# if struct field declarator.
 	FunctionDefinition   *FunctionDefinition   // When the declarator defines a function.
 	Initializer          *Initializer          // Only when part of an InitDeclarator.
 	Linkage              Linkage               // Linkage of the declared name, [0]6.2.2.
-	ScopeNum             int                   // Sequential scope number within function body.
-	StorageDuration      StorageDuration       // Storage duration of the declared name, [0]6.2.4.
-	Type                 Type                  // Declared type.
-	TypeQualifiers       []*TypeQualifier      // From the PointerOpt production, if any.
-	scope                *Scope                // Declare the name in scope.
+	Referenced           int
+	ScopeNum             int              // Sequential scope number within function body.
+	StorageDuration      StorageDuration  // Storage duration of the declared name, [0]6.2.4.
+	Type                 Type             // Declared type.
+	TypeQualifiers       []*TypeQualifier // From the PointerOpt production, if any.
+	scope                *Scope           // Declare the name in scope.
 	vars                 []*Declarator
 	AddressTaken         bool
 	Embedded             bool // [0]6.7.5-3: Not a full declarator.
 	IsFunctionParameter  bool
-	IsReferenced         bool
 	DirectDeclarator     *DirectDeclarator
 	PointerOpt           *PointerOpt
 }
@@ -1409,8 +1410,8 @@ func (n ExprCase) String() string {
 //	|       STRINGLITERAL                                      // Case ExprString
 type Expr struct {
 	Operand             Operand
-	Scope               *Scope    // case Addrof, Assign, Call, Cast, Ident, Index, PExprList.
 	CallArgs            []Operand // Promoted arguments of Call.
+	Scope               *Scope    // Case Ident.
 	AssignedTo          bool      // Expression appears at the left side of assignment.
 	ArgumentExprListOpt *ArgumentExprListOpt
 	Case                ExprCase

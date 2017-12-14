@@ -78,7 +78,7 @@ var (
 	nopos xc.Token
 
 	// Null pointer, [0]6.3.2.3-3.
-	Null = &ir.AddressValue{}
+	Null = &Address{}
 
 	idChar     = dict.SID("char")
 	idConst    = dict.SID("const")

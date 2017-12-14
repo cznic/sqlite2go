@@ -265,8 +265,8 @@ import (
 
                         // [0]6.5.16
 			//yy:field	Operand		Operand
-			//yy:field	Scope		*Scope		// case Addrof, Assign, Call, Cast, Ident, Index, PExprList.
 			//yy:field	CallArgs	[]Operand	// Promoted arguments of Call.
+			//yy:field	Scope		*Scope		// Case Ident.
 			//yy:field	AssignedTo	bool		// Expression appears at the left side of assignment.
 /*yy:case PreInc     */ Expr:
                         	"++" Expr
@@ -275,18 +275,9 @@ import (
 /*yy:case SizeofExpr */ |	"sizeof" Expr
 /*yy:case Not        */ |	'!' Expr
 /*yy:case Addrof     */ |	'&' Expr %prec UNARY
-				{
-					lhs.Scope = lx.scope
-				}
 /*yy:case PExprList  */ |	'(' ExprList ')'
-				{
-					lhs.Scope = lx.scope
-				}
 /*yy:case CompLit    */ |	'(' TypeName ')' '{' InitializerList CommaOpt '}'
 /*yy:case Cast       */ |	'(' TypeName ')' Expr %prec CAST
-				{
-					lhs.Scope = lx.scope
-				}
 /*yy:case Deref      */ |	'*' Expr %prec UNARY
 /*yy:case UnaryPlus  */ |	'+' Expr %prec UNARY
 /*yy:case UnaryMinus */ |	'-' Expr %prec UNARY
@@ -302,9 +293,6 @@ import (
 /*yy:case PostDec    */ |	Expr "--"
 /*yy:case SubAssign  */ |	Expr "-=" Expr
 /*yy:case PSelect    */ |	Expr "->" IDENTIFIER
-				{
-					lhs.Scope = lx.scope
-				}
 /*yy:case DivAssign  */ |	Expr "/=" Expr
 /*yy:case Lsh        */ |	Expr "<<" Expr
 /*yy:case LshAssign  */ |	Expr "<<=" Expr
@@ -319,28 +307,16 @@ import (
 /*yy:case Mod        */ |	Expr '%' Expr
 /*yy:case And        */ |	Expr '&' Expr
 /*yy:case Call       */ |	Expr '(' ArgumentExprListOpt ')'
-				{
-					lhs.Scope = lx.scope
-				}
 /*yy:case Mul        */ |	Expr '*' Expr
 /*yy:case Add        */ |	Expr '+' Expr
 /*yy:case Sub        */ |	Expr '-' Expr
 /*yy:case Select     */ |	Expr '.' IDENTIFIER
-				{
-					lhs.Scope = lx.scope
-				}
 /*yy:case Div        */ |	Expr '/' Expr
 /*yy:case Lt         */ |	Expr '<' Expr
 /*yy:case Assign     */ |	Expr '=' Expr
-				{
-					lhs.Scope = lx.scope
-				}
 /*yy:case Gt         */ |	Expr '>' Expr
 /*yy:case Cond       */ |	Expr '?' ExprList ':' Expr
 /*yy:case Index      */ |	Expr '[' ExprList ']'
-				{
-					lhs.Scope = lx.scope
-				}
 /*yy:case Xor        */ |	Expr '^' Expr
 /*yy:case Or         */ |	Expr '|' Expr
 /*yy:case Float      */ |	FLOATCONST
@@ -539,12 +515,14 @@ import (
 				"inline"
 
                         // [0]6.7.5
+			//yy:field	AssignedTo		int			// Declarator appears at the left side of assignment.
 			//yy:field	Bits			int			// StructDeclarator: bit width when a bit field.
 			//yy:field	DeclarationSpecifier	*DeclarationSpecifier	// Nil for embedded declarators.
 			//yy:field	Field			int			// Declaration order# if struct field declarator.
 			//yy:field	FunctionDefinition	*FunctionDefinition	// When the declarator defines a function.
 			//yy:field	Initializer		*Initializer		// Only when part of an InitDeclarator.
 			//yy:field	Linkage			Linkage			// Linkage of the declared name, [0]6.2.2.
+			//yy:field	Referenced		int
 			//yy:field	ScopeNum		int			// Sequential scope number within function body.
 			//yy:field	StorageDuration		StorageDuration		// Storage duration of the declared name, [0]6.2.4.
 			//yy:field	Type			Type			// Declared type.
@@ -554,7 +532,6 @@ import (
 			//yy:field	AddressTaken		bool
 			//yy:field	Embedded		bool			// [0]6.7.5-3: Not a full declarator.
 			//yy:field	IsFunctionParameter	bool
-			//yy:field	IsReferenced		bool
                         Declarator:
                         	PointerOpt DirectDeclarator
 				{

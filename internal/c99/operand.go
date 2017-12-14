@@ -69,6 +69,20 @@ var (
 	}
 )
 
+// Address represents the address of a variable.
+type Address struct {
+	Declarator *Declarator
+	Offset     uintptr
+}
+
+func (a *Address) String() string {
+	if a == Null {
+		return "null"
+	}
+
+	return fmt.Sprintf("(%s+%d, %s)", dict.S(a.Declarator.Name()), a.Offset, a.Declarator.Linkage)
+}
+
 // UsualArithmeticConversions performs transformations of operands of a binary
 // operation. The function panics if either of the operands is not an
 // artithmetic type.
@@ -192,8 +206,8 @@ func UsualArithmeticConversions(m Model, a, b Operand) (Operand, Operand) {
 
 // Operand represents the type and optionally the value of an expression.
 type Operand struct {
-	Addr *ir.AddressValue // When address known link-statically.
-	Type Type
+	Address *Address
+	Type    Type
 	ir.Value
 	//TODO lvalue bool
 }
@@ -211,7 +225,7 @@ func newIntConst(c *context, n Node, v uint64, t ...TypeKind) (r Operand) {
 }
 
 func (o Operand) isArithmeticType() bool { return o.Type.IsArithmeticType() }
-func (o Operand) String() string         { return fmt.Sprintf("(%v, %v, %v)", o.Type, o.Value, o.Addr) }
+func (o Operand) String() string         { return fmt.Sprintf("(%v, %v, %v)", o.Type, o.Value, o.Address) }
 func (o Operand) isIntegerType() bool    { return o.Type.IsIntegerType() }
 func (o Operand) isPointerType() bool    { return o.Type.IsPointerType() }
 func (o Operand) isScalarType() bool     { return o.Type.IsScalarType() } // [0]6.2.5-21
@@ -307,7 +321,7 @@ func (o Operand) convertTo(m Model, t Type) (r Operand) {
 				// a null pointer, is guaranteed to compare
 				// unequal to a pointer to any object or
 				// function.
-				return Operand{Type: t, Addr: Null}
+				return Operand{Type: t, Address: Null}
 			}
 
 			return Operand{Type: t, Value: o.Value}

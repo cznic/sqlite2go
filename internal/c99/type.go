@@ -235,7 +235,10 @@ func (t TypeKind) Equal(u Type) bool {
 		}
 	case *StructType:
 		switch t {
-		case Void:
+		case
+			Int,
+			Void:
+
 			return false
 		default:
 			panic(t)
@@ -254,6 +257,7 @@ func (t TypeKind) Equal(u Type) bool {
 		switch t {
 		case
 			Char,
+			Int,
 			SChar,
 			UChar,
 			UInt,
@@ -731,7 +735,7 @@ func (t *PointerType) assign(ctx *context, op Operand) (r Operand) {
 		// pointer constant;
 		op.isIntegerType() && op.IsZero():
 
-		return Operand{Type: t, Addr: Null}
+		return Operand{Type: t, Address: Null}
 	default:
 		panic("TODO")
 	}

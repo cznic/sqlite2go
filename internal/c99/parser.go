@@ -2499,26 +2499,20 @@ yynewstate:
 		}
 	case 13:
 		{
-			lx := yylex.(*lexer)
-			lhs := &Expr{
+			yyVAL.node = &Expr{
 				Case:  ExprAddrof,
 				Token: yyS[yypt-1].Token,
 				Expr:  yyS[yypt-0].node.(*Expr),
 			}
-			yyVAL.node = lhs
-			lhs.Scope = lx.scope
 		}
 	case 14:
 		{
-			lx := yylex.(*lexer)
-			lhs := &Expr{
+			yyVAL.node = &Expr{
 				Case:     ExprPExprList,
 				Token:    yyS[yypt-2].Token,
 				ExprList: yyS[yypt-1].node.(*ExprList).reverse(),
 				Token2:   yyS[yypt-0].Token,
 			}
-			yyVAL.node = lhs
-			lhs.Scope = lx.scope
 		}
 	case 15:
 		{
@@ -2535,16 +2529,13 @@ yynewstate:
 		}
 	case 16:
 		{
-			lx := yylex.(*lexer)
-			lhs := &Expr{
+			yyVAL.node = &Expr{
 				Case:     ExprCast,
 				Token:    yyS[yypt-3].Token,
 				TypeName: yyS[yypt-2].node.(*TypeName),
 				Token2:   yyS[yypt-1].Token,
 				Expr:     yyS[yypt-0].node.(*Expr),
 			}
-			yyVAL.node = lhs
-			lhs.Scope = lx.scope
 		}
 	case 17:
 		{
@@ -2666,15 +2657,12 @@ yynewstate:
 		}
 	case 31:
 		{
-			lx := yylex.(*lexer)
-			lhs := &Expr{
+			yyVAL.node = &Expr{
 				Case:   ExprPSelect,
 				Expr:   yyS[yypt-2].node.(*Expr),
 				Token:  yyS[yypt-1].Token,
 				Token2: yyS[yypt-0].Token,
 			}
-			yyVAL.node = lhs
-			lhs.Scope = lx.scope
 		}
 	case 32:
 		{
@@ -2795,16 +2783,13 @@ yynewstate:
 		}
 	case 45:
 		{
-			lx := yylex.(*lexer)
-			lhs := &Expr{
+			yyVAL.node = &Expr{
 				Case:                ExprCall,
 				Expr:                yyS[yypt-3].node.(*Expr),
 				Token:               yyS[yypt-2].Token,
 				ArgumentExprListOpt: yyS[yypt-1].node.(*ArgumentExprListOpt),
 				Token2:              yyS[yypt-0].Token,
 			}
-			yyVAL.node = lhs
-			lhs.Scope = lx.scope
 		}
 	case 46:
 		{
@@ -2835,15 +2820,12 @@ yynewstate:
 		}
 	case 49:
 		{
-			lx := yylex.(*lexer)
-			lhs := &Expr{
+			yyVAL.node = &Expr{
 				Case:   ExprSelect,
 				Expr:   yyS[yypt-2].node.(*Expr),
 				Token:  yyS[yypt-1].Token,
 				Token2: yyS[yypt-0].Token,
 			}
-			yyVAL.node = lhs
-			lhs.Scope = lx.scope
 		}
 	case 50:
 		{
@@ -2865,15 +2847,12 @@ yynewstate:
 		}
 	case 52:
 		{
-			lx := yylex.(*lexer)
-			lhs := &Expr{
+			yyVAL.node = &Expr{
 				Case:  ExprAssign,
 				Expr:  yyS[yypt-2].node.(*Expr),
 				Token: yyS[yypt-1].Token,
 				Expr2: yyS[yypt-0].node.(*Expr),
 			}
-			yyVAL.node = lhs
-			lhs.Scope = lx.scope
 		}
 	case 53:
 		{
@@ -2897,16 +2876,13 @@ yynewstate:
 		}
 	case 55:
 		{
-			lx := yylex.(*lexer)
-			lhs := &Expr{
+			yyVAL.node = &Expr{
 				Case:     ExprIndex,
 				Expr:     yyS[yypt-3].node.(*Expr),
 				Token:    yyS[yypt-2].Token,
 				ExprList: yyS[yypt-1].node.(*ExprList).reverse(),
 				Token2:   yyS[yypt-0].Token,
 			}
-			yyVAL.node = lhs
-			lhs.Scope = lx.scope
 		}
 	case 56:
 		{

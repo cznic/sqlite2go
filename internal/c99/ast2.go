@@ -282,16 +282,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 	case ExprAddrof: // '&' Expr
 		// [0]6.5.3.2
 		op := n.Expr.eval(ctx, false) // [0]6.3.2.1-3
-		n.Operand = Operand{Type: &PointerType{op.Type}, Addr: op.Addr}
-		if op.Addr != nil {
-			switch m := n.Scope.LookupIdent(int(op.Addr.NameID)); x := m.(type) {
-			case nil:
-				// nop, eg.: #define offsetof(STRUCTURE,FIELD) ((int)((char*)&((STRUCTURE*)0)->FIELD))
-			case *Declarator:
-				x.AddressTaken = true
-			default:
-				panic(ctx.position(n))
-			}
+		n.Operand = Operand{Type: &PointerType{op.Type}, Address: op.Address}
+		if a := op.Address; a != nil && a.Declarator != nil {
+			a.Declarator.AddressTaken = true
 		}
 	case ExprPExprList: // '(' ExprList ')'
 		n.Operand = n.ExprList.eval(ctx, arr2ptr)
@@ -410,8 +403,8 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				panic(ctx.position(n))
 			}
 
-			if lhs.Addr != nil && lhs.Addr.Linkage != 0 {
-				if rhs.Value != nil || rhs.Addr != nil {
+			if lhs.Address != nil && lhs.Address.Declarator.Linkage != LinkageNone {
+				if rhs.Value != nil || rhs.Address != nil {
 					panic(ctx.position(n))
 				}
 			}
@@ -528,6 +521,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 	case ExprPSelect: // Expr "->" IDENTIFIER
 		n.Expr.AssignedTo = n.AssignedTo
 		op := n.Expr.eval(ctx, arr2ptr)
+		if a := n.Expr.Operand.Address; a != nil && n.AssignedTo {
+			a.Declarator.AssignedTo++
+		}
 		t := op.Type
 		for done := false; !done; {
 			switch x := t.(type) {
@@ -553,9 +549,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				}
 				d := d0.(*Declarator)
 				n.Operand = Operand{Type: x.Fields[d.Field].Type}
-				if a := op.Addr; a != nil {
+				if a := op.Address; a != nil {
 					layout := ctx.model.Layout(x)
-					n.Operand.Addr = &ir.AddressValue{Linkage: a.Linkage, NameID: a.NameID, Offset: a.Offset + uintptr(layout[d.Field].Offset)}
+					n.Operand.Address = &Address{Declarator: a.Declarator, Offset: a.Offset + uintptr(layout[d.Field].Offset)}
 				}
 				break out
 			case *TaggedStructType:
@@ -571,7 +567,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				}
 				d := d0.(*Declarator)
 				n.Operand = Operand{Type: x.Fields[d.Field].Type}
-				if a := op.Addr; a != nil && a.Linkage != 0 {
+				if a := op.Address; a != nil && a.Declarator.Linkage != LinkageNone {
 					panic("TODO")
 				}
 				break out
@@ -609,14 +605,14 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				panic(ctx.position(n))
 			}
 
-			if lhs.Addr != nil && lhs.Addr.Linkage != 0 {
+			if lhs.Address != nil && lhs.Address.Declarator.Linkage != 0 {
 				if rhs.Value != nil {
 					panic(ctx.position(n))
 				}
 
-				if rhs.Addr != nil {
+				if rhs.Address != nil {
 					var val int64
-					if lhs.Addr == rhs.Addr {
+					if lhs.Address == rhs.Address || *lhs.Address == *rhs.Address {
 						val = 1
 					}
 					n.Operand = Operand{Type: Int, Value: &ir.Int64Value{Value: val}}
@@ -767,12 +763,12 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			//dbg("", ctx.position(n))
 			n.Operand = lhs.add(ctx, rhs)
 		case lhs.isPointerType() && rhs.isIntegerType():
-			if lhs.Addr != nil && lhs.Addr.Linkage != 0 {
+			if lhs.Address != nil && lhs.Address.Declarator.Linkage != LinkageNone {
 				panic(ctx.position(n))
 			}
 			n.Operand = lhs
 		case lhs.isIntegerType() && rhs.isPointerType():
-			if rhs.Addr != nil && rhs.Addr.Linkage != 0 {
+			if rhs.Address != nil && rhs.Address.Declarator.Linkage != 0 {
 				panic(ctx.position(n))
 			}
 			n.Operand = rhs
@@ -795,7 +791,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			// unqualified versions of compatible object types;
 			lhs.isPointerType() && rhs.isPointerType() && lhs.Type.IsCompatible(rhs.Type):
 
-			if lhs.Addr != nil && lhs.Addr.Linkage != 0 && rhs.Addr != nil && rhs.Addr.Linkage != 0 {
+			if lhs.Address != nil && lhs.Address.Declarator.Linkage != 0 && rhs.Address != nil && rhs.Address.Declarator.Linkage != 0 {
 				panic("TODO")
 			}
 
@@ -805,7 +801,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			// the right operand has integer type.
 			lhs.isPointerType() && rhs.isIntegerType():
 
-			if lhs.Addr != nil && lhs.Addr.Linkage != 0 {
+			if lhs.Address != nil && lhs.Address.Declarator.Linkage != LinkageNone {
 				panic("TODO")
 			}
 
@@ -817,6 +813,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 	case ExprSelect: // Expr '.' IDENTIFIER
 		n.Expr.AssignedTo = n.AssignedTo
 		op := n.Expr.eval(ctx, arr2ptr)
+		if a := n.Expr.Operand.Address; a != nil && n.AssignedTo {
+			a.Declarator.AssignedTo++
+		}
 		t := op.Type
 	out3:
 		for {
@@ -831,9 +830,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				}
 				d := d0.(*Declarator)
 				n.Operand = Operand{Type: x.Fields[d.Field].Type}
-				if a := op.Addr; a != nil {
+				if a := op.Address; a != nil {
 					layout := ctx.model.Layout(x)
-					n.Operand.Addr = &ir.AddressValue{Linkage: a.Linkage, NameID: a.NameID, Offset: a.Offset + uintptr(layout[d.Field].Offset)}
+					n.Operand.Address = &Address{Declarator: a.Declarator, Offset: a.Offset + uintptr(layout[d.Field].Offset)}
 				}
 				break out3
 			case *TaggedStructType:
@@ -863,6 +862,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 	case ExprAssign: // Expr '=' Expr
 		n.Expr.AssignedTo = true
 		n.Operand = n.Expr.eval(ctx, arr2ptr)
+		if a := n.Expr.Operand.Address; a != nil {
+			a.Declarator.AssignedTo++
+		}
 		n.Operand.Type.assign(ctx, n.Expr2.eval(ctx, arr2ptr))
 	case ExprGt: // Expr '>' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr).gt(ctx, n.Expr2.eval(ctx, arr2ptr))
@@ -907,7 +909,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 
 			n.Operand = Operand{Type: b.Type}
 			if cond.IsNonzero() {
-				n.Operand.Addr = Null
+				n.Operand.Address = Null
 				done = true
 			}
 		case
@@ -916,7 +918,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 
 			n.Operand = Operand{Type: a.Type}
 			if cond.IsZero() {
-				n.Operand.Addr = Null
+				n.Operand.Address = Null
 				done = true
 			}
 		default:
@@ -942,22 +944,17 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			if arr2ptr {
 				panic("internal error")
 			}
-			n.Operand = Operand{Type: t.Item, Addr: op.Addr}
+			n.Operand = Operand{Type: t.Item}
 		case *PointerType:
-			n.Operand = Operand{Type: t.Item, Addr: op.Addr}
+			n.Operand = Operand{Type: t.Item}
 		default:
 			panic(ctx.position(n))
 		}
 		if !index.isIntegerType() {
 			panic("TODO")
 		}
-		if a := op.Addr; a != nil {
-			switch {
-			case index.Value != nil:
-				n.Operand.Addr = &ir.AddressValue{Linkage: a.Linkage, NameID: a.NameID, Offset: a.Offset + uintptr(index.Value.(*ir.Int64Value).Value*ctx.model.Sizeof(n.Operand.Type))}
-			default:
-				op.Addr = nil
-			}
+		if a := op.Address; a != nil && index.Value != nil {
+			n.Operand.Address = &Address{Declarator: a.Declarator, Offset: a.Offset + uintptr(index.Value.(*ir.Int64Value).Value*ctx.model.Sizeof(n.Operand.Type))}
 		}
 	case ExprXor: // Expr '^' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr).xor(ctx, n.Expr2.eval(ctx, arr2ptr))
@@ -1004,7 +1001,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		nm := n.Token.Val
 		switch x := n.Scope.LookupIdent(nm).(type) {
 		case *Declarator:
-			x.IsReferenced = true
+			x.Referenced++
 			t := x.Type
 			t0 := t
 		more2:
@@ -1050,7 +1047,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				//dbg("", ctx.position(n))
 				panic(y)
 			}
-			n.Operand.Addr = &ir.AddressValue{Linkage: ir.Linkage(x.Linkage), NameID: ir.NameID(nm)}
+			n.Operand.Address = &Address{Declarator: x}
 		case *EnumerationConstant:
 			n.Operand = x.Operand
 		case nil:
@@ -1656,7 +1653,7 @@ func (n *Initializer) check(ctx *context, t Type) (r Operand) {
 			// constraints and conversions as for simple assignment
 			// apply, taking the type of the scalar to be the
 			// unqualified version of its declared type.
-			n.Expr.Operand = t.assign(ctx, op)
+			t.assign(ctx, op)
 			return n.Expr.Operand
 		}
 
