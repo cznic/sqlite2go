@@ -864,6 +864,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		n.Operand = n.Expr.eval(ctx, arr2ptr)
 		if a := n.Expr.Operand.Address; a != nil {
 			a.Declarator.AssignedTo++
+			if n.Expr.Case == ExprIdent {
+				n.Operand.Type = a.Declarator.Type
+			}
 		}
 		n.Operand.Type.assign(ctx, n.Expr2.eval(ctx, arr2ptr))
 	case ExprGt: // Expr '>' Expr
@@ -890,7 +893,8 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			// determined by the usual arithmetic conversions, were
 			// they applied to those two operands, is the type of
 			// the result.
-			n.Operand, _ = UsualArithmeticConversions(ctx.model, a, b)
+			x, _ := UsualArithmeticConversions(ctx.model, a, b)
+			n.Operand = Operand{Type: x.Type}
 		case
 			// both operands have the same structure or union type
 			a.Type.Kind() == Struct && b.Type.Kind() == Struct && a.Type.Equal(b.Type),
@@ -1001,7 +1005,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		nm := n.Token.Val
 		switch x := n.Scope.LookupIdent(nm).(type) {
 		case *Declarator:
-			x.Referenced++
+			if arr2ptr {
+				x.Referenced++
+			}
 			t := x.Type
 			t0 := t
 		more2:

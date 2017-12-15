@@ -13,7 +13,6 @@ import (
 	"go/token"
 	"io"
 	"os"
-	//"github.com/cznic/strutil"
 )
 
 var (
@@ -21,9 +20,10 @@ var (
 )
 
 type opt struct {
-	fset  *token.FileSet
-	out   io.Writer
-	write bool
+	fset         *token.FileSet
+	needBool2int int
+	out          io.Writer
+	write        bool
 }
 
 func newOpt() *opt { return &opt{} }
@@ -53,7 +53,8 @@ func (o *opt) pos(n ast.Node) token.Position {
 	return o.fset.Position(n.Pos())
 }
 
-func (o *opt) do(out io.Writer, in io.Reader, fn string) error {
+func (o *opt) do(out io.Writer, in io.Reader, fn string, needBool2int int) error {
+	o.needBool2int = needBool2int
 	o.out = out
 	o.fset = token.NewFileSet()
 	ast, err := parser.ParseFile(o.fset, "", io.MultiReader(bytes.NewBufferString(fmt.Sprintf("package p // %s\n", fn)), in), parser.ParseComments)
@@ -61,9 +62,23 @@ func (o *opt) do(out io.Writer, in io.Reader, fn string) error {
 		return err
 	}
 
-	//dbg("\n%s", strutil.PrettyString(ast, "", "", nil))
 	o.file(ast)
-	return format.Node(o, o.fset, ast)
+	if err := format.Node(o, o.fset, ast); err != nil {
+		return err
+	}
+
+	if o.needBool2int != 0 {
+		_, err = o.Write([]byte(`
+func bool2int(b bool) int32 {
+	if b {
+		return 1
+	}
+
+	return 0
+}
+`))
+	}
+	return err
 }
 
 func (o *opt) file(n *ast.File) {
@@ -184,33 +199,29 @@ func (o *opt) expr(n *ast.Expr) {
 				if rhs.Value == "0" {
 					*n = x.X
 				}
-			case token.EQL:
-				if rhs.Value != "0" {
-					break
-				}
-
-				switch x2 := x.X.(type) {
-				case *ast.CallExpr:
-					switch x3 := x2.Fun.(type) {
-					case *ast.Ident:
-						if x3.Name == "bool2int" {
-							rel := x2.Args[0].(*ast.BinaryExpr)
-							rel.Op = invOP(rel.Op)
-							*n = rel
+			}
+		}
+		switch lhs := x.X.(type) {
+		case *ast.CallExpr:
+			switch x2 := lhs.Fun.(type) {
+			case *ast.Ident:
+				if x2.Name == "bool2int" {
+					switch x.Op {
+					case token.EQL:
+						switch rhs := x.Y.(type) {
+						case *ast.BasicLit:
+							if rhs.Value == "0" {
+								*n = o.not(lhs.Args[0])
+								o.needBool2int--
+							}
 						}
-					}
-				}
-			case token.NEQ:
-				if rhs.Value != "0" {
-					break
-				}
-
-				switch x2 := x.X.(type) {
-				case *ast.CallExpr:
-					switch x3 := x2.Fun.(type) {
-					case *ast.Ident:
-						if x3.Name == "bool2int" {
-							*n = x2.Args[0].(*ast.BinaryExpr)
+					case token.NEQ:
+						switch rhs := x.Y.(type) {
+						case *ast.BasicLit:
+							if rhs.Value == "0" {
+								*n = lhs.Args[0]
+								o.needBool2int--
+							}
 						}
 					}
 				}
@@ -273,18 +284,37 @@ func (o *opt) expr(n *ast.Expr) {
 	}
 }
 
-func invOP(op token.Token) token.Token {
-	switch op {
-	case token.LSS:
-		return token.GEQ
-	case token.LEQ:
-		return token.GTR
-	case token.EQL:
-		return token.NEQ
-	case token.NEQ:
-		return token.EQL
+func (o *opt) not(n ast.Expr) ast.Expr {
+	switch x := n.(type) {
+	case *ast.BinaryExpr:
+		switch x.Op {
+		case token.LEQ:
+			x.Op = token.GTR
+			return x
+		case token.LSS:
+			x.Op = token.GEQ
+			return x
+		case token.EQL:
+			x.Op = token.NEQ
+			return x
+		case token.NEQ:
+			x.Op = token.EQL
+			return x
+		case token.GEQ:
+			x.Op = token.LSS
+			return x
+		case token.LAND:
+			x.X = o.not(x.X)
+			x.Op = token.LOR
+			x.Y = o.not(x.Y)
+			return x
+		default:
+			todo("%v: %v", o.pos(n), x.Op)
+		}
+	case *ast.ParenExpr:
+		return o.not(x.X)
 	default:
-		todo("", op)
+		todo("%v: %T", o.pos(n), x)
 	}
 	panic("unreachable")
 }

@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -70,6 +71,10 @@ const inject = `
 #include <builtin.h>
 `
 
+var (
+	oRE = flag.String("re", "", "")
+)
+
 func TestOpt(t *testing.T) {
 	for _, v := range []struct{ in, out string }{
 		{"var _ = (a(b))", "var _ = a(b)"},
@@ -78,7 +83,7 @@ func TestOpt(t *testing.T) {
 	} {
 		in := bytes.NewBufferString(v.in)
 		var out bytes.Buffer
-		if err := newOpt().do(&out, in, "TestOp"); err != nil {
+		if err := newOpt().do(&out, in, "TestOp", 0); err != nil {
 			t.Fatal(err)
 		}
 
@@ -209,12 +214,28 @@ func run(t *testing.T, dir string) []byte {
 }
 
 func TestTCC(t *testing.T) {
+	blacklist := map[string]struct{}{
+		"31_args.c":             {},
+		"34_array_assignment.c": {}, // gcc: main.c:16:6: error: incompatible types when assigning to type ‘int[4]’ from type ‘int *’
+	}
+	var re *regexp.Regexp
+	if s := *oRE; s != "" {
+		re = regexp.MustCompile(s)
+	}
 	m, err := filepath.Glob("../c99/testdata/tcc-0.9.26/tests/tests2/*.c")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	for _, pth := range m {
+		if re != nil && !re.MatchString(filepath.Base(pth)) {
+			continue
+		}
+
+		if _, ok := blacklist[filepath.Base(pth)]; ok {
+			continue
+		}
+
 		testTCC(t, pth)
 	}
 }

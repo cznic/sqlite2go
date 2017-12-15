@@ -764,12 +764,19 @@ func TestTypecheckSQLiteShell(t *testing.T) {
 }
 
 func TestTypecheckTCCTests(t *testing.T) {
+	blacklist := map[string]struct{}{
+		"34_array_assignment.c": {}, // gcc: main.c:16:6: error: incompatible types when assigning to type ‘int[4]’ from type ‘int *’
+	}
 	m, err := filepath.Glob("testdata/tcc-0.9.26/tests/tests2/*.c")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	for _, pth := range m {
+		if _, ok := blacklist[filepath.Base(pth)]; ok {
+			continue
+		}
+
 		if _, err := Translate(
 			token.NewFileSet(),
 			&Tweaks{
