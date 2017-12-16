@@ -199,9 +199,24 @@ func (o *opt) expr(n *ast.Expr) {
 				if rhs.Value == "0" {
 					*n = x.X
 				}
+			case token.MUL, token.QUO:
+				if rhs.Value == "1" {
+					*n = x.X
+				}
 			}
 		}
 		switch lhs := x.X.(type) {
+		case *ast.BasicLit:
+			switch x.Op {
+			case token.ADD, token.SUB:
+				if lhs.Value == "0" {
+					*n = x.Y
+				}
+			case token.MUL, token.QUO:
+				if lhs.Value == "1" {
+					*n = x.Y
+				}
+			}
 		case *ast.CallExpr:
 			switch x2 := lhs.Fun.(type) {
 			case *ast.Ident:
@@ -275,7 +290,10 @@ func (o *opt) expr(n *ast.Expr) {
 				*n = x2.X
 			}
 		}
-	case *ast.StructType:
+	case
+		*ast.FuncType,
+		*ast.StructType:
+
 		// nop
 	case *ast.UnaryExpr:
 		o.expr(&x.X)

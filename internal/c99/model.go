@@ -244,10 +244,12 @@ func (m Model) defaultArgumentPromotion(op Operand) (r Operand) {
 		case *NamedType:
 			u = x.Type
 		case *PointerType:
+			op.Type = x
 			return op
 		case *TaggedEnumType:
 			u = x.getType()
 		case TypeKind:
+			op.Type = x
 			switch x {
 			case Float:
 				return op.convertTo(m, Double)

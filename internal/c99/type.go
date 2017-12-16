@@ -193,13 +193,36 @@ func (t TypeKind) IsArithmeticType() bool { return isArithmeticType[t] }
 
 // IsCompatible implements Type.
 func (t TypeKind) IsCompatible(u Type) bool {
-	if t.Equal(u) {
-		return true
-	}
+	for {
+		switch x := u.(type) {
+		case *NamedType:
+			u = x.Type
+		case TypeKind:
+			switch x {
+			case
+				Char,
+				Double,
+				Float,
+				Int,
+				Long,
+				LongLong,
+				SChar,
+				Short,
+				UChar,
+				UInt,
+				ULong,
+				ULongLong,
+				UShort,
+				Void:
 
-	//dbg("", t)
-	//dbg("", u)
-	panic("TODO")
+				return t == x
+			default:
+				panic(fmt.Errorf("%v", x))
+			}
+		default:
+			panic(fmt.Errorf("%T", x))
+		}
+	}
 }
 
 // Equal implements Type.
@@ -397,7 +420,7 @@ func (t *ArrayType) IsCompatible(u Type) bool {
 		}
 
 		if t.Size.Type != nil && x.Size.Type != nil {
-			panic("TODO")
+			return t.Size.Value.(*ir.Int64Value).Value == x.Size.Value.(*ir.Int64Value).Value
 		}
 
 		return true
@@ -530,7 +553,23 @@ func (t *FunctionType) IsArithmeticType() bool {
 }
 
 // IsCompatible implements Type.
-func (t *FunctionType) IsCompatible(u Type) bool { panic("TODO") }
+func (t *FunctionType) IsCompatible(u Type) bool {
+	switch x := u.(type) {
+	case *FunctionType:
+		if len(t.Params) != len(x.Params) || t.Variadic != x.Variadic || !t.Result.IsCompatible(x.Result) {
+			return false
+		}
+
+		for i, t := range t.Params {
+			if !t.IsCompatible(x.Params[i]) {
+				return false
+			}
+		}
+		return true
+	default:
+		panic(fmt.Errorf("%T", x))
+	}
+}
 
 // Equal implements Type.
 func (t *FunctionType) Equal(u Type) bool {
@@ -611,7 +650,39 @@ func (t *NamedType) Equal(u Type) bool {
 		return true
 	}
 
-	return t.Type.Equal(u)
+	switch x := u.(type) {
+	case *NamedType:
+		return t.Name == x.Name && t.Type.Equal(x.Type)
+	case
+		*PointerType,
+		*TaggedStructType:
+
+		return false
+	case TypeKind:
+		switch x {
+		case
+			Char,
+			Double,
+			Int,
+			Long,
+			LongDouble,
+			LongLong,
+			SChar,
+			Short,
+			UChar,
+			UInt,
+			ULong,
+			ULongLong,
+			UShort,
+			Void:
+
+			return false
+		default:
+			panic(x)
+		}
+	default:
+		panic(fmt.Errorf("%T", x))
+	}
 }
 
 // Kind implements Type.
@@ -658,12 +729,12 @@ func (t *PointerType) IsCompatible(u Type) bool {
 		// incomplete or object type. A pointer to any incomplete or object
 		// type may be converted to a pointer to void and back again; the
 		// result shall compare equal to the original pointer.
-		if t.Item.Equal(x.Item) || t.Item == Void || x.Item == Void {
+		if t.Item == Void || x.Item == Void || t.Item.IsCompatible(x.Item) {
 			return true
 		}
 
-		//dbg("", t)
-		//dbg("", u)
+		// dbg("", t)
+		// dbg("", u)
 		panic("TODO")
 	default:
 		panic(fmt.Errorf("%T", x))

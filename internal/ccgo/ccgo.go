@@ -22,6 +22,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unsafe"
 
 	"github.com/cznic/ir"
 	"github.com/cznic/sqlite2go/internal/c99"
@@ -86,6 +87,7 @@ type gen struct {
 	postIncTypes       map[string]int
 	produced           map[*c99.Declarator]struct{}
 	producedEnumTags   map[int]struct{}
+	producedNamedTypes map[int]struct{}
 	producedStructTags map[int]struct{}
 	queue              list.List
 	strings            map[int]int64
@@ -108,6 +110,7 @@ func newGen(out io.Writer, in []*c99.TranslationUnit) *gen {
 		out:                out,
 		produced:           map[*c99.Declarator]struct{}{},
 		producedEnumTags:   map[int]struct{}{},
+		producedNamedTypes: map[int]struct{}{},
 		producedStructTags: map[int]struct{}{},
 		assignTypes:        map[string]int{},
 		postIncTypes:       map[string]int{},
@@ -233,6 +236,7 @@ func printError(w io.Writer, pref string, err error) {
 }
 
 func (g *gen) produceDeclarator(n *c99.Declarator) {
+outer:
 	for {
 		func() {
 			if _, ok := g.produced[n]; ok {
@@ -248,12 +252,19 @@ func (g *gen) produceDeclarator(n *c99.Declarator) {
 			}
 		}()
 
-		if x := g.queue.Front(); x != nil {
+		for {
+			x := g.queue.Front()
+			if x == nil {
+				return
+			}
+
 			g.queue.Remove(x)
 			switch y := x.Value.(type) {
 			case *c99.Declarator:
 				n = y
-				continue
+				continue outer
+			case *c99.NamedType:
+				g.produceNamedType(y)
 			case *c99.TaggedEnumType:
 				g.produceTaggedEnumType(y)
 			case *c99.TaggedStructType:
@@ -264,6 +275,15 @@ func (g *gen) produceDeclarator(n *c99.Declarator) {
 		}
 		return
 	}
+}
+
+func (g *gen) produceNamedType(t *c99.NamedType) {
+	if _, ok := g.producedNamedTypes[t.Name]; ok {
+		return
+	}
+
+	g.producedNamedTypes[t.Name] = struct{}{}
+	g.w("\ntype T%s %s\n", dict.S(t.Name), g.typ(t.Type))
 }
 
 func (g *gen) produceTaggedEnumType(t *c99.TaggedEnumType) {
@@ -337,7 +357,10 @@ func (g *gen) tld(n *c99.Declarator) {
 			a := n.Initializer.Expr.Operand.Address
 			if a != nil {
 				switch d := a.Declarator; x := a.Declarator.Type.(type) {
-				case *c99.ArrayType:
+				case
+					*c99.ArrayType,
+					*c99.FunctionType:
+
 					g.w("\nvar %s = %s + %d\n", g.mangleDeclarator(n), g.mangleDeclarator(d), a.Offset)
 					g.produceDeclarator(d)
 				default:
@@ -382,16 +405,21 @@ func (g *gen) functionDefinition(n *c99.Declarator) {
 
 		names = make([]int, len(t.Params))
 	}
-	for i, v := range t.Params {
-		nm := names[i]
-		g.w(", ")
-		g.w("%s %s", mangleIdent(nm, false), g.typ(v))
-		if v.Kind() == c99.Ptr {
-			g.w(" /* %s */", g.ptyp(v, false))
+	switch {
+	case len(t.Params) == 1 && t.Params[0].Kind() == c99.Void:
+		// nop
+	default:
+		for i, v := range t.Params {
+			nm := names[i]
+			g.w(", ")
+			g.w("%s %s", mangleIdent(nm, false), g.typ(v))
+			if v.Kind() == c99.Ptr {
+				g.w(" /* %s */", g.ptyp(v, false))
+			}
 		}
-	}
-	if t.Variadic {
-		todo("")
+		if t.Variadic {
+			todo("")
+		}
 	}
 	g.w(")")
 	void := t.Result.Kind() == c99.Void
@@ -495,9 +523,11 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases ma
 				free = append(free, v)
 				g.w("\n\t%s = %s%s(%d) // *%s", g.mangleDeclarator(v), crt, malloc, g.model.Sizeof(v.Type), g.ptyp(v.Type, false))
 			default:
-				g.w("\n\t%s %s", g.mangleDeclarator(v), g.typ(v.Type))
-				if v.Type.Kind() == c99.Ptr {
-					g.w("\t// %s", g.ptyp(v.Type, false))
+				switch {
+				case v.Type.Kind() == c99.Ptr:
+					g.w("\n\t%s uintptr\t// %s", g.mangleDeclarator(v), g.ptyp(v.Type, false))
+				default:
+					g.w("\n\t%s %s", g.mangleDeclarator(v), g.typ(v.Type))
 				}
 				if v.Referenced == 0 || v.Referenced == 1 && v.AssignedTo == 1 {
 					g.w("\n_ = %s", g.mangleDeclarator(v))
@@ -531,40 +561,43 @@ func (g gen) escaped(n *c99.Declarator) bool {
 	}
 
 	t := n.Type
-	switch x := t.(type) {
-	case *c99.ArrayType:
-		g.escapes[n] = struct{}{}
-		return true
-	case
-		*c99.FunctionType,
-		*c99.PointerType,
-		*c99.TaggedEnumType:
-
-		return false
-	case *c99.TaggedStructType:
-		if n.IsTLD() {
+	for {
+		switch x := t.(type) {
+		case *c99.ArrayType:
 			g.escapes[n] = struct{}{}
 			return true
-		}
-
-		return false
-	case c99.TypeKind:
-		switch x {
+		case *c99.NamedType:
+			t = x.Type
 		case
-			c99.Char,
-			c99.Double,
-			c99.Float,
-			c99.Int,
-			c99.ULong:
+			*c99.FunctionType,
+			*c99.PointerType,
+			*c99.TaggedEnumType:
 
 			return false
+		case *c99.TaggedStructType:
+			if n.IsTLD() {
+				g.escapes[n] = struct{}{}
+				return true
+			}
+
+			return false
+		case c99.TypeKind:
+			switch x {
+			case
+				c99.Char,
+				c99.Double,
+				c99.Float,
+				c99.Int,
+				c99.ULong:
+
+				return false
+			default:
+				todo("%v: %v", g.position(n), x)
+			}
 		default:
-			todo("%v: %v", g.position(n), x)
+			todo("%v: %T", g.position(n), x)
 		}
-	default:
-		todo("%v: %T", g.position(n), x)
 	}
-	panic("unreachable")
 }
 
 func (g *gen) blockItemListOpt(n *c99.BlockItemListOpt, cases map[*c99.LabeledStmt]int, brk *int) {
@@ -613,7 +646,7 @@ func (g *gen) initDeclaratorList(n *c99.InitDeclaratorList) {
 
 func (g *gen) initDeclarator(n *c99.InitDeclarator) {
 	d := n.Declarator
-	if d.Referenced == 0 && d.Initializer != nil && d.Linkage == c99.LinkageNone && d.DeclarationSpecifier.IsStatic() && d.Name() == idFuncName {
+	if d.Referenced == 0 && d.Initializer != nil && d.Linkage == c99.LinkageNone && d.DeclarationSpecifier.IsStatic() && d.Name() == idFuncName { // unused __func__
 		return
 	}
 
@@ -625,19 +658,73 @@ func (g *gen) initDeclarator(n *c99.InitDeclarator) {
 	case c99.InitDeclaratorBase: // Declarator
 		// nop
 	case c99.InitDeclaratorInit: // Declarator '=' Initializer
-		g.w("\n%s = ", g.mangleDeclarator(d))
-		g.initializer(n.Initializer, d.Type)
+		g.initializer(d)
 	default:
 		todo("", g.position0(n), n.Case)
 	}
 }
 
-func (g *gen) initializer(n *c99.Initializer, t c99.Type) {
+func (g *gen) initializer(d *c99.Declarator) {
+	n := d.Initializer
+	t := d.Type
 	switch n.Case {
 	case c99.InitializerExpr: // Expr
+		g.w("\n%s = ", g.mangleDeclarator(d))
 		g.rvalue2(n.Expr, t)
+	case c99.InitializerCompLit: // '{' InitializerList CommaOpt '}'
+		op := n.InitializerList.Operand
+		if !op.Type.Equal(t) {
+			todo("", g.position0(n))
+		}
+		switch v := op.Value.(type) {
+		case *ir.CompositeValue:
+			switch x := t.(type) {
+			case *c99.ArrayType:
+				b := make([]byte, g.model.Sizeof(x))
+				g.arrayCompositeValue(b, v, x.Item)
+				g.w("\n%sCopy(%s, ts+%d, %d)", crt, g.mangleDeclarator(d), g.allocString(dict.ID(b)), len(b))
+			default:
+				todo("%v: %T", g.position0(n), x)
+			}
+		default:
+			todo("%v: %T", g.position0(n), v)
+		}
 	default:
 		todo("", g.position0(n), n.Case)
+	}
+}
+
+func (g *gen) arrayCompositeValue(b []byte, v *ir.CompositeValue, item c99.Type) {
+	itemSz := g.model.Sizeof(item)
+	var index int64
+	for _, v := range v.Values {
+		switch x := v.(type) {
+		case c99.Operand:
+			off := index * itemSz
+			g.arrayCompositeValueItem(b[off:off+itemSz], x, itemSz)
+			index++
+		default:
+			todo("%T", x)
+		}
+	}
+}
+
+func (g *gen) arrayCompositeValueItem(n []byte, op c99.Operand, itemSz int64) {
+	switch x := op.Type.(type) {
+	case c99.TypeKind:
+		switch x {
+		case c99.Int:
+			switch itemSz {
+			case 4:
+				*(*int32)(unsafe.Pointer(&n[0])) = int32(op.Value.(*ir.Int64Value).Value)
+			default:
+				todo("", itemSz)
+			}
+		default:
+			todo("", x)
+		}
+	default:
+		todo("%T", x)
 	}
 }
 
@@ -684,6 +771,7 @@ func (g *gen) jumpStmt(n *c99.JumpStmt, brk *int) {
 	case c99.JumpStmtReturn: // "return" ExprListOpt ';'
 		g.w("\nreturn ")
 		g.exprListOpt(n.ExprListOpt, false)
+		g.w("\n")
 	default:
 		todo("", g.position0(n), n.Case)
 	}
@@ -692,6 +780,9 @@ func (g *gen) jumpStmt(n *c99.JumpStmt, brk *int) {
 func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int, brk *int) {
 	switch n.Case {
 	case c99.IterationStmtDo: // "do" Stmt "while" '(' ExprList ')' ';'
+		if n.ExprList.Operand.Value != nil {
+			todo("", g.position0(n))
+		}
 		// A:
 		// stmt
 		// if exprList != 0 { goto A }
@@ -706,6 +797,9 @@ func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int
 		g.w(" != 0 { goto _%d }\n", a)
 		g.w("\ngoto _%d\n\n_%d:", b, b)
 	case c99.IterationStmtFor: // "for" '(' ExprListOpt ';' ExprListOpt ';' ExprListOpt ')' Stmt
+		if n.ExprListOpt2 != nil && n.ExprListOpt2.ExprList.Operand.Value != nil {
+			todo("", g.position0(n))
+		}
 		// ExprListOpt
 		// A:
 		// if ExprListOpt2 == 0 { goto B }
@@ -730,6 +824,9 @@ func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int
 		g.exprListOpt(n.ExprListOpt3, true)
 		g.w("\ngoto _%d\n\n_%d:", a, b)
 	case c99.IterationStmtWhile: // "while" '(' ExprList ')' Stmt
+		if n.ExprList.Operand.Value != nil {
+			todo("", g.position0(n))
+		}
 		// A:
 		// if exprList == 0 { goto B }
 		// stmt
@@ -789,6 +886,9 @@ func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int
 		g.stmt(n.Stmt2, cases, brk)
 		g.w("\n_%d:", b)
 	case c99.SelectionStmtSwitch: // "switch" '(' ExprList ')' Stmt
+		if n.ExprList.Operand.Value != nil {
+			todo("")
+		}
 		g.w("\nswitch ")
 		g.exprList(n.ExprList, false)
 		g.w("{")
@@ -842,7 +942,7 @@ func (g *gen) exprList(n *c99.ExprList, void bool) {
 		}
 	default:
 		if n.ExprList == nil { // single expression list
-			g.rvalue(n.Expr)
+			g.rvalue(n.Expr, true)
 			break
 		}
 
@@ -872,7 +972,7 @@ func (g *gen) void(n *c99.Expr) {
 				g.w(" *(")
 				g.lvalue(n.Expr)
 				g.w(") += %d*uintptr(", g.model.Sizeof(n.Expr.Operand.Type.(*c99.PointerType).Item))
-				g.rvalue(n.Expr2)
+				g.rvalue(n.Expr2, false)
 				g.w(")")
 			default:
 				g.voidArithmeticAsop(n)
@@ -936,7 +1036,7 @@ func (g *gen) void(n *c99.Expr) {
 
 	switch n.Case {
 	case c99.ExprCall: // Expr '(' ArgumentExprListOpt ')'
-		g.rvalue(n)
+		g.rvalue(n, false)
 	default:
 		todo("", g.position0(n), n.Case, n.Operand)
 	}
@@ -984,10 +1084,10 @@ func (g *gen) lvalue(n *c99.Expr) {
 	}
 
 	g.w("&")
-	g.rvalue(n)
+	g.rvalue(n, false)
 }
 
-func (g *gen) rvalue(n *c99.Expr) {
+func (g *gen) rvalue(n *c99.Expr, typedIntLiterals bool) {
 	switch x := n.Operand.Value.(type) {
 	case nil:
 		// ok
@@ -996,7 +1096,12 @@ func (g *gen) rvalue(n *c99.Expr) {
 		case c99.ExprChar:
 			g.w(" %s", strconv.QuoteRuneToASCII(rune(x.Value)))
 		default:
-			g.w(" %s(%d)", g.typ(n.Operand.Type), x.Value)
+			switch {
+			case typedIntLiterals:
+				g.w(" %s(%d)", g.typ(n.Operand.Type), x.Value)
+			default:
+				g.w(" %d", x.Value)
+			}
 		}
 		return
 	case *ir.Float64Value:
@@ -1025,11 +1130,11 @@ func (g *gen) rvalue(n *c99.Expr) {
 	switch n.Case {
 	case c99.ExprPExprList: // '(' ExprList ')'
 		if n.ExprList.ExprList == nil { // single expression list
-			g.rvalue(n.ExprList.Expr)
+			g.rvalue(n.ExprList.Expr, typedIntLiterals)
 			return
 		}
 	case c99.ExprAssign: // Expr '=' Expr
-		g.assignValue(n)
+		g.assignmentValue(n)
 		return
 	case c99.ExprPostInc: // Expr "++"
 		switch x := n.Operand.Type.(type) {
@@ -1040,7 +1145,10 @@ func (g *gen) rvalue(n *c99.Expr) {
 			g.w(", %d)", g.model.Sizeof(x.Item))
 		case c99.TypeKind:
 			switch x {
-			case c99.Int:
+			case
+				c99.Char,
+				c99.Int:
+
 				g.w(" postinc%d(", g.registerType(g.postIncTypes, x))
 				g.lvalue(n.Expr)
 				g.w(")")
@@ -1070,32 +1178,39 @@ func (g *gen) rvalue(n *c99.Expr) {
 		}
 
 		dt := d.Type
-		switch x := dt.(type) {
-		case *c99.ArrayType:
-			dt = &c99.PointerType{Item: x.Item}
-		case *c99.FunctionType:
-			dt = &c99.PointerType{Item: x}
-		case
-			*c99.PointerType,
-			*c99.StructType,
-			*c99.TaggedEnumType,
-			*c99.TaggedStructType:
-
-			// ok
-		case c99.TypeKind:
-			switch x {
+		for done := false; !done; {
+			switch x := dt.(type) {
+			case *c99.ArrayType:
+				dt = &c99.PointerType{Item: x.Item}
+				done = true
+			case *c99.FunctionType:
+				dt = &c99.PointerType{Item: x}
+				done = true
 			case
-				c99.Char,
-				c99.Float,
-				c99.Int,
-				c99.ULong:
+				*c99.NamedType,
+				*c99.PointerType,
+				*c99.StructType,
+				*c99.TaggedEnumType,
+				*c99.TaggedStructType:
 
 				// ok
+				done = true
+			case c99.TypeKind:
+				switch x {
+				case
+					c99.Char,
+					c99.Float,
+					c99.Int,
+					c99.ULong:
+
+					// ok
+					done = true
+				default:
+					todo("%v: %v", g.position0(n), x)
+				}
 			default:
-				todo("%v: %v", g.position0(n), x)
+				todo("%v: %T", g.position0(n), x)
 			}
-		default:
-			todo("%v: %T", g.position0(n), x)
 		}
 		switch {
 		case n.Operand.Type.Equal(dt):
@@ -1129,7 +1244,13 @@ func (g *gen) rvalue(n *c99.Expr) {
 			default:
 				switch {
 				case a.Offset == 0:
-					g.w(" *(*%s)(unsafe.Pointer(&%s))", g.ptyp(n.Operand.Type, false), g.mangleDeclarator(d))
+					switch {
+					case dt.IsArithmeticType():
+						g.w(" %s(%s)", g.typ(n.Operand.Type), g.mangleDeclarator(d))
+						g.w("/*TODO1243 %s -> %s */", dt, n.Operand.Type)
+					default:
+						g.w(" *(*%s)(unsafe.Pointer(&%s))", g.ptyp(n.Operand.Type, false), g.mangleDeclarator(d))
+					}
 				default:
 					g.w(" *(*%s)(unsafe.Pointer(uintptr(unsafe.Pointer(&%s))+%d))", g.ptyp(n.Operand.Type, false), g.mangleDeclarator(d), a.Offset)
 				}
@@ -1164,7 +1285,7 @@ func (g *gen) rvalue(n *c99.Expr) {
 
 		g.relop(n)
 	case c99.ExprCall: // Expr '(' ArgumentExprListOpt ')'
-		g.rvalue(n.Expr)
+		g.rvalue(n.Expr, false)
 		g.w("(tls")
 		if o := n.ArgumentExprListOpt; o != nil {
 			i := 0
@@ -1176,44 +1297,46 @@ func (g *gen) rvalue(n *c99.Expr) {
 		}
 		g.w(")")
 	case c99.ExprIndex: // Expr '[' ExprList ']'
-		var sz int64
-		switch x := n.Expr.Operand.Type.(type) {
-		case *c99.PointerType:
-			sz = g.model.Sizeof(x.Item)
-		default:
-			todo("%v: %T", g.position0(n), x)
-		}
-		switch a := n.Expr.Operand.Address; {
-		case a != nil:
-			g.w("*(*%s)(unsafe.Pointer(%s+%d*uintptr(", g.ptyp(n.Operand.Type, false), g.mangleDeclarator(a.Declarator), sz)
-			g.exprList(n.ExprList, false)
-			g.w(")))")
-		default:
-			todo("", g.position0(n), n.Operand, a)
-		}
+		//TODO- switch x := n.Expr.Operand.Type.(type) {
+		//TODO- case *c99.PointerType:
+		//TODO- 	// ok
+		//TODO- default:
+		//TODO- 	todo("%v: %T", g.position0(n), x)
+		//TODO- }
+		//TODO- switch a := n.Expr.Operand.Address; {
+		//TODO- case a != nil:
+		//TODO- 	g.w("*(*%s)(unsafe.Pointer(%s+%d*uintptr(", g.ptyp(n.Operand.Type, false), g.mangleDeclarator(a.Declarator), sz)
+		//TODO- 	g.exprList(n.ExprList, false)
+		//TODO- 	g.w(")))")
+		//TODO- default:
+		//TODO- 	todo("", g.position0(n), n.Operand, a)
+		//TODO- }
+		g.w("*(*%s)(unsafe.Pointer(", g.ptyp(n.Operand.Type, false))
+		g.index(n)
+		g.w("))")
 	case c99.ExprDeref: // '*' Expr
 		g.w(" *(*%s)(unsafe.Pointer(", g.ptyp(n.Operand.Type, false))
-		g.rvalue(n.Expr)
+		g.rvalue(n.Expr, false)
 		g.w("))")
 	case c99.ExprLOr: // Expr "||" Expr
 		g.needBool2int++
 		g.w(" bool2int((")
-		g.rvalue(n.Expr)
+		g.rvalue(n.Expr, false)
 		g.w(" != 0) || (")
-		g.rvalue(n.Expr2)
+		g.rvalue(n.Expr2, false)
 		g.w(" != 0))")
 	case c99.ExprLAnd: // Expr "&&" Expr
 		g.needBool2int++
 		g.w(" bool2int((")
-		g.rvalue(n.Expr)
+		g.rvalue(n.Expr, false)
 		g.w(" != 0) && (")
-		g.rvalue(n.Expr2)
+		g.rvalue(n.Expr2, false)
 		g.w(" != 0))")
 	case c99.ExprCast: // '(' TypeName ')' Expr
 		g.rvalue2(n.Expr, n.TypeName.Type)
 	case c99.ExprCond: // Expr '?' ExprList ':' Expr
 		g.w(" func() %s { if ", g.typ(n.Operand.Type))
-		g.rvalue(n.Expr)
+		g.rvalue(n.Expr, false)
 		g.w(" != 0 { return ")
 		g.exprList2(n.ExprList, n.Operand.Type)
 		g.w(" }\n\nreturn ")
@@ -1221,6 +1344,33 @@ func (g *gen) rvalue(n *c99.Expr) {
 		g.w(" }()")
 	default:
 		todo("", g.position0(n), n.Case, n.Operand)
+	}
+}
+
+func (g *gen) index(n *c99.Expr) {
+	switch x := n.Expr.Operand.Type.(type) {
+	case *c99.PointerType:
+		t := x.Item
+		sz := g.model.Sizeof(t)
+		if a := n.Expr.Operand.Address; a != nil {
+			g.w("%s+%d+%d*uintptr(", g.mangleDeclarator(a.Declarator), a.Offset, sz)
+			g.exprList(n.ExprList, false)
+			g.w(")")
+			return
+		}
+
+		ne := n.Expr
+		switch ne.Case {
+		case c99.ExprIndex: // Expr '[' ExprList ']'
+			g.index(ne)
+			g.w(" +%d*uintptr(", sz)
+			g.exprList(n.ExprList, false)
+			g.w(")")
+		default:
+			todo("", g.position0(n), n.Case)
+		}
+	default:
+		todo("%v: %T", g.position0(n), x)
 	}
 }
 
@@ -1244,7 +1394,7 @@ func strComment(sv *ir.StringValue) string {
 	return fmt.Sprintf("/* %q+%d */", s, sv.Offset)
 }
 
-func (g *gen) assignValue(n *c99.Expr) {
+func (g *gen) assignmentValue(n *c99.Expr) {
 	if n.Case != c99.ExprAssign { // Expr '=' Expr
 		panic("internal error")
 	}
@@ -1286,7 +1436,14 @@ func (g *gen) binop(n *c99.Expr) {
 
 func (g *gen) rvalue2(n *c99.Expr, t c99.Type) {
 	if n.Operand.Type.Equal(t) {
-		g.rvalue(n)
+		if n.Operand.Value != nil {
+			g.w(" %s(", g.typ(t))
+			g.rvalue(n, false)
+			g.w(")")
+			return
+		}
+
+		g.rvalue(n, true)
 		return
 	}
 
@@ -1304,7 +1461,7 @@ func (g *gen) convert(n *c99.Expr, t c99.Type) {
 
 		switch from := op.Type.(type) {
 		case *c99.PointerType:
-			g.rvalue(n)
+			g.rvalue(n, false)
 			return
 		default:
 			todo("%v: %v %T -> %T", g.position0(n), op, from, to)
@@ -1317,7 +1474,7 @@ func (g *gen) convert(n *c99.Expr, t c99.Type) {
 	}
 
 	g.w(" %s(", g.typ(t))
-	g.rvalue(n)
+	g.rvalue(n, false)
 	g.w(")")
 }
 
@@ -1357,8 +1514,7 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
 		g.typ0(&buf, x)
 		return buf.String()
 	case *c99.NamedType:
-		todo("")
-		//TODO produce the definition
+		g.enqueue(x)
 		return fmt.Sprintf("T%s", dict.S(x.Name))
 	case *c99.PointerType:
 		if ptr2uintptr {
@@ -1400,7 +1556,7 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
 			todo("", x)
 		}
 	default:
-		todo("%T", x)
+		todo("%T %v", x, x)
 	}
 	panic("unreachable")
 }
@@ -1414,9 +1570,21 @@ func (g *gen) typ0(buf *bytes.Buffer, t c99.Type) {
 			}
 			fmt.Fprintf(buf, "[%d]", x.Size.Value.(*ir.Int64Value).Value)
 			t = x.Item
+		case *c99.FunctionType:
+			buf.WriteString(" func(")
+			for i, v := range x.Params {
+				if i != 0 {
+					buf.WriteString(", ")
+				}
+				buf.WriteString(g.typ(v))
+			}
+			buf.WriteString(")")
+			if x.Result != nil {
+				buf.WriteString(" " + g.typ(x.Result))
+			}
+			return
 		case *c99.NamedType:
-			todo("")
-			//TODO produce the definition
+			g.enqueue(x)
 			fmt.Fprintf(buf, "T%s", dict.S(x.Name))
 			return
 		case *c99.PointerType:

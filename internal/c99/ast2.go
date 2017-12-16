@@ -735,14 +735,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			}
 
 			for i, rhs := range args {
-				if rhs.Type == nil {
-					if !ctx.tweaks.EnableImplicitDeclarations {
-						panic("TODO")
-					}
-
-					rhs.Type = Int
-					rhs.Value = &ir.Int64Value{Value: 0}
-				}
 				ops[i] = AdjustedParameterType(t.Params[i]).assign(ctx, rhs)
 			}
 			break out2
@@ -1056,10 +1048,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			n.Operand.Address = &Address{Declarator: x}
 		case *EnumerationConstant:
 			n.Operand = x.Operand
-		case nil:
-			if !ctx.tweaks.EnableImplicitDeclarations {
-				panic(fmt.Errorf("%v: %T", ctx.position(n), x))
-			}
 		default:
 
 			//dbg("%s", dict.S(nm))
@@ -1398,7 +1386,8 @@ func (n *DirectDeclarator) parameterNames() (r []int) {
 		case DirectDeclaratorIdent:
 			for l := n.ParameterTypeList.ParameterList; l != nil; l = l.ParameterList {
 				switch n := l.ParameterDeclaration; n.Case {
-				//TODO case ParameterDeclarationAbstract: // DeclarationSpecifiers AbstractDeclaratorOpt
+				case ParameterDeclarationAbstract: // DeclarationSpecifiers AbstractDeclaratorOpt
+					r = append(r, 0)
 				case ParameterDeclarationDeclarator: // DeclarationSpecifiers Declarator
 					r = append(r, n.Declarator.Name())
 				default:
@@ -1883,27 +1872,10 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 		case LinkageExternal:
 			switch n.Linkage {
 			case LinkageExternal:
-				if !ex.Type.Equal(n.Type) {
-					switch {
-					case ex.Type.Kind() == Function && n.Type.Kind() == Function:
-						ef := ex.Type.(*FunctionType)
-						nf := n.Type.(*FunctionType)
-						if !(ef.Result.Equal(nf.Result) && (len(ef.Params) == 0 || len(nf.Params) == 0)) {
-							if n.Name() == idMain && n.Linkage == LinkageExternal && n.scope.Parent == nil {
-								if n.FunctionDefinition != nil {
-									// [0]5.1.2.2.1-1
-									//
-									// ... or in some other implementation-defined manner.
-									n.scope.Idents[idMain] = n
-								}
-								break
-							}
-
-							//dbg("", ctx.position(ex), ex.Type)
-							//dbg("", ctx.position(n), n.Type)
-							panic(ctx.position(n))
-						}
-					case !(ex.Type.IsPointerType() && n.Type.IsPointerType() && ex.Type.IsCompatible(n.Type)):
+				if !ex.Type.IsCompatible(n.Type) {
+					if !(n.Name() == idMain && n.scope.Parent == nil && n.Type.Kind() == Function) {
+						// dbg("", ctx.position(ex), ex.Type)
+						// dbg("", ctx.position(n), n.Type)
 						panic(ctx.position(n))
 					}
 				}
@@ -1917,10 +1889,10 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 		case LinkageInternal:
 			switch n.Linkage {
 			case LinkageInternal:
-				if !ex.Type.Equal(n.Type) {
-					if !(ex.Type.IsPointerType() && n.Type.IsPointerType() && ex.Type.IsCompatible(n.Type)) {
-						panic(ctx.position(n))
-					}
+				if !ex.Type.IsCompatible(n.Type) {
+					// dbg("", ctx.position(ex), ex.Type)
+					// dbg("", ctx.position(n), n.Type)
+					panic(ctx.position(n))
 				}
 
 				if isFunction && n.isFnDefinition() {
