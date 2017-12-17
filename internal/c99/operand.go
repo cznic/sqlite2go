@@ -601,7 +601,14 @@ func (o Operand) lsh(ctx *context, p Operand) (r Operand) { // [0]6.5.7
 	if !o.isIntegerType() || !p.isIntegerType() {
 		panic("TODO")
 	}
-	o, p = UsualArithmeticConversions(ctx.model, o, p)
+
+	// 3. The integer promotions are performed on each of the operands. The
+	// type of the result is that of the promoted left operand. If the
+	// value of the right operand is negative or is greater than or equal
+	// to the width of the promoted left operand, the behavior is
+	// undefined.
+	o = o.integerPromotion(ctx.model)
+	p = p.integerPromotion(ctx.model)
 	if o.Value == nil || p.Value == nil {
 		return Operand{Type: o.Type}
 	}
@@ -780,7 +787,14 @@ func (o Operand) rsh(ctx *context, p Operand) (r Operand) { // [0]6.5.7
 	if !o.isIntegerType() || !p.isIntegerType() {
 		panic("TODO")
 	}
-	o, p = UsualArithmeticConversions(ctx.model, o, p)
+
+	// 3. The integer promotions are performed on each of the operands. The
+	// type of the result is that of the promoted left operand. If the
+	// value of the right operand is negative or is greater than or equal
+	// to the width of the promoted left operand, the behavior is
+	// undefined.
+	o = o.integerPromotion(ctx.model)
+	p = p.integerPromotion(ctx.model)
 	if o.Value == nil || p.Value == nil {
 		return Operand{Type: o.Type}
 	}

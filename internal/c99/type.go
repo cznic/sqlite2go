@@ -830,6 +830,15 @@ type StructType struct {
 	//TODO cache layout, size, alignment, struct alignment.
 }
 
+func (t *StructType) Field(nm int) *Declarator {
+	switch x := t.scope.Idents[nm].(type) {
+	case *Declarator:
+		return x
+	default:
+		panic(fmt.Errorf("%T", x))
+	}
+}
+
 // IsVoidPointerType implements Type.
 func (t *StructType) IsVoidPointerType() bool { panic("TODO") }
 
