@@ -1712,11 +1712,34 @@ func (n *FunctionBody) Pos() token.Pos {
 	return n.CompoundStmt.Pos()
 }
 
-// FunctionDefinition represents data reduced by production:
+// FunctionDefinitionCase represents case numbers of production FunctionDefinition
+type FunctionDefinitionCase int
+
+// Values of type FunctionDefinitionCase
+const (
+	FunctionDefinitionSpec FunctionDefinitionCase = iota
+	FunctionDefinitionInt
+)
+
+// String implements fmt.Stringer
+func (n FunctionDefinitionCase) String() string {
+	switch n {
+	case FunctionDefinitionSpec:
+		return "FunctionDefinitionSpec"
+	case FunctionDefinitionInt:
+		return "FunctionDefinitionInt"
+	default:
+		return fmt.Sprintf("FunctionDefinitionCase(%v)", int(n))
+	}
+}
+
+// FunctionDefinition represents data reduced by productions:
 //
 //	FunctionDefinition:
-//	        DeclarationSpecifiers Declarator DeclarationListOpt FunctionBody  // Case 0
+//	        DeclarationSpecifiers Declarator DeclarationListOpt FunctionBody  // Case FunctionDefinitionSpec
+//	|       Declarator DeclarationListOpt FunctionBody                        // Case FunctionDefinitionInt
 type FunctionDefinition struct {
+	Case                  FunctionDefinitionCase
 	DeclarationListOpt    *DeclarationListOpt
 	DeclarationSpecifiers *DeclarationSpecifiers
 	Declarator            *Declarator
@@ -1736,7 +1759,14 @@ func (n *FunctionDefinition) Pos() token.Pos {
 		return 0
 	}
 
-	return n.DeclarationSpecifiers.Pos()
+	switch n.Case {
+	case 0:
+		return n.DeclarationSpecifiers.Pos()
+	case 1:
+		return n.Declarator.Pos()
+	default:
+		panic("internal error")
+	}
 }
 
 // FunctionSpecifier represents data reduced by production:
@@ -2574,6 +2604,7 @@ func (n SelectionStmtCase) String() string {
 //	|       "switch" '(' ExprList ')' Stmt          // Case SelectionStmtSwitch
 type SelectionStmt struct {
 	Cases    []*LabeledStmt
+	SwitchOp Operand // Promoted switch operand
 	Case     SelectionStmtCase
 	ExprList *ExprList
 	Stmt     *Stmt

@@ -59,6 +59,7 @@ type Tweaks struct {
 	EnableBinaryLiterals        bool // 0b101010 == 42
 	EnableEmptyStructs          bool // struct{}
 	EnableImplicitDeclarations  bool // eg. using exit(1) w/o #include <stdlib.h>
+	EnableOmitFuncDeclSpec      bool // foo() { ... } == int foo() { ... }
 	EnableReturnExprInVoidFunc  bool // void f() { return 1; }
 	EnableTrigraphs             bool
 	InjectFinalNL               bool // Specs want the source to always end in a newline.

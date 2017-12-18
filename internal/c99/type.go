@@ -1161,7 +1161,17 @@ func (t *TaggedUnionType) Equal(u Type) bool {
 }
 
 func (t *TaggedUnionType) getType() Type {
-	panic("TODO")
+	if t.Type != nil {
+		return t.Type
+	}
+
+	s := t.scope.lookupStructTag(t.Tag)
+	if s == nil {
+		return t
+	}
+
+	t.Type = s.typ
+	return t.Type
 }
 
 // Kind implements Type.

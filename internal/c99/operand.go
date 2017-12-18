@@ -493,6 +493,8 @@ func (o Operand) gt(ctx *context, p Operand) (r Operand) {
 	return r
 }
 
+// integerPromotion computes the integer promotion of o.
+//
 // [0]6.3.1.1-2
 //
 // If an int can represent all values of the original type, the value is

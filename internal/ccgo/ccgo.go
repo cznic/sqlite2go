@@ -282,7 +282,7 @@ func (g *gen) produceNamedType(t *c99.NamedType) {
 	}
 
 	g.producedNamedTypes[t.Name] = struct{}{}
-	g.w("\ntype T%s %s\n", dict.S(t.Name), g.typ(t.Type))
+	g.w("\ntype T%s = %s\n", dict.S(t.Name), g.typ(t.Type))
 }
 
 func (g *gen) produceTaggedEnumType(t *c99.TaggedEnumType) {
@@ -415,7 +415,9 @@ func (g *gen) functionDefinition(n *c99.Declarator) {
 	t := n.Type.(*c99.FunctionType)
 	if len(names) != len(t.Params) {
 		if len(names) != 0 {
-			todo("")
+			if !(len(names) == 1 && names[0] == 0) {
+				todo("", g.position(n), names, t.Params)
+			}
 		}
 
 		names = make([]int, len(t.Params))
@@ -603,6 +605,8 @@ func (g gen) escaped(n *c99.Declarator) bool {
 				c99.Double,
 				c99.Float,
 				c99.Int,
+				c99.LongLong,
+				c99.UInt,
 				c99.ULong:
 
 				return false
@@ -785,6 +789,9 @@ func (g *gen) labeledStmt(n *c99.LabeledStmt, cases map[*c99.LabeledStmt]int, br
 func (g *gen) jumpStmt(n *c99.JumpStmt, brk *int) {
 	switch n.Case {
 	case c99.JumpStmtBreak: // "break" ';'
+		if *brk < 0 {
+			*brk = -*brk // Signal used.
+		}
 		g.w("\ngoto _%d\n", *brk)
 	case c99.JumpStmtReturn: // "return" ExprListOpt ';'
 		g.w("\nreturn ")
@@ -806,9 +813,11 @@ func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int
 				// stmt
 				// goto A
 				// A:
-				a := g.label()
+				a := -g.label()
 				g.stmt(n.Stmt, cases, &a)
-				g.w("\ngoto _%d\n\n_%d:", a, a)
+				if a > 0 {
+					g.w("\ngoto _%d\n\n_%d:", a, a)
+				}
 			case op.IsNonzero():
 				todo("", g.position0(n))
 			default:
@@ -821,13 +830,15 @@ func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int
 		// goto B
 		// B:
 		a := g.label()
-		b := g.label()
+		b := -g.label()
 		g.w("\n_%d:", a)
 		g.stmt(n.Stmt, cases, &b)
 		g.w("\nif ")
 		g.exprList(n.ExprList, false)
 		g.w(" != 0 { goto _%d }\n", a)
-		g.w("\ngoto _%d\n\n_%d:", b, b)
+		if b > 0 {
+			g.w("\ngoto _%d\n\n_%d:", b, b)
+		}
 	case c99.IterationStmtFor: // "for" '(' ExprListOpt ';' ExprListOpt ';' ExprListOpt ')' Stmt
 		if n.ExprListOpt2 != nil && n.ExprListOpt2.ExprList.Operand.Value != nil {
 			todo("", g.position0(n))
@@ -894,7 +905,7 @@ func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int
 		a := g.label()
 		g.w("\nif ")
 		g.exprList(n.ExprList, false)
-		g.w(" == 0 { goto _%d }", a)
+		g.w(" == 0 { goto _%d }\n", a)
 		g.stmt(n.Stmt, cases, brk)
 		g.w("\n_%d:", a)
 	case c99.SelectionStmtIfElse: // "if" '(' ExprList ')' Stmt "else" Stmt
@@ -922,7 +933,12 @@ func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int
 			todo("")
 		}
 		g.w("\nswitch ")
-		g.exprList(n.ExprList, false)
+		switch el := n.ExprList; {
+		case el.ExprList == nil: // single expression list
+			g.rvalue2(n.ExprList.Expr, n.SwitchOp.Type)
+		default:
+			todo("", g.position0(n))
+		}
 		g.w("{")
 		after := g.label()
 		cases := map[*c99.LabeledStmt]int{}
@@ -933,7 +949,7 @@ func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int
 			switch ce := v.ConstExpr; {
 			case ce != nil:
 				g.w("\ncase ")
-				g.rvalue2(ce.Expr, n.ExprList.Operand.Type)
+				g.rvalue(ce.Expr, false)
 				g.w(": goto _%d", l)
 			default:
 				deflt = v
@@ -1233,6 +1249,7 @@ func (g *gen) rvalue(n *c99.Expr, typedIntLiterals bool) {
 					c99.Char,
 					c99.Float,
 					c99.Int,
+					c99.UInt,
 					c99.ULong:
 
 					// ok
@@ -1605,10 +1622,16 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
 		case
 			c99.Char,
 			c99.Int,
-			c99.Long:
+			c99.Long,
+			c99.LongLong,
+			c99.SChar:
 
 			return fmt.Sprintf("int%d", g.model[x].Size*8)
-		case c99.ULong:
+		case
+			c99.UShort,
+			c99.UInt,
+			c99.ULong:
+
 			return fmt.Sprintf("uint%d", g.model[x].Size*8)
 		case c99.Float:
 			return fmt.Sprintf("float32")
@@ -1651,6 +1674,11 @@ func (g *gen) typ0(buf *bytes.Buffer, t c99.Type) {
 			return
 		case *c99.PointerType:
 			t = x.Item
+			if t.Kind() == c99.Void {
+				buf.WriteString(" uintptr")
+				return
+			}
+
 			buf.WriteByte('*')
 		case *c99.TaggedStructType:
 			g.enqueue(x)
@@ -1660,7 +1688,9 @@ func (g *gen) typ0(buf *bytes.Buffer, t c99.Type) {
 			switch x {
 			case
 				c99.Char,
-				c99.Int:
+				c99.Int,
+				c99.SChar,
+				c99.UShort:
 
 				buf.WriteString(g.ptyp(x, false))
 				return

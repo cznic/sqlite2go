@@ -436,6 +436,7 @@ func exampleAST(rule int, src string) interface{} {
 	ctx, err := newContext(token.NewFileSet(), &Tweaks{
 		EnableAnonymousStructFields: true,
 		EnableEmptyStructs:          true,
+		EnableOmitFuncDeclSpec:      true,
 	})
 	if err != nil {
 		return fmt.Sprintf("TODO: %v", err) //TODOOK

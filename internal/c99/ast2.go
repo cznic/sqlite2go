@@ -65,6 +65,51 @@ func (d *DeclarationSpecifier) typ() Type {
 				}
 
 				r.Type = x.Type
+				t := r.Type
+				for {
+					switch x := t.(type) {
+					case
+						*ArrayType,
+						*FunctionType,
+						*StructType,
+						*UnionType:
+
+						return r
+					case *NamedType:
+						t = x.Type
+					case *PointerType:
+						t = x.Item
+					case *TaggedStructType:
+						x.getType()
+						return r
+					case *TaggedUnionType:
+						x.getType()
+						return r
+					case TypeKind:
+						switch x {
+						case
+							Char,
+							Double,
+							Int,
+							Long,
+							LongLong,
+							SChar,
+							Short,
+							UChar,
+							UInt,
+							ULong,
+							ULongLong,
+							UShort,
+							Void:
+
+							return r
+						default:
+							panic(x)
+						}
+					default:
+						panic(fmt.Errorf("%T %v", x, x))
+					}
+				}
 			default:
 				panic(fmt.Errorf("%T", x))
 			}
@@ -1299,8 +1344,15 @@ func (n *ExternalDeclaration) check(ctx *context) {
 func (n *FunctionDefinition) LocalVariables() []*Declarator { return n.Declarator.vars }
 
 func (n *FunctionDefinition) check(ctx *context) {
-	// DeclarationSpecifiers Declarator DeclarationListOpt FunctionBody
 	ds := &DeclarationSpecifier{}
+	switch n.Case {
+	case FunctionDefinitionSpec: // DeclarationSpecifiers Declarator DeclarationListOpt FunctionBody
+		// ok
+	case FunctionDefinitionInt:
+		ds.typeSpecifiers = []TypeSpecifierCase{TypeSpecifierInt}
+	default:
+		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
+	}
 	n.DeclarationSpecifiers.check(ctx, ds)
 	if len(ds.TypeSpecifiers) == 0 { // [0]6.7.2-2
 		panic("TODO")
@@ -1456,7 +1508,8 @@ func (n *LabeledStmt) check(ctx *context, fn *Declarator, seq *int, sc []int, in
 	//[0]6.8.1
 	switch n.Case {
 	case LabeledStmtSwitchCase: // "case" ConstExpr ':' Stmt
-		op := n.ConstExpr.eval(ctx)
+		op := n.ConstExpr.eval(ctx).convertTo(ctx.model, inSwitch.SwitchOp.Type)
+		n.ConstExpr.Operand = op
 		if op.Value == nil {
 			panic("TODO")
 		}
@@ -1496,6 +1549,7 @@ func (n *SelectionStmt) check(ctx *context, fn *Declarator, seq *int, sc []int, 
 		if !n.ExprList.eval(ctx, true).isIntegerType() {
 			panic("TODO")
 		}
+		n.SwitchOp = n.ExprList.Operand.integerPromotion(ctx.model)
 		n.Stmt.check(ctx, fn, seq, sc, n, inLoop)
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
@@ -1958,7 +2012,7 @@ func (n *DirectDeclarator) check(ctx *context, t Type, sc []int, fn *Declarator)
 		var variadic bool
 		names := n.IdentifierListOpt.check()
 		if len(names) != 0 {
-			panic("TODO")
+			panic(fmt.Errorf("%v", ctx.position(n)))
 		}
 		t := &FunctionType{
 			Params:   params,

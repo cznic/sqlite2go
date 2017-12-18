@@ -740,7 +740,8 @@ import (
                         	ExprListOpt ';'
 
                         // [0]6.8.4
-			//yy:field	Cases	[]*LabeledStmt
+			//yy:field	Cases		[]*LabeledStmt
+			//yy:field	SwitchOp	Operand	// Promoted switch operand
 /*yy:case IfElse     */ SelectionStmt:
                         	"if" '(' ExprList ')' Stmt "else" Stmt
 /*yy:case If         */ |	"if" '(' ExprList ')' Stmt %prec NOELSE
@@ -777,11 +778,23 @@ import (
 /*yy:case Func       */ |	FunctionDefinition
 
                         // [0]6.9.1
-			FunctionDefinition:
-				DeclarationSpecifiers Declarator
+/*yy:case Spec       */	FunctionDefinition:
+                                DeclarationSpecifiers Declarator
 				{
 					lx.scope.typedef = false
 					lx.currFn = $2.(*Declarator).Name()
+				}
+				DeclarationListOpt FunctionBody
+				{
+					lhs.Declarator.FunctionDefinition = lhs
+				}
+/*yy:case Int        */ |	Declarator
+				{
+					if !lx.tweaks.EnableOmitFuncDeclSpec {
+						lx.err($1, "omitting function declaration specifiers not allowed")
+					}
+					lx.scope.typedef = false
+					lx.currFn = $1.(*Declarator).Name()
 				}
 				DeclarationListOpt FunctionBody
 				{
