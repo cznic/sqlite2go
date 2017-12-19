@@ -522,6 +522,7 @@ import (
 			//yy:field	FunctionDefinition	*FunctionDefinition	// When the declarator defines a function.
 			//yy:field	Initializer		*Initializer		// Only when part of an InitDeclarator.
 			//yy:field	Linkage			Linkage			// Linkage of the declared name, [0]6.2.2.
+			//yy:field	Parameters		[]*Declarator		// Of the function declarator.
 			//yy:field	Referenced		int
 			//yy:field	ScopeNum		int			// Sequential scope number within function body.
 			//yy:field	StorageDuration		StorageDuration		// Storage duration of the declared name, [0]6.2.4.

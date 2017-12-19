@@ -594,6 +594,7 @@ type Declarator struct {
 	FunctionDefinition   *FunctionDefinition   // When the declarator defines a function.
 	Initializer          *Initializer          // Only when part of an InitDeclarator.
 	Linkage              Linkage               // Linkage of the declared name, [0]6.2.2.
+	Parameters           []*Declarator         // Of the function declarator.
 	Referenced           int
 	ScopeNum             int              // Sequential scope number within function body.
 	StorageDuration      StorageDuration  // Storage duration of the declared name, [0]6.2.4.

@@ -715,6 +715,7 @@ func TestFunc(t *testing.T) {
 		t.Fatalf("%T", n)
 	}
 
+	fd := d
 	if g, e := d.Type.String(), "function (char) returning pointer to function (double) returning int"; g != e {
 		t.Fatalf("got %q\nexp %q", g, e)
 	}
@@ -731,6 +732,24 @@ func TestFunc(t *testing.T) {
 
 	if g, e := fmt.Sprint(d.Type), "char"; g != e {
 		t.Fatalf("got %q\nexp %q", g, e)
+	}
+
+	names := fd.ParameterNames()
+	if g, e := len(names), 1; g != e {
+		t.Fatal(g, e)
+	}
+
+	if g, e := names[0], dict.SID("bar"); g != e {
+		t.Fatal(g, e)
+	}
+
+	params := fd.Parameters
+	if g, e := len(params), 1; g != e {
+		t.Fatal(g, e)
+	}
+
+	if g, e := params[0].Name(), dict.SID("bar"); g != e {
+		t.Fatal(g, e)
 	}
 }
 

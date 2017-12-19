@@ -409,7 +409,7 @@ func roundup(n, to int64) int64 {
 }
 
 func (g *gen) functionDefinition(n *c99.Declarator) {
-	g.nextLabel = 0
+	g.nextLabel = 1
 	g.w("\n\nfunc %s(tls *%sTLS", g.mangleDeclarator(n), crt)
 	names := n.ParameterNames()
 	t := n.Type.(*c99.FunctionType)
@@ -422,16 +422,28 @@ func (g *gen) functionDefinition(n *c99.Declarator) {
 
 		names = make([]int, len(t.Params))
 	}
+	params := n.Parameters
+	var escParams []*c99.Declarator
 	switch {
 	case len(t.Params) == 1 && t.Params[0].Kind() == c99.Void:
 		// nop
 	default:
 		for i, v := range t.Params {
+			var param *c99.Declarator
+			if i < len(params) {
+				param = params[i]
+			}
 			nm := names[i]
 			g.w(", ")
-			g.w("%s %s", mangleIdent(nm, false), g.typ(v))
-			if v.Kind() == c99.Ptr {
-				g.w(" /* %s */", g.ptyp(v, false))
+			switch {
+			case param != nil && param.AddressTaken:
+				g.w("a%s %s", dict.S(nm), g.typ(v))
+				escParams = append(escParams, param)
+			default:
+				g.w("%s %s", mangleIdent(nm, false), g.typ(v))
+				if v.Kind() == c99.Ptr {
+					g.w(" /* %s */", g.ptyp(v, false))
+				}
 			}
 		}
 		if t.Variadic {
@@ -443,7 +455,7 @@ func (g *gen) functionDefinition(n *c99.Declarator) {
 	if !void {
 		g.w(" %s", g.typ(t.Result))
 	}
-	g.functionBody(n.FunctionDefinition.FunctionBody, n.FunctionDefinition.LocalVariables(), void)
+	g.functionBody(n.FunctionDefinition.FunctionBody, n.FunctionDefinition.LocalVariables(), void, escParams)
 }
 
 func mangleIdent(nm int, exported bool) string {
@@ -477,14 +489,14 @@ func (g *gen) mangleDeclarator(n *c99.Declarator) string {
 	panic("unreachable")
 }
 
-func (g *gen) functionBody(n *c99.FunctionBody, vars []*c99.Declarator, void bool) {
+func (g *gen) functionBody(n *c99.FunctionBody, vars []*c99.Declarator, void bool, escParams []*c99.Declarator) {
 	if vars == nil {
 		vars = []*c99.Declarator{}
 	}
-	g.compoundStmt(n.CompoundStmt, vars, nil, !void, nil)
+	g.compoundStmt(n.CompoundStmt, vars, nil, !void, nil, escParams)
 }
 
-func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases map[*c99.LabeledStmt]int, sentinel bool, brk *int) {
+func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases map[*c99.LabeledStmt]int, sentinel bool, brk *int, escParams []*c99.Declarator) {
 	if vars != nil {
 		g.w(" {")
 	}
@@ -508,7 +520,7 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases ma
 	}
 	vars = vars[:w]
 	var free []*c99.Declarator
-	if len(vars) != 0 {
+	if len(vars)+len(escParams) != 0 {
 		localNames := map[int]struct{}{}
 		num := 0
 		for _, v := range vars {
@@ -520,10 +532,14 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases ma
 			localNames[nm] = struct{}{}
 		}
 		switch {
-		case len(vars) == 1:
+		case len(vars)+len(escParams) == 1:
 			g.w("\nvar ")
 		default:
 			g.w("\nvar (\n")
+		}
+		for _, v := range escParams {
+			free = append(free, v)
+			g.w("\n\t%s = %sMustMalloc(%d) // *%s", g.mangleDeclarator(v), crt, g.model.Sizeof(v.Type), g.ptyp(v.Type, false))
 		}
 		for _, v := range vars {
 			initializer := v.Initializer
@@ -551,8 +567,11 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases ma
 				}
 			}
 		}
-		if len(vars) != 1 {
+		if len(vars)+len(escParams) != 1 {
 			g.w("\n)")
+		}
+		for _, v := range escParams {
+			g.w("\n*(*%s)(unsafe.Pointer(%s)) = a%s", g.ptyp(v.Type, false), g.mangleDeclarator(v), dict.S(v.Name()))
 		}
 	}
 	if len(free) != 0 {
@@ -750,7 +769,7 @@ func (g *gen) arrayCompositeValueItem(n []byte, op c99.Operand, itemSz int64) {
 func (g *gen) stmt(n *c99.Stmt, cases map[*c99.LabeledStmt]int, brk *int) {
 	switch n.Case {
 	case c99.StmtBlock: // CompoundStmt
-		g.compoundStmt(n.CompoundStmt, nil, cases, false, brk)
+		g.compoundStmt(n.CompoundStmt, nil, cases, false, brk, nil)
 	case c99.StmtExpr: // ExprStmt
 		g.exprStmt(n.ExprStmt)
 	case c99.StmtIter: // IterationStmt
@@ -940,7 +959,7 @@ func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int
 			todo("", g.position0(n))
 		}
 		g.w("{")
-		after := g.label()
+		after := -g.label()
 		cases := map[*c99.LabeledStmt]int{}
 		var deflt *c99.LabeledStmt
 		for _, v := range n.Cases {
@@ -949,7 +968,7 @@ func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int
 			switch ce := v.ConstExpr; {
 			case ce != nil:
 				g.w("\ncase ")
-				g.rvalue(ce.Expr, false)
+				g.rvalue(ce.Expr, true)
 				g.w(": goto _%d", l)
 			default:
 				deflt = v
@@ -958,10 +977,13 @@ func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int
 		}
 		g.w("}")
 		if deflt == nil {
+			after = -after
 			g.w("\ngoto _%d\n", after)
 		}
 		g.stmt(n.Stmt, cases, &after)
-		g.w("\n_%d:", after)
+		if after > 0 {
+			g.w("\n_%d:", after)
+		}
 	default:
 		todo("", g.position0(n), n.Case)
 	}
@@ -1144,11 +1166,40 @@ func (g *gen) rvalue(n *c99.Expr, typedIntLiterals bool) {
 		case c99.ExprChar:
 			g.w(" %s", strconv.QuoteRuneToASCII(rune(x.Value)))
 		default:
-			switch {
-			case typedIntLiterals:
-				g.w(" %s(%d)", g.typ(n.Operand.Type), x.Value)
+			u := n.Operand.Type
+			switch u.Kind() {
+			case
+				c99.Char,
+				c99.Int,
+				c99.Long,
+				c99.LongLong,
+				c99.SChar,
+				c99.Short:
+
+				switch {
+				case typedIntLiterals:
+					g.w(" %s(%d)", g.typ(n.Operand.Type), x.Value)
+				default:
+					g.w(" %d", x.Value)
+				}
+			case
+				c99.UChar,
+				c99.UInt,
+				c99.ULong,
+				c99.ULongLong,
+				c99.UShort:
+
+				v := uint64(x.Value)
+				switch {
+				case typedIntLiterals:
+					g.w(" %s(%d)", g.typ(n.Operand.Type), v)
+				default:
+					g.w(" %d", v)
+				}
+			case c99.Float: //TODO- fix all literals in the front end.
+				g.w(" float32(%v)", float32(x.Value))
 			default:
-				g.w(" %d", x.Value)
+				todo("", g.position0(n), u.Kind())
 			}
 		}
 		return
@@ -1160,6 +1211,22 @@ func (g *gen) rvalue(n *c99.Expr, typedIntLiterals bool) {
 				switch u {
 				case c99.Double:
 					g.w(" %v", x.Value)
+					return
+				default:
+					todo("", g.position0(n), u)
+				}
+			default:
+				todo("%v: %T", g.position0(n), u)
+			}
+		}
+	case *ir.Float32Value:
+		t := n.Operand.Type
+		for {
+			switch u := t.(type) {
+			case c99.TypeKind:
+				switch u {
+				case c99.Float:
+					g.w(" float32(%v)", x.Value)
 					return
 				default:
 					todo("", g.position0(n), u)
@@ -1508,20 +1575,23 @@ func (g *gen) binop(n *c99.Expr) {
 		op, _ := c99.UsualArithmeticConversions(g.model, n.Expr.Operand, n.Expr2.Operand)
 		l, r = op.Type, op.Type
 	}
-	g.rvalue2(n.Expr, l)
+	switch {
+	case l.Kind() == c99.Ptr && n.Operand.Type.IsArithmeticType():
+		g.rvalue2(n.Expr, n.Operand.Type)
+	default:
+		g.rvalue2(n.Expr, l)
+	}
 	g.w(" %s ", c99.TokSrc(n.Token))
-	g.rvalue2(n.Expr2, r)
+	switch {
+	case r.Kind() == c99.Ptr && n.Operand.Type.IsArithmeticType():
+		g.rvalue2(n.Expr2, n.Operand.Type)
+	default:
+		g.rvalue2(n.Expr2, r)
+	}
 }
 
 func (g *gen) rvalue2(n *c99.Expr, t c99.Type) {
 	if n.Operand.Type.Equal(t) {
-		if n.Operand.Value != nil {
-			g.w(" %s(", g.typ(t))
-			g.rvalue(n, false)
-			g.w(")")
-			return
-		}
-
 		g.rvalue(n, true)
 		return
 	}
@@ -1550,6 +1620,12 @@ func (g *gen) convert(n *c99.Expr, t c99.Type) {
 			g.w(" %d", op.Value.(*ir.Int64Value).Value)
 			return
 		}
+	}
+
+	if op.Type.IsIntegerType() && op.Value != nil {
+		n.Operand.Type = t
+		g.rvalue(n, true)
+		return
 	}
 
 	g.w(" %s(", g.typ(t))

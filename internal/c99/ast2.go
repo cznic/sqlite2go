@@ -720,6 +720,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			n.Operand.Value = &ir.Int64Value{Value: 0}
 		}
 	case ExprMod: // Expr '%' Expr
+		binop(ctx, n, arr2ptr)
 		n.Operand = n.Expr.eval(ctx, arr2ptr).mod(ctx, n.Expr2.eval(ctx, arr2ptr)) // [0]6.5.5
 	case ExprAnd: // Expr '&' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr).and(ctx, n.Expr2.eval(ctx, arr2ptr))
@@ -784,7 +785,26 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			}
 			break out2
 		}
+		for i, v := range ops {
+			if v.Value != nil {
+				ops[i] = v.convertTo(ctx.model, ops[i].Type)
+			}
+		}
+		if o := n.ArgumentExprListOpt; o != nil {
+			i := 0
+			for l := o.ArgumentExprList; l != nil; l = l.ArgumentExprList {
+				if i >= len(ops) {
+					break
+				}
+
+				if op := ops[i]; op.Value != nil {
+					l.Expr.Operand = op
+				}
+				i++
+			}
+		}
 	case ExprMul: // Expr '*' Expr
+		binop(ctx, n, arr2ptr)
 		n.Operand = n.Expr.eval(ctx, arr2ptr).mul(ctx, n.Expr2.eval(ctx, arr2ptr))
 	case ExprAdd: // Expr '+' Expr
 		lhs := n.Expr.eval(ctx, arr2ptr)
@@ -797,18 +817,28 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		// equivalent to adding 1.)
 		switch {
 		case lhs.isArithmeticType() && rhs.isArithmeticType():
-			//dbg("", ctx.position(n))
+			binop(ctx, n, arr2ptr)
 			n.Operand = lhs.add(ctx, rhs)
 		case lhs.isPointerType() && rhs.isIntegerType():
-			if lhs.Address != nil && lhs.Address.Declarator.Linkage != LinkageNone {
-				panic(ctx.position(n))
-			}
 			n.Operand = lhs
-		case lhs.isIntegerType() && rhs.isPointerType():
-			if rhs.Address != nil && rhs.Address.Declarator.Linkage != 0 {
-				panic(ctx.position(n))
+			if a := lhs.Address; a != nil && rhs.Value != nil {
+				b := *a
+				b.Offset += uintptr(ctx.model.Sizeof(pitem(lhs.Type)) * rhs.Value.(*ir.Int64Value).Value)
+				n.Operand.Address = &b
+				break
 			}
+
+			n.Operand.Address = nil
+		case lhs.isIntegerType() && rhs.isPointerType():
 			n.Operand = rhs
+			if a := rhs.Address; a != nil && lhs.Value != nil {
+				b := *a
+				b.Offset += uintptr(ctx.model.Sizeof(pitem(rhs.Type)) * lhs.Value.(*ir.Int64Value).Value)
+				n.Operand.Address = &b
+				break
+			}
+
+			n.Operand.Address = nil
 		default:
 			panic(ctx.position(n))
 		}
@@ -822,13 +852,14 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			// both operands have arithmetic type;
 			lhs.isArithmeticType() && rhs.isArithmeticType():
 
+			binop(ctx, n, arr2ptr)
 			n.Operand = n.Expr.eval(ctx, arr2ptr).sub(ctx, n.Expr2.eval(ctx, arr2ptr))
 		case
 			// both operands are pointers to qualified or
 			// unqualified versions of compatible object types;
 			lhs.isPointerType() && rhs.isPointerType() && lhs.Type.IsCompatible(rhs.Type):
 
-			if lhs.Address != nil && lhs.Address.Declarator.Linkage != 0 && rhs.Address != nil && rhs.Address.Declarator.Linkage != 0 {
+			if lhs.Address != nil && lhs.Address.Declarator.Linkage != LinkageNone && rhs.Address != nil && rhs.Address.Declarator.Linkage != LinkageNone {
 				panic("TODO")
 			}
 
@@ -893,6 +924,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			}
 		}
 	case ExprDiv: // Expr '/' Expr
+		binop(ctx, n, arr2ptr)
 		n.Operand = n.Expr.eval(ctx, arr2ptr).div(ctx, n.Expr2.eval(ctx, arr2ptr)) // [0]6.5.5
 	case ExprLt: // Expr '<' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr).lt(ctx, n.Expr2.eval(ctx, arr2ptr))
@@ -1215,6 +1247,27 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 	}
 }
 
+func binop(ctx *context, n *Expr, arr2ptr bool) {
+	n.Expr.eval(ctx, arr2ptr)
+	n.Expr2.eval(ctx, arr2ptr)
+	l, r := UsualArithmeticConversions(ctx.model, n.Expr.Operand, n.Expr2.Operand)
+	if n.Expr.Operand.Value != nil {
+		n.Expr.Operand = l
+	}
+	if n.Expr2.Operand.Value != nil {
+		n.Expr2.Operand = r
+	}
+}
+
+func pitem(t Type) Type {
+	switch x := t.(type) {
+	case *PointerType:
+		return x.Item
+	default:
+		panic(fmt.Errorf("%T", x))
+	}
+}
+
 func checkFn(ctx *context, t Type) *FunctionType {
 	// 1. The expression that denotes the called function 80) shall
 	// have type pointer to function returning void or returning an
@@ -1362,6 +1415,12 @@ func (n *FunctionDefinition) check(ctx *context) {
 		panic("TODO")
 	}
 	n.FunctionBody.check(ctx, n.Declarator)
+	d := n.Declarator
+	sc := d.fpScope(ctx)
+	for _, v := range d.ParameterNames() {
+		p, _ := sc.Idents[v].(*Declarator)
+		d.Parameters = append(d.Parameters, p)
+	}
 }
 
 func (n *FunctionBody) check(ctx *context, fn *Declarator) {
@@ -1447,6 +1506,8 @@ func (n *DirectDeclarator) parameterNames() (r []int) {
 				}
 			}
 			return r
+		case DirectDeclaratorParen:
+			return n.DirectDeclarator.Declarator.DirectDeclarator.parameterNames()
 		default:
 			panic(n.DirectDeclarator.Case)
 		}

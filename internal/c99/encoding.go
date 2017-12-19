@@ -432,7 +432,11 @@ func strConst(t xc.Token) Operand {
 				i++
 			}
 		}
-		return Operand{Type: &PointerType{Item: Char}, Value: &ir.StringValue{StringID: ir.StringID(dict.ID(buf.Bytes()))}}
+		//TODO- return Operand{Type: &PointerType{Item: Char}, Value: &ir.StringValue{StringID: ir.StringID(dict.ID(buf.Bytes()))}}
+		return Operand{
+			Type:  &ArrayType{Item: Char, Size: Operand{Type: Int, Value: &ir.Int64Value{Value: int64(len(buf.Bytes()) + 1)}}},
+			Value: &ir.StringValue{StringID: ir.StringID(dict.ID(buf.Bytes()))},
+		}
 	default:
 		panic("internal error")
 	}

@@ -308,13 +308,15 @@ func testGCC(t *testing.T, pth string, compiles, builds, runs *int) {
 
 	main, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, mainSource)
 	if err != nil {
-		s := err.Error()
-		a := strings.Split(s, "\n")
-		switch {
-		case strings.Contains(a[0], pth):
-			t.Logf("      cc: %s", a[0])
-		default:
-			t.Logf("      cc: %s: %s", pth, a[0])
+		if testing.Verbose() {
+			s := err.Error()
+			a := strings.Split(s, "\n")
+			switch {
+			case strings.Contains(a[0], pth):
+				t.Logf("      cc: %s", a[0])
+			default:
+				t.Logf("      cc: %s: %s", pth, a[0])
+			}
 		}
 		return
 	}
@@ -332,18 +334,39 @@ func testGCC(t *testing.T, pth string, compiles, builds, runs *int) {
 
 	*compiles++
 	if err := build(t, dir, []*c99.TranslationUnit{crt0, main}); err != nil {
-		t.Logf("compiles: %v: %v", pth, err)
+		if testing.Verbose() {
+			t.Logf("compiles: %v: %v", pth, compact(err.Error(), 3))
+		}
 		return
 	}
 
 	*builds++
 	if out, err := run(t, dir); err != nil {
-		t.Errorf("    FAIL: %s: %s: %s", pth, strings.TrimSpace(err.Error()), bytes.TrimSpace(out))
+		t.Errorf("    FAIL: %s: out: %s err: %s", pth, compact(string(out), 1), compact(err.Error(), 2))
 		return
 	}
 
 	*runs++
-	t.Logf("    PASS: %s", pth)
+	if testing.Verbose() {
+		t.Logf("    PASS: %s", pth)
+	}
+}
+
+func compact(s string, maxLines int) string {
+	a := strings.Split(s, "\n")
+	w := 0
+	for _, v := range a {
+		v = strings.TrimSpace(v)
+		if v != "" {
+			a[w] = v
+			w++
+		}
+	}
+	a = a[:w]
+	if len(a) > maxLines {
+		a = a[:maxLines]
+	}
+	return strings.Join(a, "\n")
 }
 
 func TestSQLiteShell(t *testing.T) {

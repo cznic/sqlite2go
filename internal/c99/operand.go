@@ -212,16 +212,16 @@ type Operand struct {
 	//TODO lvalue bool
 }
 
-func newIntConst(c *context, n Node, v uint64, t ...TypeKind) (r Operand) {
+func newIntConst(ctx *context, n Node, v uint64, t ...TypeKind) (r Operand) {
 	b := bits.Len64(v)
 	for _, t := range t {
-		if c.model[t].Size*8 >= b {
-			return Operand{Type: t, Value: &ir.Int64Value{Value: int64(v)}}
+		if ctx.model[t].Size*8 >= b {
+			return Operand{Type: t, Value: &ir.Int64Value{Value: int64(v)}}.normalize(ctx.model)
 		}
 	}
 
-	c.err(n, "invalid integer constant")
-	return Operand{Type: Int}
+	ctx.err(n, "invalid integer constant")
+	return Operand{Type: Int}.normalize(ctx.model)
 }
 
 func (o Operand) isArithmeticType() bool { return o.Type.IsArithmeticType() }
@@ -264,9 +264,10 @@ func (o Operand) and(ctx *context, p Operand) (r Operand) {
 	}
 }
 
+// convertTo converts o to type t.
 func (o Operand) convertTo(m Model, t Type) (r Operand) {
 	if o.Type.Equal(t) {
-		return o
+		return o.normalize(m)
 	}
 
 	switch x := t.(type) {
@@ -713,7 +714,7 @@ func (o Operand) ne(ctx *context, p Operand) (r Operand) {
 	return r
 }
 
-func (o Operand) normalize(m Model) Operand {
+func (o Operand) normalize(m Model) (r Operand) {
 	switch x := o.Value.(type) {
 	case *ir.Int64Value:
 		val := x.Value
@@ -722,7 +723,7 @@ func (o Operand) normalize(m Model) Operand {
 			switch {
 			case o.isSigned():
 				switch {
-				case val < 0:
+				case int8(val) < 0:
 					x.Value = val | ^math.MaxUint8
 				default:
 					x.Value = val & math.MaxUint8
@@ -734,7 +735,7 @@ func (o Operand) normalize(m Model) Operand {
 			switch {
 			case o.isSigned():
 				switch {
-				case val < 0:
+				case int16(val) < 0:
 					x.Value = val | ^math.MaxUint16
 				default:
 					x.Value = val & math.MaxUint16
@@ -746,7 +747,7 @@ func (o Operand) normalize(m Model) Operand {
 			switch {
 			case o.isSigned():
 				switch {
-				case val < 0:
+				case int32(val) < 0:
 					x.Value = val | ^math.MaxUint32
 				default:
 					x.Value = val & math.MaxUint32
@@ -759,7 +760,12 @@ func (o Operand) normalize(m Model) Operand {
 		default:
 			panic(fmt.Errorf("TODO %v", sz))
 		}
-	case *ir.Float64Value:
+	case
+		nil,
+		*ir.Float32Value,
+		*ir.Float64Value,
+		*ir.StringValue:
+
 		// nop
 	default:
 		panic(fmt.Errorf("TODO %T", x))
