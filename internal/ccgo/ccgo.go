@@ -87,6 +87,7 @@ type gen struct {
 	postIncTypes        map[string]int
 	producedDeclarators map[*c99.Declarator]struct{}
 	producedEnumTags    map[int]struct{}
+	producedExterns     map[*c99.Declarator]struct{}
 	producedNamedTypes  map[int]struct{}
 	producedStructTags  map[int]struct{}
 	queue               list.List
@@ -110,6 +111,7 @@ func newGen(out io.Writer, in []*c99.TranslationUnit) *gen {
 		out:                 out,
 		producedDeclarators: map[*c99.Declarator]struct{}{},
 		producedEnumTags:    map[int]struct{}{},
+		producedExterns:     map[*c99.Declarator]struct{}{},
 		producedNamedTypes:  map[int]struct{}{},
 		producedStructTags:  map[int]struct{}{},
 		assignTypes:         map[string]int{},
@@ -125,7 +127,7 @@ func (g *gen) gen(cmd bool) (err error) {
 		case nil:
 			// nop
 		default:
-			err = fmt.Errorf("PANIC: %v\n%s", e, debugStack())
+			err = fmt.Errorf("%v", compact(fmt.Sprintf("PANIC: %v\n%s", e, debugStack()), 10))
 		}
 	}()
 
@@ -330,6 +332,14 @@ func (g *gen) produceTaggedStructType(t *c99.TaggedStructType) {
 }
 
 func (g *gen) tld(n *c99.Declarator) {
+	if n.Linkage == c99.LinkageExternal {
+		m := g.externs[n.Name()]
+		if _, ok := g.producedExterns[m]; ok {
+			return
+		}
+
+		g.producedExterns[m] = struct{}{}
+	}
 	if n.Initializer == nil || n.Initializer.Expr.Operand.IsZero() {
 		switch x := n.Type.(type) {
 		case *c99.ArrayType:
@@ -337,7 +347,10 @@ func (g *gen) tld(n *c99.Declarator) {
 				todo("")
 			}
 			g.w("\nvar %s = bss + %d\n", g.mangleDeclarator(n), g.allocBSS(n.Type))
-		case *c99.StructType:
+		case
+			*c99.PointerType,
+			*c99.StructType:
+
 			g.w("\nvar %s = bss + %d\n", g.mangleDeclarator(n), g.allocBSS(n.Type))
 		case c99.TypeKind:
 			switch x {
@@ -506,7 +519,7 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases ma
 			continue
 		}
 
-		if v.Referenced == 0 && v.Initializer == nil {
+		if v.Referenced == 0 && v.Initializer == nil && !v.AddressTaken {
 			continue
 		}
 
@@ -548,7 +561,7 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases ma
 				o := initializer.Expr.Operand
 				if o.Type != nil && (o.IsZero() || o.Address == c99.Null) {
 					initializer = nil
-					malloc = "Calloc"
+					malloc = "MustCalloc"
 				}
 			}
 			switch {
@@ -707,7 +720,17 @@ func (g *gen) initializer(d *c99.Declarator) {
 	t := d.Type
 	switch n.Case {
 	case c99.InitializerExpr: // Expr
-		g.w("\n%s = ", g.mangleDeclarator(d))
+		switch {
+		case d.AddressTaken:
+			switch a := n.Expr.Operand.Address; {
+			case a != nil && g.escaped(a.Declarator):
+				g.w("\n*(*uintptr)(unsafe.Pointer(%s)) = ", g.mangleDeclarator(d))
+			default:
+				g.w("\n*(*%s)(unsafe.Pointer(%s)) = ", g.ptyp(d.Type, false), g.mangleDeclarator(d))
+			}
+		default:
+			g.w("\n%s = ", g.mangleDeclarator(d))
+		}
 		g.rvalue2(n.Expr, t)
 	case c99.InitializerCompLit: // '{' InitializerList CommaOpt '}'
 		op := n.InitializerList.Operand
@@ -1354,6 +1377,71 @@ func (g *gen) rvalue(n *c99.Expr, typedIntLiterals bool) {
 				g.w("(%s+%d)", g.mangleDeclarator(d), a.Offset)
 			}
 		default:
+			t := dt
+			for done := false; !done; {
+				switch x := t.(type) {
+				case *c99.NamedType:
+					t = x.Type
+				case *c99.PointerType:
+					u := x.Item
+					for !done {
+						switch y := u.(type) {
+						case *c99.FunctionType:
+							switch ot := n.Operand.Type.(*c99.PointerType).Item; {
+							case ot.IsCompatible(d.Type):
+								todo("", g.position0(n), ot, d.Type)
+							default:
+								// func() t { v := e; return *(*t)(unsafe.Pointer(&v)) }()
+								g.w(" func() %[1]s { v := %s; return *(*%[1]s)(unsafe.Pointer(&v)) }()", g.typ(ot), g.mangleDeclarator(d))
+								return
+							}
+						case *c99.NamedType:
+							u = y.Type
+						case
+							*c99.ArrayType,
+							*c99.PointerType,
+							*c99.StructType,
+							*c99.TaggedStructType:
+
+							done = true
+						case c99.TypeKind:
+							switch y {
+							case
+								c99.Char,
+								c99.Int,
+								c99.UChar,
+								c99.UInt,
+								c99.ULong,
+								c99.Void:
+
+								done = true
+							default:
+								todo("", g.position0(n), y)
+							}
+						default:
+							todo("%v: %T", g.position0(n), y)
+						}
+					}
+				case
+					*c99.StructType,
+					*c99.TaggedStructType:
+
+					done = true
+				case c99.TypeKind:
+					switch x {
+					case
+						c99.Char,
+						c99.Int,
+						c99.UInt:
+
+						done = true
+					default:
+						todo("", g.position0(n), x)
+					}
+				default:
+					todo("%v: %T", g.position0(n), x)
+				}
+			}
 			switch {
 			case g.escaped(d) || dt.Kind() == c99.Ptr:
 				g.w(" *(*%s)(unsafe.Pointer(%s+%d))", g.ptyp(n.Operand.Type, false), g.mangleDeclarator(d), a.Offset)
@@ -1406,7 +1494,12 @@ func (g *gen) rvalue(n *c99.Expr, typedIntLiterals bool) {
 			i := 0
 			for l := o.ArgumentExprList; l != nil; l = l.ArgumentExprList {
 				g.w(", ")
-				g.rvalue2(l.Expr, n.CallArgs[i].Type)
+				switch {
+				case n.CallArgs[i].Type.Kind() == c99.Ptr:
+					g.uintptr(l.Expr)
+				default:
+					g.rvalue2(l.Expr, n.CallArgs[i].Type)
+				}
 				i++
 			}
 		}
@@ -1462,6 +1555,9 @@ func (g *gen) rvalue(n *c99.Expr, typedIntLiterals bool) {
 		g.w("*(*%s)(unsafe.Pointer(", g.ptyp(n.Operand.Type, false))
 		g.uintptr(n)
 		g.w("))")
+	case c99.ExprCpl: // '~' Expr
+		g.w(" ^")
+		g.rvalue(n.Expr, true)
 	default:
 		todo("", g.position0(n), n.Case, n.Operand)
 	}
@@ -1469,7 +1565,16 @@ func (g *gen) rvalue(n *c99.Expr, typedIntLiterals bool) {
 
 func (g *gen) uintptr(n *c99.Expr) {
 	if n.Operand.Value != nil {
-		todo("", g.position0(n))
+		switch x := n.Operand.Value.(type) {
+		case *ir.Int64Value:
+			g.w(" %d", x.Value)
+			return
+		case *ir.StringValue:
+			g.w(" ts+%d %s", g.allocString(int(x.StringID)), strComment(x))
+			return
+		default:
+			todo("%v: %T", g.position0(n), x)
+		}
 	}
 
 	if a := n.Operand.Address; a != nil {
@@ -1515,7 +1620,7 @@ func (g *gen) uintptr(n *c99.Expr) {
 			}
 		}
 	default:
-		todo("", g.position0(n), n.Case)
+		g.rvalue(n, true)
 	}
 
 }
@@ -1665,7 +1770,10 @@ func (g *gen) typ(t c99.Type) string { return g.ptyp(t, true) }
 func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
 	var buf bytes.Buffer
 	switch x := t.(type) {
-	case *c99.ArrayType:
+	case
+		*c99.ArrayType,
+		*c99.FunctionType:
+
 		g.typ0(&buf, x)
 		return buf.String()
 	case *c99.NamedType:
@@ -1732,11 +1840,9 @@ func (g *gen) typ0(buf *bytes.Buffer, t c99.Type) {
 			fmt.Fprintf(buf, "[%d]", x.Size.Value.(*ir.Int64Value).Value)
 			t = x.Item
 		case *c99.FunctionType:
-			buf.WriteString(" func(")
-			for i, v := range x.Params {
-				if i != 0 {
-					buf.WriteString(", ")
-				}
+			fmt.Fprintf(buf, " func(*%sTLS", crt)
+			for _, v := range x.Params {
+				buf.WriteString(", ")
 				buf.WriteString(g.typ(v))
 			}
 			buf.WriteString(")")
@@ -1874,4 +1980,21 @@ func (g *gen) collectSymbols() error {
 		}
 	}
 	return nil
+}
+
+func compact(s string, maxLines int) string {
+	a := strings.Split(s, "\n")
+	w := 0
+	for _, v := range a {
+		v = strings.TrimSpace(v)
+		if v != "" {
+			a[w] = v
+			w++
+		}
+	}
+	a = a[:w]
+	if len(a) > maxLines {
+		a = a[:maxLines]
+	}
+	return strings.Join(a, "\n")
 }

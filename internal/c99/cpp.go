@@ -184,6 +184,7 @@ type macro struct {
 	repl []xc.Token
 
 	fnLike   bool
+	ident    bool
 	variadic bool
 }
 
@@ -197,6 +198,25 @@ func (m *macro) param(ap [][]xc.Token, nm int, out *[]xc.Token) bool {
 		}
 
 		if i := len(m.fp); i < len(ap) {
+			o := *out
+			for i, v := range ap[i:] {
+				if i != 0 {
+					t := o[len(o)-1]
+					t.Rune = ','
+					t.Val = 0
+					o = append(o, t)
+					t.Rune = ' '
+					o = append(o, t)
+				}
+				o = append(o, v...)
+			}
+			*out = o
+		}
+		return true
+	}
+
+	if len(m.fp) != 0 && nm == m.fp[len(m.fp)-1] && m.variadic && !m.ident {
+		if i := len(m.fp) - 1; i < len(ap) {
 			o := *out
 			for i, v := range ap[i:] {
 				if i != 0 {
@@ -510,6 +530,7 @@ func (c *cpp) sanitize(toks []xc.Token) []xc.Token {
 }
 
 func (c *cpp) actuals(m *macro, r tokenReader) (out [][]xc.Token) {
+	//defer func() { dbg("", out) }()
 	var lvl, n int
 	for {
 		t := r.read()
@@ -551,6 +572,7 @@ func (c *cpp) actuals(m *macro, r tokenReader) (out [][]xc.Token) {
 }
 
 func (c *cpp) expands(toks []xc.Token) (out []xc.Token) {
+	//defer func(toks []xc.Token) { dbg("%v -> %v", toks, out) }(append([]xc.Token(nil), toks...))
 	var r, w tokenBuffer
 	r.toks = toks
 	c.expand(&r, &w, conds(nil).push(condZero))
@@ -612,6 +634,7 @@ func (c *cpp) expands(toks []xc.Token) (out []xc.Token) {
 // 	return subst(IS’,FP,AP,HS,OS • THS’);
 // }
 func (c *cpp) subst(m *macro, ap [][]xc.Token) (out []xc.Token) {
+	// dbg("%s %v %v", m.def.S(), m.variadic, ap)
 	repl := m.repl
 	var arg []xc.Token
 	for {
@@ -1181,6 +1204,7 @@ func (c *cpp) defineFnMacro(nmTok xc.Token, line []xc.Token) {
 		case ')':
 			m := newMacro(nmTok, trimSpace(line[i+1:]))
 			m.fnLike = true
+			m.ident = ident
 			m.variadic = variadic
 			m.fp = params
 			if ex := c.macros[nmTok.Val]; ex != nil {

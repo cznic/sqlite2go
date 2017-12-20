@@ -328,7 +328,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		// [0]6.5.3.2
 		op := n.Expr.eval(ctx, false) // [0]6.3.2.1-3
 		n.Operand = Operand{Type: &PointerType{op.Type}, Address: op.Address}
-		if a := op.Address; a != nil && a.Declarator != nil {
+		if a := op.Address; a != nil && a.Declarator != nil && n.Expr.Case != ExprPSelect {
 			a.Declarator.AddressTaken = true
 		}
 	case ExprPExprList: // '(' ExprList ')'
@@ -404,6 +404,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		// arithmetic type; of the ~ operator, integer type; of the !
 		// operator, scalar type.
 		n.Operand = n.Expr.eval(ctx, arr2ptr)
+		n.Operand.Address = nil
 		if !n.Operand.isArithmeticType() {
 			panic(ctx.position(n))
 		}

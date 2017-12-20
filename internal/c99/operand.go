@@ -368,6 +368,7 @@ func (o Operand) convertTo(m Model, t Type) (r Operand) {
 }
 
 func (o Operand) cpl(ctx *context) Operand {
+	o.Address = nil
 	if o.isIntegerType() {
 		o = o.integerPromotion(ctx.model)
 	}
@@ -832,6 +833,7 @@ func (o Operand) sub(ctx *context, p Operand) (r Operand) {
 }
 
 func (o Operand) unaryMinus(ctx *context) Operand {
+	//TODO o.Address = nil
 	if o.isIntegerType() {
 		o = o.integerPromotion(ctx.model)
 	}

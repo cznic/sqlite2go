@@ -74,6 +74,14 @@ const (
 #define __os__ %s
 #include <builtin.h>
 `
+	injectGCC = `
+#define _CCGO 1
+#define __arch__ %s
+#define __os__ %s
+#include <builtin.h>
+
+#define SIGNAL_SUPPRESS // gcc.c-torture/execute/20101011-1.c
+`
 )
 
 var (
@@ -99,6 +107,7 @@ func TestOpt(t *testing.T) {
 }
 
 func testTCC(t *testing.T, pth string) {
+	//dbg("", pth)
 	testFn = pth
 	fset := token.NewFileSet()
 	predefSource := c99.NewStringSource("<predefine>", fmt.Sprintf(inject, runtime.GOARCH, runtime.GOOS))
@@ -291,9 +300,10 @@ func TestGCC(t *testing.T) {
 }
 
 func testGCC(t *testing.T, pth string, compiles, builds, runs *int) {
+	//dbg("", pth)
 	testFn = pth
 	fset := token.NewFileSet()
-	predefSource := c99.NewStringSource("<predefine>", fmt.Sprintf(inject, runtime.GOARCH, runtime.GOOS))
+	predefSource := c99.NewStringSource("<predefine>", fmt.Sprintf(injectGCC, runtime.GOARCH, runtime.GOOS))
 	crt0Source := c99.NewFileSource(filepath.Join(ccir.LibcIncludePath, "crt0.c"))
 	mainSource := c99.NewFileSource(pth)
 	inc := []string{"@", ccir.LibcIncludePath}
@@ -335,7 +345,7 @@ func testGCC(t *testing.T, pth string, compiles, builds, runs *int) {
 	*compiles++
 	if err := build(t, dir, []*c99.TranslationUnit{crt0, main}); err != nil {
 		if testing.Verbose() {
-			t.Logf("compiles: %v: %v", pth, compact(err.Error(), 3))
+			t.Logf("compiles: %v: %v", pth, compact(err.Error(), 10))
 		}
 		return
 	}
@@ -350,23 +360,6 @@ func testGCC(t *testing.T, pth string, compiles, builds, runs *int) {
 	if testing.Verbose() {
 		t.Logf("    PASS: %s", pth)
 	}
-}
-
-func compact(s string, maxLines int) string {
-	a := strings.Split(s, "\n")
-	w := 0
-	for _, v := range a {
-		v = strings.TrimSpace(v)
-		if v != "" {
-			a[w] = v
-			w++
-		}
-	}
-	a = a[:w]
-	if len(a) > maxLines {
-		a = a[:maxLines]
-	}
-	return strings.Join(a, "\n")
 }
 
 func TestSQLiteShell(t *testing.T) {
