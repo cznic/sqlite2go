@@ -98,7 +98,7 @@ func (t TypeKind) assign(ctx *context, op Operand) Operand {
 		t.IsArithmeticType() && op.Type.IsArithmeticType():
 		return op.convertTo(ctx.model, t)
 	default:
-		panic("TODO")
+		panic(fmt.Sprint(t, op))
 	}
 }
 
@@ -195,6 +195,13 @@ func (t TypeKind) IsArithmeticType() bool { return isArithmeticType[t] }
 func (t TypeKind) IsCompatible(u Type) bool {
 	for {
 		switch x := u.(type) {
+		case *PointerType:
+			switch t {
+			case Int:
+				return false
+			default:
+				panic(fmt.Errorf("%v %v", t, x))
+			}
 		case *NamedType:
 			u = x.Type
 		case TypeKind:
@@ -220,7 +227,7 @@ func (t TypeKind) IsCompatible(u Type) bool {
 				panic(fmt.Errorf("%v", x))
 			}
 		default:
-			panic(fmt.Errorf("%T", x))
+			panic(fmt.Errorf("%v %T", t, x))
 		}
 	}
 }
@@ -729,13 +736,7 @@ func (t *PointerType) IsCompatible(u Type) bool {
 		// incomplete or object type. A pointer to any incomplete or object
 		// type may be converted to a pointer to void and back again; the
 		// result shall compare equal to the original pointer.
-		if t.Item == Void || x.Item == Void || t.Item.IsCompatible(x.Item) {
-			return true
-		}
-
-		// dbg("", t)
-		// dbg("", u)
-		panic("TODO")
+		return t.Item == Void || x.Item == Void || t.Item.IsCompatible(x.Item)
 	default:
 		panic(fmt.Errorf("%T", x))
 	}

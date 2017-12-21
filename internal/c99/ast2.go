@@ -1126,6 +1126,8 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			n.Operand.Address = &Address{Declarator: x}
 		case *EnumerationConstant:
 			n.Operand = x.Operand
+		case nil:
+			panic(fmt.Errorf("%v: undefined: %s", ctx.position(n), dict.S(nm)))
 		default:
 
 			//dbg("%s", dict.S(nm))

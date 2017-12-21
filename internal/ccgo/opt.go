@@ -297,6 +297,10 @@ func (o *opt) expr(n *ast.Expr) {
 		// nop
 	case *ast.UnaryExpr:
 		o.expr(&x.X)
+	case *ast.CompositeLit:
+		for i := range x.Elts {
+			o.expr(&x.Elts[i])
+		}
 	default:
 		todo("%v: %T", o.pos(x), x)
 	}

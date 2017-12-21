@@ -271,13 +271,16 @@ func TestTCC(t *testing.T) {
 	}
 }
 
-func TestGCC(t *testing.T) {
-	blacklist := map[string]struct{}{}
+func TestOther(t *testing.T) {
+	testDir(t, "../c99/testdata/bug/*.c", nil)
+}
+
+func testDir(t *testing.T, glob string, blacklist map[string]struct{}) {
 	var re *regexp.Regexp
 	if s := *oRE; s != "" {
 		re = regexp.MustCompile(s)
 	}
-	m, err := filepath.Glob("../c99/testdata/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/*.c")
+	m, err := filepath.Glob(filepath.FromSlash(glob))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,14 +295,19 @@ func TestGCC(t *testing.T) {
 			continue
 		}
 
-		testGCC(t, pth, &compiles, &builds, &runs)
+		testFile(t, pth, &compiles, &builds, &runs)
 	}
 	if runs == 0 || runs < builds {
 		t.Errorf("compiles: %d, builds: %v, runs: %v", compiles, builds, runs)
 	}
 }
 
-func testGCC(t *testing.T, pth string, compiles, builds, runs *int) {
+func TestGCC(t *testing.T) {
+	testDir(t, "../c99/testdata/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/*.c", nil)
+	// compiles: 463, builds: 116, runs: 97
+}
+
+func testFile(t *testing.T, pth string, compiles, builds, runs *int) {
 	//dbg("", pth)
 	testFn = pth
 	fset := token.NewFileSet()
@@ -319,14 +327,7 @@ func testGCC(t *testing.T, pth string, compiles, builds, runs *int) {
 	main, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, mainSource)
 	if err != nil {
 		if testing.Verbose() {
-			s := err.Error()
-			a := strings.Split(s, "\n")
-			switch {
-			case strings.Contains(a[0], pth):
-				t.Logf("      cc: %s", a[0])
-			default:
-				t.Logf("      cc: %s: %s", pth, a[0])
-			}
+			t.Logf("      cc: %s: %s", pth, compact(err.Error(), 10))
 		}
 		return
 	}
