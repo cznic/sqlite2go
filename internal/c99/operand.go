@@ -842,11 +842,9 @@ func (o Operand) unaryMinus(ctx *context) Operand {
 	case nil:
 		return o
 	case *ir.Int64Value:
-		x.Value = -x.Value
-		return o.normalize(ctx.model)
+		return Operand{Type: o.Type, Value: &ir.Int64Value{Value: -x.Value}}.normalize(ctx.model)
 	case *ir.Float64Value:
-		x.Value = -x.Value
-		return o
+		return Operand{Type: o.Type, Value: &ir.Float64Value{Value: -x.Value}}
 	default:
 		panic(fmt.Errorf("TODO %T", x))
 	}

@@ -35,6 +35,7 @@ type Type interface {
 	IsIntegerType() bool
 	IsPointerType() bool
 	IsScalarType() bool
+	IsUnsigned() bool
 	IsVoidPointerType() bool
 	Kind() TypeKind
 	String() string
@@ -83,6 +84,9 @@ const (
 
 	maxTypeKind
 )
+
+// IsUnsigned implements Type.
+func (t TypeKind) IsUnsigned() bool { return t.IsIntegerType() && !isSigned[t] }
 
 // Kind implements Type.
 func (t TypeKind) Kind() TypeKind { return t }
@@ -402,6 +406,9 @@ type ArrayType struct {
 	TypeQualifiers []*TypeQualifier // Eg. double a[restrict 3][5], see 6.7.5.3-21.
 }
 
+// IsUnsigned implements Type.
+func (t *ArrayType) IsUnsigned() bool { panic("TODO") }
+
 // IsVoidPointerType implements Type.
 func (t *ArrayType) IsVoidPointerType() bool { panic("TODO") }
 
@@ -495,6 +502,9 @@ type EnumType struct {
 	Enums []*EnumerationConstant
 }
 
+// IsUnsigned implements Type.
+func (t *EnumType) IsUnsigned() bool { panic("TODO") }
+
 // IsVoidPointerType implements Type.
 func (t *EnumType) IsVoidPointerType() bool { panic("TODO") }
 
@@ -550,6 +560,9 @@ type FunctionType struct {
 	Result   Type
 	Variadic bool
 }
+
+// IsUnsigned implements Type.
+func (t *FunctionType) IsUnsigned() bool { panic("TODO") }
 
 // IsVoidPointerType implements Type.
 func (t *FunctionType) IsVoidPointerType() bool { panic("TODO") }
@@ -642,6 +655,9 @@ type NamedType struct {
 	Type Type // The type Name refers to.
 }
 
+// IsUnsigned implements Type.
+func (t *NamedType) IsUnsigned() bool { return t.Type.IsUnsigned() }
+
 // IsVoidPointerType implements Type.
 func (t *NamedType) IsVoidPointerType() bool { panic("TODO") }
 
@@ -713,6 +729,9 @@ func (t *NamedType) String() string { return string(dict.S(t.Name)) }
 type PointerType struct {
 	Item Type
 }
+
+// IsUnsigned implements Type.
+func (t *PointerType) IsUnsigned() bool { panic("TODO") }
 
 // IsVoidPointerType implements Type.
 func (t *PointerType) IsVoidPointerType() bool { panic("TODO") }
@@ -830,6 +849,9 @@ type StructType struct {
 	scope  *Scope
 	//TODO cache layout, size, alignment, struct alignment.
 }
+
+// IsUnsigned implements Type.
+func (t *StructType) IsUnsigned() bool { panic("TODO") }
 
 func (t *StructType) Field(nm int) *Declarator {
 	switch x := t.scope.Idents[nm].(type) {
@@ -953,6 +975,9 @@ type TaggedEnumType struct {
 	scope *Scope
 }
 
+// IsUnsigned implements Type.
+func (t *TaggedEnumType) IsUnsigned() bool { panic("TODO") }
+
 // Equal implements Type.
 func (t *TaggedEnumType) Equal(u Type) bool {
 	switch x := u.(type) {
@@ -1032,6 +1057,9 @@ type TaggedStructType struct {
 	Type  Type
 	scope *Scope
 }
+
+// IsUnsigned implements Type.
+func (t *TaggedStructType) IsUnsigned() bool { panic("TODO") }
 
 // IsVoidPointerType implements Type.
 func (t *TaggedStructType) IsVoidPointerType() bool { panic("TODO") }
@@ -1140,12 +1168,18 @@ type UnionType struct {
 	//TODO cache size, alignment, struct alignment.
 }
 
+// IsUnsigned implements Type.
+func (t *UnionType) IsUnsigned() bool { panic("TODO") }
+
 // TaggedUnionType represents a struct type described by a tag name.
 type TaggedUnionType struct {
 	Tag   int
 	Type  Type
 	scope *Scope
 }
+
+// IsUnsigned implements Type.
+func (t *TaggedUnionType) IsUnsigned() bool { panic("TODO") }
 
 // IsVoidPointerType implements Type.
 func (t *TaggedUnionType) IsVoidPointerType() bool { panic("TODO") }
