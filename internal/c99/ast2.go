@@ -1745,7 +1745,15 @@ func (n *InitDeclarator) check(ctx *context, ds *DeclarationSpecifier, sc []int,
 		}
 		n.Declarator.check(ctx, ds, ds.typ(), true, sc, fn)
 		n.Initializer.check(ctx, n.Declarator.Type)
-		n.Declarator.Initializer = n.Initializer
+		ex := n.Declarator.scope.Idents[n.Declarator.Name()].(*Declarator)
+		switch {
+		case ex.Initializer == nil:
+			ex.Initializer = n.Initializer
+		default:
+			if n.Initializer != nil {
+				panic(ctx.position(n)) // More than one initializer
+			}
+		}
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	}
@@ -1888,6 +1896,7 @@ func (n *InitializerList) check(ctx *context, t Type) Operand {
 }
 
 func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObject bool, sc []int, fn *Declarator) (r Type) {
+	//rtCaller("%s: %s %v\n", ctx.position(n), dict.S(n.Name()), n.Initializer != nil) //TODO-
 	// PointerOpt DirectDeclarator
 	if l := len(sc); l != 0 {
 		n.ScopeNum = sc[l-1]
@@ -2427,9 +2436,11 @@ func (n *StructDeclarator) check(ctx *context, ds *DeclarationSpecifier, field i
 		return f
 	case StructDeclaratorBits: // DeclaratorOpt ':' ConstExpr
 		var d *Declarator
+		var nm int
 		t := ds.typ()
 		if n.DeclaratorOpt != nil {
 			d = n.DeclaratorOpt.Declarator
+			nm = d.Name()
 			d.Field = field
 			t = d.check(ctx, ds, t, false, nil, nil)
 		} else {
@@ -2450,7 +2461,7 @@ func (n *StructDeclarator) check(ctx *context, ds *DeclarationSpecifier, field i
 		if d != nil {
 			d.Bits = n.Bits
 		}
-		return Field{Type: t}
+		return Field{Type: t, Name: nm}
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	}

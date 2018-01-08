@@ -853,6 +853,7 @@ type StructType struct {
 // IsUnsigned implements Type.
 func (t *StructType) IsUnsigned() bool { panic("TODO") }
 
+// Field returns the declarator of field nm.
 func (t *StructType) Field(nm int) *Declarator {
 	switch x := t.scope.Idents[nm].(type) {
 	case *Declarator:

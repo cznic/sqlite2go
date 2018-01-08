@@ -16,6 +16,7 @@ import (
 	"go/scanner"
 	"go/token"
 	"io"
+	"math"
 	"os"
 	"runtime"
 	"runtime/debug"
@@ -34,7 +35,7 @@ func todo(msg string, args ...interface{}) {
 	if msg == "" {
 		msg = strings.Repeat("%v ", len(args))
 	}
-	panic(fmt.Errorf("\n\n%v:%d: TODO\n\n%s\n", f, l, fmt.Sprintf(msg, args...))) //TODOOK
+	panic(fmt.Errorf("\n\n%v:%d: TODO\n\n%s", f, l, fmt.Sprintf(msg, args...))) //TODOOK
 }
 
 const (
@@ -96,6 +97,7 @@ type gen struct {
 	ts                  int64
 	units               map[*c99.Declarator]int
 
+	needNZ64    bool //TODO -> crt
 	needPostInc bool
 	needPreInc  bool
 }
@@ -186,12 +188,18 @@ func (g *gen) gen(cmd bool) (err error) {
 		}
 		g.w("}\n")
 	}
+	if g.needNZ64 {
+		g.w("nz64 float64\n")
+	}
 	g.w("ts = %sTS(\"", crt)
 	for _, v := range g.text {
 		s := fmt.Sprintf("%q", dict.S(v))
 		g.w("%s\\x00", s[1:len(s)-1])
 	}
 	g.w("\")\n)\n")
+	if g.needNZ64 {
+		g.w("\nfunc init() { nz64 = -nz64 }")
+	}
 	if g.needPostInc {
 		g.w("\nfunc postinc(p *uintptr, n uintptr) uintptr { r := *p; *p += n; return r }")
 	}
@@ -531,7 +539,7 @@ func (g *gen) functionDefinition(n *c99.Declarator) {
 	g.w(")")
 	void := t.Result.Kind() == c99.Void
 	if !void {
-		g.w(" %s", g.typ(t.Result))
+		g.w("(r %s)", g.typ(t.Result))
 	}
 	g.functionBody(n.FunctionDefinition.FunctionBody, n.FunctionDefinition.LocalVariables(), void, escParams)
 }
@@ -662,7 +670,7 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases ma
 	g.blockItemListOpt(n.BlockItemListOpt, cases, brk)
 	if vars != nil {
 		if sentinel {
-			g.w("\npanic(\"unreachable\")")
+			g.w("\nreturn r")
 		}
 		g.w("\n}")
 	}
@@ -1473,7 +1481,13 @@ func (g *gen) constant(n *c99.Expr, typedIntLiterals bool) {
 			case c99.TypeKind:
 				switch u {
 				case c99.Double:
-					g.w(" %v", x.Value)
+					switch {
+					case x.Value == 0 && math.Copysign(1, x.Value) == -1:
+						g.w(" nz64")
+						g.needNZ64 = true
+					default:
+						g.w(" %v", x.Value)
+					}
 					return
 				default:
 					todo("", g.position0(n), u)
@@ -1684,14 +1698,20 @@ func (g *gen) binop(n *c99.Expr) {
 		l, r = op.Type, op.Type
 	}
 	switch {
-	case l.Kind() == c99.Ptr && n.Operand.Type.IsArithmeticType():
+	case
+		l.Kind() == c99.Ptr && n.Operand.Type.IsArithmeticType(),
+		n.Operand.Type.Kind() == c99.Ptr && l.IsArithmeticType():
+
 		g.rvalue2(n.Expr, n.Operand.Type)
 	default:
 		g.rvalue2(n.Expr, l)
 	}
 	g.w(" %s ", c99.TokSrc(n.Token))
 	switch {
-	case r.Kind() == c99.Ptr && n.Operand.Type.IsArithmeticType():
+	case
+		r.Kind() == c99.Ptr && n.Operand.Type.IsArithmeticType(),
+		n.Operand.Type.Kind() == c99.Ptr && r.IsArithmeticType():
+
 		g.rvalue2(n.Expr2, n.Operand.Type)
 	default:
 		g.rvalue2(n.Expr2, r)
@@ -1719,6 +1739,21 @@ func (g *gen) convert(n *c99.Expr, t c99.Type) {
 		switch from := op.Type.(type) {
 		case *c99.PointerType:
 			g.rvalue(n, false)
+			return
+		case c99.TypeKind:
+			switch from {
+			case c99.Int:
+				switch {
+				case n.Operand.Value != nil:
+					g.rvalue(n, false)
+				default:
+					g.w(" uintptr(")
+					g.rvalue(n, false)
+					g.w(")")
+				}
+			default:
+				todo("%v: %v %T -> %T", g.position0(n), op, from, to)
+			}
 			return
 		default:
 			todo("%v: %v %T -> %T", g.position0(n), op, from, to)

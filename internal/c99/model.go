@@ -113,8 +113,15 @@ func (m Model) Sizeof(t Type) int64 {
 	}
 }
 
+// FieldProperties describe a struct/union field.
+type FieldProperties struct {
+	Offset  int64 // Relative to start of the struct/union.
+	Size    int64 // Field size for copying.
+	Padding int   // Adjustment to enforce proper alignment.
+}
+
 // Layout computes the memory layout of t.
-func (m Model) Layout(t Type) []ir.FieldProperties {
+func (m Model) Layout(t Type) []FieldProperties {
 	//TODO bit fields
 	switch x := t.(type) {
 	case *StructType:
@@ -122,7 +129,7 @@ func (m Model) Layout(t Type) []ir.FieldProperties {
 			return nil
 		}
 
-		r := make([]ir.FieldProperties, len(x.Fields))
+		r := make([]FieldProperties, len(x.Fields))
 		var off int64
 		for i, v := range x.Fields {
 			sz := m.Sizeof(v.Type)
@@ -134,7 +141,7 @@ func (m Model) Layout(t Type) []ir.FieldProperties {
 			if off != z {
 				r[i-1].Padding = int(off - z)
 			}
-			r[i] = ir.FieldProperties{Offset: off, Size: sz}
+			r[i] = FieldProperties{Offset: off, Size: sz}
 			off += sz
 		}
 		z := off

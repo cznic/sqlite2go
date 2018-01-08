@@ -175,6 +175,10 @@ func (o *opt) stmt(n *ast.Stmt) {
 	case *ast.ReturnStmt:
 		for i := range x.Results {
 			o.expr(&x.Results[i])
+			switch y := x.Results[i].(type) {
+			case *ast.ParenExpr:
+				x.Results[i] = y.X
+			}
 		}
 	case *ast.SwitchStmt:
 		o.stmt(&x.Init)

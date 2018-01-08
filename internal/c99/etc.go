@@ -9,7 +9,11 @@ import (
 	"fmt"
 	"go/scanner"
 	"io"
+	"os"
+	"path"
+	"runtime"
 	"runtime/debug"
+	"strings"
 
 	"github.com/cznic/strutil"
 	"github.com/cznic/xc"
@@ -29,6 +33,17 @@ func newPanicError(err error) panicError { return panicError{err} }
 // PrettyString returns pretty strings for things produced by this package.
 func PrettyString(v interface{}) string {
 	return strutil.PrettyString(v, "", "", printHooks)
+}
+
+func rtCaller(s string, va ...interface{}) {
+	if s == "" {
+		s = strings.Repeat("%v ", len(va))
+	}
+	_, fn, fl, _ := runtime.Caller(2)
+	fmt.Fprintf(os.Stderr, "# caller: %s:%d: ", path.Base(fn), fl)
+	fmt.Fprintf(os.Stderr, s, va...)
+	fmt.Fprintln(os.Stderr)
+	os.Stderr.Sync()
 }
 
 func debugStack() []byte {
