@@ -50,7 +50,8 @@ func newModel() (m Model, err error) {
 			DoubleComplex:     {8, 8, 4},
 			LongDoubleComplex: {8, 8, 4},
 
-			Ptr: {8, 8, 8},
+			Void: {1, 1, 1},
+			Ptr:  {8, 8, 8},
 		}, nil
 	default:
 		return nil, fmt.Errorf("unknown/unsupported architecture %s", arch)

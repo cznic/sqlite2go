@@ -114,10 +114,11 @@ func (o *opt) spec(n *ast.Spec) {
 }
 
 func (o *opt) blockStmt(n *ast.BlockStmt) {
-	o.body(n.List)
+	o.body(&n.List)
 }
 
-func (o *opt) body(l []ast.Stmt) {
+func (o *opt) body(l0 *[]ast.Stmt) {
+	l := *l0
 	for i := range l {
 		o.stmt(&l[i])
 	}
@@ -150,7 +151,7 @@ func (o *opt) stmt(n *ast.Stmt) {
 		for i := range x.List {
 			o.expr(&x.List[i])
 		}
-		o.body(x.Body)
+		o.body(&x.Body)
 	case *ast.DeclStmt:
 		o.decl(&x.Decl)
 	case *ast.DeferStmt:
@@ -249,7 +250,7 @@ func (o *opt) expr(n *ast.Expr) {
 	case *ast.CallExpr:
 		o.call(x)
 	case *ast.FuncLit:
-		o.body(x.Body.List)
+		o.body(&x.Body.List)
 	case *ast.Ident:
 		// nop
 	case *ast.IndexExpr:
@@ -288,6 +289,14 @@ func (o *opt) expr(n *ast.Expr) {
 	case *ast.StarExpr:
 		o.expr(&x.X)
 		switch x2 := x.X.(type) {
+		case *ast.ParenExpr:
+			switch x3 := x2.X.(type) {
+			case *ast.UnaryExpr:
+				switch x3.Op {
+				case token.AND:
+					*n = x3.X
+				}
+			}
 		case *ast.UnaryExpr:
 			switch x2.Op {
 			case token.AND:
