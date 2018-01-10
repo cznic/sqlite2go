@@ -546,6 +546,7 @@ func (t *EnumType) String() string {
 
 // Field represents a struct/union field.
 type Field struct {
+	Bits int
 	Name int
 	Type Type
 }

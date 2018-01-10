@@ -116,7 +116,9 @@ func (m Model) Sizeof(t Type) int64 {
 
 // FieldProperties describe a struct/union field.
 type FieldProperties struct {
-	Offset  int64 // Relative to start of the struct/union.
+	Bitoff  int   // Zero based bit number of a bitfield
+	Bits    int   // Width of a bitfield or zero otherwise.
+	Offset  int64 // Byte offset relative to start of the struct/union.
 	Size    int64 // Field size for copying.
 	Padding int   // Adjustment to enforce proper alignment.
 }
@@ -142,7 +144,7 @@ func (m Model) Layout(t Type) []FieldProperties {
 			if off != z {
 				r[i-1].Padding = int(off - z)
 			}
-			r[i] = FieldProperties{Offset: off, Size: sz}
+			r[i] = FieldProperties{Offset: off, Size: sz, Bits: v.Bits}
 			off += sz
 		}
 		z := off

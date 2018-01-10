@@ -86,6 +86,7 @@ type gen struct {
 	out                 io.Writer
 	out0                bytes.Buffer
 	postIncTypes        map[string]int
+	preIncTypes         map[string]int
 	producedDeclarators map[*c99.Declarator]struct{}
 	producedEnumTags    map[int]struct{}
 	producedExterns     map[*c99.Declarator]struct{}
@@ -110,14 +111,15 @@ func newGen(out io.Writer, in []*c99.TranslationUnit) *gen {
 		internalNames:       map[int]struct{}{},
 		internals:           make([]map[int]*c99.Declarator, len(in)),
 		nums:                map[*c99.Declarator]int{},
+		assignTypes:         map[string]int{},
 		out:                 out,
+		postIncTypes:        map[string]int{},
+		preIncTypes:         map[string]int{},
 		producedDeclarators: map[*c99.Declarator]struct{}{},
 		producedEnumTags:    map[int]struct{}{},
 		producedExterns:     map[*c99.Declarator]struct{}{},
 		producedNamedTypes:  map[int]struct{}{},
 		producedStructTags:  map[int]struct{}{},
-		assignTypes:         map[string]int{},
-		postIncTypes:        map[string]int{},
 		strings:             map[int]int64{},
 		units:               map[*c99.Declarator]int{},
 	}
@@ -221,6 +223,14 @@ func (g *gen) gen(cmd bool) (err error) {
 	sort.Strings(a)
 	for _, k := range a {
 		g.w("\nfunc postinc%d(n *%[2]s) %[2]s { r := *n; *n++; return r }", g.postIncTypes[k], k)
+	}
+	a = a[:0]
+	for k := range g.preIncTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		g.w("\nfunc preinc%d(n *%[2]s) %[2]s { *r += n; return *r }", g.preIncTypes[k], k)
 	}
 	return newOpt().do(g.out, &g.out0, testFn, g.needBool2int)
 }
@@ -415,6 +425,14 @@ func (g *gen) tld(n *c99.Declarator) {
 		case c99.TypeKind:
 			switch x {
 			case c99.Int:
+				if n.AddressTaken {
+					g.w("\nvar %s = bss + %d\n", g.mangleDeclarator(n), g.allocBSS(n.Type))
+					g.w("\n\nfunc init() { *(*%s)(unsafe.Pointer(%s)) = ", g.typ(n.Type), g.mangleDeclarator(n))
+					g.rvalue(n.Initializer.Expr, true)
+					g.w("}\n")
+					break
+				}
+
 				g.w("\nvar %s = ", g.mangleDeclarator(n))
 				g.rvalue(n.Initializer.Expr, true)
 				g.w("\n")
@@ -587,10 +605,10 @@ func (g *gen) functionBody(n *c99.FunctionBody, vars []*c99.Declarator, void boo
 	if vars == nil {
 		vars = []*c99.Declarator{}
 	}
-	g.compoundStmt(n.CompoundStmt, vars, nil, !void, nil, escParams, rt)
+	g.compoundStmt(n.CompoundStmt, vars, nil, !void, nil, nil, escParams, rt)
 }
 
-func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases map[*c99.LabeledStmt]int, sentinel bool, brk *int, escParams []*c99.Declarator, rt c99.Type) {
+func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases map[*c99.LabeledStmt]int, sentinel bool, brk, cont *int, escParams []*c99.Declarator, rt c99.Type) {
 	if vars != nil {
 		g.w(" {")
 	}
@@ -675,7 +693,7 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases ma
 		}
 		g.w("\n}()")
 	}
-	g.blockItemListOpt(n.BlockItemListOpt, cases, brk, rt)
+	g.blockItemListOpt(n.BlockItemListOpt, cases, brk, cont, rt)
 	if vars != nil {
 		if sentinel {
 			g.w(";return r")
@@ -732,26 +750,26 @@ func (g gen) escaped(n *c99.Declarator) bool {
 	}
 }
 
-func (g *gen) blockItemListOpt(n *c99.BlockItemListOpt, cases map[*c99.LabeledStmt]int, brk *int, rt c99.Type) {
+func (g *gen) blockItemListOpt(n *c99.BlockItemListOpt, cases map[*c99.LabeledStmt]int, brk, cont *int, rt c99.Type) {
 	if n == nil {
 		return
 	}
 
-	g.blockItemList(n.BlockItemList, cases, brk, rt)
+	g.blockItemList(n.BlockItemList, cases, brk, cont, rt)
 }
 
-func (g *gen) blockItemList(n *c99.BlockItemList, cases map[*c99.LabeledStmt]int, brk *int, rt c99.Type) {
+func (g *gen) blockItemList(n *c99.BlockItemList, cases map[*c99.LabeledStmt]int, brk, cont *int, rt c99.Type) {
 	for ; n != nil; n = n.BlockItemList {
-		g.blockItem(n.BlockItem, cases, brk, rt)
+		g.blockItem(n.BlockItem, cases, brk, cont, rt)
 	}
 }
 
-func (g *gen) blockItem(n *c99.BlockItem, cases map[*c99.LabeledStmt]int, brk *int, rt c99.Type) {
+func (g *gen) blockItem(n *c99.BlockItem, cases map[*c99.LabeledStmt]int, brk, cont *int, rt c99.Type) {
 	switch n.Case {
 	case c99.BlockItemDecl: // Declaration
 		g.declaration(n.Declaration)
 	case c99.BlockItemStmt: // Stmt
-		g.stmt(n.Stmt, cases, brk, rt)
+		g.stmt(n.Stmt, cases, brk, cont, rt)
 	default:
 		todo("", g.position0(n), n.Case)
 	}
@@ -870,26 +888,26 @@ func (g *gen) arrayCompositeValueItem(n []byte, op c99.Operand, itemSz int64) {
 	}
 }
 
-func (g *gen) stmt(n *c99.Stmt, cases map[*c99.LabeledStmt]int, brk *int, rt c99.Type) {
+func (g *gen) stmt(n *c99.Stmt, cases map[*c99.LabeledStmt]int, brk, cont *int, rt c99.Type) {
 	switch n.Case {
 	case c99.StmtBlock: // CompoundStmt
-		g.compoundStmt(n.CompoundStmt, nil, cases, false, brk, nil, rt)
+		g.compoundStmt(n.CompoundStmt, nil, cases, false, brk, cont, nil, rt)
 	case c99.StmtExpr: // ExprStmt
 		g.exprStmt(n.ExprStmt)
 	case c99.StmtIter: // IterationStmt
-		g.iterationStmt(n.IterationStmt, cases, brk, rt)
+		g.iterationStmt(n.IterationStmt, cases, brk, cont, rt)
 	case c99.StmtJump: // JumpStmt
-		g.jumpStmt(n.JumpStmt, brk, rt)
+		g.jumpStmt(n.JumpStmt, brk, cont, rt)
 	case c99.StmtLabeled: // LabeledStmt
-		g.labeledStmt(n.LabeledStmt, cases, brk, rt)
+		g.labeledStmt(n.LabeledStmt, cases, brk, cont, rt)
 	case c99.StmtSelect: // SelectionStmt
-		g.selectionStmt(n.SelectionStmt, cases, brk, rt)
+		g.selectionStmt(n.SelectionStmt, cases, brk, cont, rt)
 	default:
 		todo("", g.position0(n), n.Case)
 	}
 }
 
-func (g *gen) labeledStmt(n *c99.LabeledStmt, cases map[*c99.LabeledStmt]int, brk *int, rt c99.Type) {
+func (g *gen) labeledStmt(n *c99.LabeledStmt, cases map[*c99.LabeledStmt]int, brk, cont *int, rt c99.Type) {
 	switch n.Case {
 	case
 		c99.LabeledStmtSwitchCase, // "case" ConstExpr ':' Stmt
@@ -900,16 +918,16 @@ func (g *gen) labeledStmt(n *c99.LabeledStmt, cases map[*c99.LabeledStmt]int, br
 			todo("", g.position0(n))
 		}
 		g.w("\n_%d:", l)
-		g.stmt(n.Stmt, cases, brk, rt)
+		g.stmt(n.Stmt, cases, brk, cont, rt)
 	case c99.LabeledStmtLabel: // IDENTIFIER ':' Stmt
 		g.w("\n%s:\n", mangleIdent(n.Token.Val, false))
-		g.stmt(n.Stmt, cases, brk, rt)
+		g.stmt(n.Stmt, cases, brk, cont, rt)
 	default:
 		todo("", g.position0(n), n.Case)
 	}
 }
 
-func (g *gen) jumpStmt(n *c99.JumpStmt, brk *int, rt c99.Type) {
+func (g *gen) jumpStmt(n *c99.JumpStmt, brk, cont *int, rt c99.Type) {
 	switch n.Case {
 	case c99.JumpStmtBreak: // "break" ';'
 		if *brk < 0 {
@@ -924,12 +942,17 @@ func (g *gen) jumpStmt(n *c99.JumpStmt, brk *int, rt c99.Type) {
 		g.w("\n")
 	case c99.JumpStmtGoto: // "goto" IDENTIFIER ';'
 		g.w("\ngoto %s\n", mangleIdent(n.Token2.Val, false))
+	case c99.JumpStmtContinue: // "continue" ';'
+		if *cont < 0 {
+			*cont = -*cont // Signal used.
+		}
+		g.w("\ngoto _%d\n", *cont)
 	default:
 		todo("", g.position0(n), n.Case)
 	}
 }
 
-func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int, brk *int, rt c99.Type) {
+func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int, brk, cont *int, rt c99.Type) {
 	switch n.Case {
 	case c99.IterationStmtDo: // "do" Stmt "while" '(' ExprList ')' ';'
 		if op := n.ExprList.Operand; op.Value != nil {
@@ -939,7 +962,7 @@ func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int
 				// goto A
 				// A:
 				a := -g.label()
-				g.stmt(n.Stmt, cases, &a, rt)
+				g.stmt(n.Stmt, cases, &a, cont, rt)
 				if a > 0 {
 					g.w("\ngoto _%d\n\n_%d:", a, a)
 				}
@@ -952,13 +975,18 @@ func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int
 		}
 		// A:
 		// stmt
+		// C:
 		// if exprList != 0 { goto A }
 		// goto B
 		// B:
 		a := g.label()
+		c := -g.label()
 		b := -g.label()
 		g.w("\n_%d:", a)
-		g.stmt(n.Stmt, cases, &b, rt)
+		g.stmt(n.Stmt, cases, &b, &c, rt)
+		if c > 0 {
+			g.w("\n_%d:", c)
+		}
 		g.w("\nif ")
 		g.exprList(n.ExprList, false)
 		g.w(" != 0 { goto _%d }\n", a)
@@ -988,7 +1016,7 @@ func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int
 			b = -b
 			g.w(" == 0 { goto _%d }\n", b)
 		}
-		g.stmt(n.Stmt, cases, &b, rt)
+		g.stmt(n.Stmt, cases, &b, &a, rt)
 		if n.ExprListOpt3 != nil {
 			g.w("\n")
 		}
@@ -1011,7 +1039,7 @@ func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int
 		g.w("\n_%d:\nif ", a)
 		g.exprList(n.ExprList, false)
 		g.w(" == 0 { goto _%d }\n", b)
-		g.stmt(n.Stmt, cases, &b, rt)
+		g.stmt(n.Stmt, cases, &b, &a, rt)
 		g.w("\ngoto _%d\n\n_%d:", a, b)
 	default:
 		todo("", g.position0(n), n.Case)
@@ -1024,7 +1052,7 @@ func (g *gen) label() int {
 	return r
 }
 
-func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int, brk *int, rt c99.Type) {
+func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int, brk, cont *int, rt c99.Type) {
 	switch n.Case {
 	case c99.SelectionStmtIf: // "if" '(' ExprList ')' Stmt
 		if n.ExprList.Operand.Value != nil {
@@ -1037,7 +1065,7 @@ func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int
 		g.w("\nif ")
 		g.exprList(n.ExprList, false)
 		g.w(" == 0 { goto _%d }\n", a)
-		g.stmt(n.Stmt, cases, brk, rt)
+		g.stmt(n.Stmt, cases, brk, cont, rt)
 		g.w("\n_%d:", a)
 	case c99.SelectionStmtIfElse: // "if" '(' ExprList ')' Stmt "else" Stmt
 		if n.ExprList.Operand.Value != nil {
@@ -1054,10 +1082,10 @@ func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int
 		g.w("\nif ")
 		g.exprList(n.ExprList, false)
 		g.w(" == 0 { goto _%d }\n", a)
-		g.stmt(n.Stmt, cases, brk, rt)
+		g.stmt(n.Stmt, cases, brk, cont, rt)
 		g.w("\ngoto _%d\n", b)
 		g.w("\n_%d:", a)
-		g.stmt(n.Stmt2, cases, brk, rt)
+		g.stmt(n.Stmt2, cases, brk, cont, rt)
 		g.w("\n_%d:", b)
 	case c99.SelectionStmtSwitch: // "switch" '(' ExprList ')' Stmt
 		if n.ExprList.Operand.Value != nil {
@@ -1092,7 +1120,7 @@ func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int
 			after = -after
 			g.w("\ngoto _%d\n", after)
 		}
-		g.stmt(n.Stmt, cases, &after, rt)
+		g.stmt(n.Stmt, cases, &after, cont, rt)
 		if after > 0 {
 			g.w("\n_%d:", after)
 		}
@@ -1135,10 +1163,42 @@ func (g *gen) exprList(n *c99.ExprList, void bool) {
 }
 
 func (g *gen) void(n *c99.Expr) {
+	if g.voidCanIgnore(n) {
+		return
+	}
+
 	switch n.Case {
 	case c99.ExprCall: // Expr '(' ArgumentExprListOpt ')'
 		g.rvalue(n, false)
 	case c99.ExprAssign: // Expr '=' Expr
+		switch n.Expr.Case {
+		case c99.ExprDeref: // '*' Expr
+			if n.Expr.Expr.Operand.Type.(*c99.PointerType).Item.Kind() == c99.Ptr &&
+				n.Expr2.Operand.Type.Kind() == c99.Ptr &&
+				n.Expr2.Operand.Address != nil &&
+				!g.escaped(n.Expr2.Operand.Address.Declarator) {
+
+				g.w("*(*uintptr)(unsafe.Pointer(")
+				g.uintptr(n.Expr.Expr, false)
+				g.w("))")
+				g.w(" = ")
+				g.rvalue(n.Expr2, false)
+				return
+			}
+		case c99.ExprPSelect: // Expr "->" IDENTIFIER
+			if n.Expr.Operand.Type.Kind() == c99.Ptr &&
+				n.Expr2.Operand.Type.Kind() == c99.Ptr &&
+				n.Expr2.Operand.Address != nil &&
+				g.escaped(n.Expr2.Operand.Address.Declarator) {
+
+				g.w("*(*uintptr)(unsafe.Pointer(")
+				g.uintptr(n.Expr.Expr, false)
+				g.w("))")
+				g.w(" = ")
+				g.rvalue(n.Expr2, false)
+				return
+			}
+		}
 		g.w("*")
 		g.lvalue(n.Expr)
 		g.w(" = ")
@@ -1186,7 +1246,6 @@ func (g *gen) void(n *c99.Expr) {
 			g.w(" *(")
 			g.lvalue(n.Expr)
 			g.w(") += %d*uintptr(", g.model.Sizeof(n.Expr.Operand.Type.(*c99.PointerType).Item))
-			//g.w("/*TODO1182 %v %v */", n.Expr.Operand.Type, g.model.Sizeof(n.Expr.Operand.Type.(*c99.PointerType).Item))
 			g.rvalue(n.Expr2, false)
 			g.w(")")
 		default:
@@ -1205,10 +1264,52 @@ func (g *gen) void(n *c99.Expr) {
 			g.voidArithmeticAsop(n)
 		}
 	case
+		c99.ExprAndAssign, // Expr "&=" Expr
 		c99.ExprDivAssign, // Expr "/=" Expr
-		c99.ExprMulAssign: // Expr "*=" Expr
+		c99.ExprMulAssign, // Expr "*=" Expr
+		c99.ExprOrAssign:  // Expr "|=" Expr
 
 		g.voidArithmeticAsop(n)
+	case c99.ExprPExprList: // '(' ExprList ')'
+		for l := n.ExprList; l != nil; l = l.ExprList {
+			g.void(l.Expr)
+		}
+	case c99.ExprCast: // '(' TypeName ')' Expr
+		g.void(n.Expr)
+	case c99.ExprCond: // Expr '?' ExprList ':' Expr
+		switch {
+		case n.Expr.Operand.IsZero():
+			todo("", g.position0(n))
+		case n.Expr.Operand.IsNonzero():
+			todo("", g.position0(n))
+		default:
+			ok := true
+			for l := n.ExprList; l != nil; l = l.ExprList {
+				if !g.voidCanIgnore(l.Expr) {
+					ok = false
+					break
+				}
+			}
+			switch {
+			case ok:
+				if g.voidCanIgnore(n.Expr2) {
+					return
+				}
+
+				// if expr == 0 {
+				//	expr2
+				// }
+				g.w("if ")
+				g.rvalue(n.Expr, false)
+				g.w(" == 0 {")
+				g.void(n.Expr2)
+				g.w("}")
+			case g.voidCanIgnore(n.Expr2):
+				todo("", g.position0(n))
+			default:
+				todo("", g.position0(n))
+			}
+		}
 	default:
 		todo("", g.position0(n), n.Case, n.Operand)
 	}
@@ -1216,10 +1317,13 @@ func (g *gen) void(n *c99.Expr) {
 
 func (g *gen) voidCanIgnore(n *c99.Expr) bool {
 	switch n.Case {
-	case c99.ExprInt: // INTCONST
+	case
+		c99.ExprIdent, // IDENTIFIER
+		c99.ExprInt:   // INTCONST
+
 		return true
 	case c99.ExprPExprList: // '(' ExprList ')'
-		if n.ExprList.ExprList == nil {
+		if isSingleExpression(n.ExprList) {
 			return g.voidCanIgnore(n.ExprList.Expr)
 		}
 
@@ -1230,21 +1334,68 @@ func (g *gen) voidCanIgnore(n *c99.Expr) bool {
 		}
 
 		return true
-	case c99.ExprCall:
+	case
+		c99.ExprAddAssign, // Expr "+=" Expr
+		c99.ExprAndAssign, // Expr "&=" Expr
+		c99.ExprAssign,    // Expr '=' Expr
+		c99.ExprCall,      // Expr '(' ArgumentExprListOpt ')'
+		c99.ExprDeref,     // '*' Expr
+		c99.ExprDivAssign, // Expr "/=" Expr
+		c99.ExprMulAssign, // Expr "*=" Expr
+		c99.ExprOrAssign,  // Expr "|=" Expr
+		c99.ExprPostDec,   // Expr "--"
+		c99.ExprPostInc,   // Expr "++"
+		c99.ExprPreDec,    // "--" Expr
+		c99.ExprPreInc,    // "++" Expr
+		c99.ExprSubAssign, // Expr "-=" Expr
+		c99.ExprXorAssign: // Expr "^=" Expr
+
 		return false
+	case c99.ExprCast: // '(' TypeName ')' Expr
+		return g.voidCanIgnore(n.Expr)
+	case c99.ExprCond: // Expr '?' ExprList ':' Expr
+		switch {
+		case n.Expr.Operand.IsNonzero():
+			if isSingleExpression(n.ExprList) {
+				return g.voidCanIgnore(n.ExprList.Expr)
+			}
+
+			for l := n.ExprList; l != nil; l = l.ExprList {
+				if !g.voidCanIgnore(l.Expr) {
+					return false
+				}
+			}
+
+			return true
+		case n.Expr.Operand.IsZero():
+			return g.voidCanIgnore(n.Expr2)
+		}
+		return false
+	case
+		c99.ExprAnd, // Expr '&' Expr
+		c99.ExprLe:  // Expr "<=" Expr
+
+		return g.voidCanIgnore(n.Expr) && g.voidCanIgnore(n.Expr2)
+	case
+		c99.ExprLAnd, // Expr "&&" Expr
+		c99.ExprLOr:  // Expr "||" Expr
+
+		return n.Operand.Value != nil
 	default:
 		todo("", g.position0(n), n.Case, n.Operand)
 	}
 	panic("unreachable")
 }
 
-func (g *gen) voidArithmeticAsop(n *c99.Expr) {
+func (g *gen) voidArithmeticAsop(n *c99.Expr) { //TODO may evaluate lhs twice, fix and add test
 	op, _ := c99.UsualArithmeticConversions(g.model, n.Expr.Operand, n.Expr2.Operand)
 	g.w(" *(")
 	g.lvalue(n.Expr)
 	g.w(") = %s(", g.typ(n.Expr.Operand.Type))
 	g.rvalue2(n.Expr, op.Type)
 	switch n.Token.Rune {
+	case c99.ANDASSIGN:
+		g.w(" & ")
 	case c99.ADDASSIGN:
 		g.w(" + ")
 	case c99.SUBASSIGN:
@@ -1253,6 +1404,8 @@ func (g *gen) voidArithmeticAsop(n *c99.Expr) {
 		g.w(" * ")
 	case c99.DIVASSIGN:
 		g.w(" / ")
+	case c99.ORASSIGN:
+		g.w(" | ")
 	default:
 		todo("", g.position0(n), c99.TokSrc(n.Token))
 	}
@@ -1382,7 +1535,10 @@ func (g *gen) rvalue(n *c99.Expr, typedIntLiterals bool) {
 		}
 		if a := n.Expr.Operand.Address; a != nil && g.escaped(a.Declarator) {
 			i++
+			g.w(" %[1]s(%[1]s%s)(unsafe.Pointer(%s+%d))", strings.Repeat("*", i), g.ptyp(n0.Operand.Type, false), g.mangleDeclarator(a.Declarator), a.Offset)
+			return
 		}
+
 		g.w(" %[1]s(%[1]s%s)(unsafe.Pointer(", strings.Repeat("*", i), g.ptyp(n0.Operand.Type, false))
 		g.rvalue(n.Expr, false)
 		g.w("))")
@@ -1416,6 +1572,20 @@ func (g *gen) rvalue(n *c99.Expr, typedIntLiterals bool) {
 				c99.Int:
 
 				g.w(" postinc%d(", g.registerType(g.postIncTypes, x))
+				g.lvalue(n.Expr)
+				g.w(")")
+			default:
+				todo("%v: %v", g.position0(n), x)
+			}
+		default:
+			todo("%v: %T", g.position0(n), x)
+		}
+	case c99.ExprPreInc: // "++" Expr
+		switch x := n.Operand.Type.(type) {
+		case c99.TypeKind:
+			switch x {
+			case c99.Int:
+				g.w(" preinc%d(", g.registerType(g.preIncTypes, x))
 				g.lvalue(n.Expr)
 				g.w(")")
 			default:
@@ -1460,6 +1630,11 @@ func (g *gen) rvalue(n *c99.Expr, typedIntLiterals bool) {
 		c99.ExprNe: // Expr "!=" Expr
 
 		g.relop(n)
+	case c99.ExprNot: // '!' Expr
+		g.needBool2int++
+		g.w(" bool2int(")
+		g.rvalue(n.Expr, true)
+		g.w(" == 0)")
 	default:
 		todo("", g.position0(n), n.Case, n.Operand)
 	}
@@ -1537,6 +1712,12 @@ func (g *gen) uintptr(n *c99.Expr, ptr bool) {
 			case *c99.NamedType:
 				t = x.Type
 			case *c99.StructType:
+				layout := g.model.Layout(x)
+				for _, v := range layout {
+					if v.Bits != 0 {
+						todo("", g.position0(n))
+					}
+				}
 				switch a := n.Operand.Address; {
 				case a != nil:
 					d := a.Declarator
@@ -1564,7 +1745,7 @@ func (g *gen) uintptr(n *c99.Expr, ptr bool) {
 							if d == nil {
 								todo("")
 							}
-							g.w(" + %d", g.model.Layout(x)[d.Field].Offset)
+							g.w(" + %d", layout[d.Field].Offset)
 							return
 						case *c99.TaggedStructType:
 							t = x.Type
@@ -1658,6 +1839,21 @@ func (g *gen) uintptr(n *c99.Expr, ptr bool) {
 		a := n.Operand.Address
 		g.w("(%s+%d)", g.mangleDeclarator(a.Declarator), a.Offset)
 		g.enqueue(a.Declarator)
+	case c99.ExprInt: // INTCONST
+		g.w(" %d", uintptr(n.Operand.Value.(*ir.Int64Value).Value))
+	case c99.ExprCond: // Expr '?' ExprList ':' Expr
+		g.w(" func() uintptr { if ")
+		g.rvalue(n.Expr, false)
+		g.w(" != 0 { return ")
+		switch {
+		case isSingleExpression(n.ExprList):
+			g.uintptr(n.ExprList.Expr, false)
+		default:
+			todo("", g.position0(n))
+		}
+		g.w(" }\n\nreturn ")
+		g.uintptr(n.Expr2, false)
+		g.w(" }()")
 	default:
 		todo("", g.position0(n), n.Case, n.Operand)
 	}
@@ -1747,7 +1943,6 @@ func (g *gen) binop(n *c99.Expr) {
 }
 
 func (g *gen) rvalue2(n *c99.Expr, t c99.Type) {
-	//g.w("/*TODO1722 %v -> %v */", n.Operand.Type, t)
 	if n.Operand.Type.Equal(t) {
 		g.rvalue(n, true)
 		return

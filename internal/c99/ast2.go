@@ -2461,7 +2461,7 @@ func (n *StructDeclarator) check(ctx *context, ds *DeclarationSpecifier, field i
 		if d != nil {
 			d.Bits = n.Bits
 		}
-		return Field{Type: t, Name: nm}
+		return Field{Type: t, Name: nm, Bits: n.Bits}
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	}

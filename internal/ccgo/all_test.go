@@ -309,19 +309,10 @@ func testDir(t *testing.T, glob string, blacklist map[string]struct{}) {
 
 func TestGCC(t *testing.T) {
 	testDir(t, "../c99/testdata/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/*.c", map[string]struct{}{
-		//TODO
-		"pr20466-1.c": {}, // ./main.go:57:87: invalid operation: *(**int32)(unsafe.Pointer(_ip)) == _i2 (mismatched types *int32 and uintptr)
-		"pr43008.c":   {}, // ./main.go:51:33: cannot use Xi (type uintptr) as type *int32 in assignment
-		"pr60072.c":   {}, // ./main.go:28:32: cannot use Xc (type int32) as type uintptr in argument to _1foo
-		"pr64682.c":   {}, // ./main.go:51:5: cannot use Xb (type int32) as type uintptr in assignment
-
-		//TODO composite literal
-		"pr33382.c": {}, // ./main.go:40:27: undefined: Xx
-
-		// Bit fields
-		"pr55750.c": {}, // out:  err: exit status 1
+		"20000801-2.c": {}, // ./main.go:37:32: cannot use _b (type uintptr) as type *Sfoo in assignment
+		"20080604-1.c": {}, // ./main.go:28:32: cannot use 0 (type int) as type *int8 in assignment
 	})
-	// compiles: 457, builds: 107, runs: 107
+	// compiles: 461, builds: 126, runs: 126
 }
 
 func testFile(t *testing.T, pth string, compiles, builds, runs *int) {
