@@ -85,7 +85,8 @@ const (
 )
 
 var (
-	oRE = flag.String("re", "", "")
+	oRE   = flag.String("re", "", "")
+	oEdit = flag.Bool("edit", false, "")
 )
 
 func TestOpt(t *testing.T) {
@@ -302,17 +303,20 @@ func testDir(t *testing.T, glob string, blacklist map[string]struct{}) {
 		return
 	}
 
-	if testing.Verbose() {
+	if testing.Verbose() || *oEdit {
 		t.Logf("compiles: %d, builds: %v, runs: %v", compiles, builds, runs)
+	}
+
+	if *oEdit {
+		fmt.Printf("compiles: %d, builds: %v, runs: %v\n", compiles, builds, runs)
 	}
 }
 
 func TestGCC(t *testing.T) {
 	testDir(t, "../c99/testdata/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/*.c", map[string]struct{}{
-		"20000801-2.c": {}, // ./main.go:37:32: cannot use _b (type uintptr) as type *Sfoo in assignment
-		"20080604-1.c": {}, // ./main.go:28:32: cannot use 0 (type int) as type *int8 in assignment
+		"20050125-1.c": {}, //TODO ./main.go:32:41: cannot use &(*(**int8)(unsafe.Pointer(_p + 8))) (type **int8) as type *uintptr in argument to set1
 	})
-	// compiles: 461, builds: 126, runs: 126
+	// compiles: 462, builds: 130, runs: 130
 }
 
 func testFile(t *testing.T, pth string, compiles, builds, runs *int) {
