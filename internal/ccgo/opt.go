@@ -348,6 +348,9 @@ func (o *opt) not(n ast.Expr) ast.Expr {
 			x.Op = token.LAND
 			x.Y = o.not(x.Y)
 			return x
+		case token.GTR:
+			x.Op = token.LEQ
+			return x
 		default:
 			todo("%v: %v", o.pos(n), x.Op)
 		}

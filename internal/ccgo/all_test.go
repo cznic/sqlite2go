@@ -314,9 +314,9 @@ func testDir(t *testing.T, glob string, blacklist map[string]struct{}) {
 
 func TestGCC(t *testing.T) {
 	testDir(t, "../c99/testdata/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/*.c", map[string]struct{}{
-		"20050125-1.c": {}, //TODO ./main.go:32:41: cannot use &(*(**int8)(unsafe.Pointer(_p + 8))) (type **int8) as type *uintptr in argument to set1
+		"pr22630.c": {}, //TODO ./main.go:44:12: cannot use &_q (type *uintptr) as type uintptr in argument to set1
 	})
-	// compiles: 462, builds: 130, runs: 130
+	// compiles: 462, builds: 150, runs: 150
 }
 
 func testFile(t *testing.T, pth string, compiles, builds, runs *int) {
