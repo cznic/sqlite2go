@@ -39,8 +39,9 @@ func todo(msg string, args ...interface{}) {
 }
 
 const (
-	crt = "crt."
-	ap  = "ap"
+	ap         = "ap"
+	crt        = "crt."
+	vaListType = "pointer to struct{_ struct{}}" // *__builtin_va_list
 )
 
 var (
@@ -52,6 +53,7 @@ var (
 	idFuncName = dict.SID("__func__")
 	idMain     = dict.SID("main")
 	idStart    = dict.SID("_start")
+	idVaList   = dict.SID("va_list")
 
 	voidPtrType = &c99.PointerType{Item: c99.Void}
 )
@@ -217,12 +219,7 @@ func (g *gen) gen(cmd bool) (err error) {
 	}
 	sort.Strings(a)
 	for _, k := range a {
-		switch {
-		case k == "uintptr":
-			g.w("\nfunc set%d(l, r uintptr) uintptr { *(*uintptr)(unsafe.Pointer(l)) = r; return r }", g.assignTypes[k])
-		default:
-			g.w("\nfunc set%d(l *%[2]s, r %[2]s) %[2]s { *l = r; return r }", g.assignTypes[k], k)
-		}
+		g.w("\nfunc set%d(l *%[2]s, r %[2]s) %[2]s { *l = r; return r }", g.assignTypes[k], k)
 	}
 	a = a[:0]
 	for k := range g.postIncTypes {
@@ -596,6 +593,10 @@ func (g *gen) functionDefinition(n *c99.Declarator) {
 					}
 				}
 				g.w("%s %s", mangleIdent(nm, false), g.typ(v))
+				if isVaList(v) {
+					continue
+				}
+
 				if v.Kind() == c99.Ptr {
 					g.w(" /* %s */", g.ptyp(v, false))
 				}
@@ -611,6 +612,11 @@ func (g *gen) functionDefinition(n *c99.Declarator) {
 		g.w("(r %s)", g.typ(t.Result))
 	}
 	g.functionBody(n.FunctionDefinition.FunctionBody, n.FunctionDefinition.LocalVariables(), void, escParams, t.Result)
+}
+
+func isVaList(t c99.Type) bool {
+	x, ok := t.(*c99.NamedType)
+	return ok && x.Name == idVaList
 }
 
 func mangleIdent(nm int, exported bool) string {
@@ -713,7 +719,7 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases ma
 			default:
 				switch {
 				case v.Type.Kind() == c99.Ptr:
-					g.w("\n\t%s uintptr\t// %s", g.mangleDeclarator(v), g.ptyp(v.Type, false))
+					g.w("\n\t%s %s\t// %s", g.mangleDeclarator(v), g.ptyp(v.Type, true), g.ptyp(v.Type, false))
 				default:
 					g.w("\n\t%s %s", g.mangleDeclarator(v), g.typ(v.Type))
 				}
@@ -746,6 +752,10 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases ma
 }
 
 func (g gen) escaped(n *c99.Declarator) bool {
+	if isVaList(n.Type) {
+		return false
+	}
+
 	if n.AddressTaken {
 		g.escapes[n] = struct{}{}
 		return true
@@ -1264,6 +1274,11 @@ func (g *gen) void(n *c99.Expr) {
 		g.w("*")
 		g.lvalue(n.Expr)
 		g.w(" = ")
+		if isVaList(l.Type) && n.Expr2.Case == c99.ExprInt {
+			g.w("nil")
+			return
+		}
+
 		g.rvalue2(n.Expr2, n.Expr.Operand.Type)
 	case c99.ExprPostInc: // Expr "++"
 		switch x := n.Operand.Type.(type) {
@@ -1558,6 +1573,28 @@ func (g *gen) rvalue(n *c99.Expr, typedIntLiterals bool) {
 			return
 		}
 
+		if isVaList(n.Expr.Operand.Type) {
+			t := n.TypeName.Type
+			for {
+				switch x := t.(type) {
+				case c99.TypeKind:
+					switch x {
+					case c99.Int:
+						g.w(" %sVA%s(&", crt, g.typ(t))
+						g.rvalue(n.Expr, false)
+						g.w(")")
+						return
+					default:
+						//dbg("%v: %v", g.position0(n), x) //TODO-
+						todo("%v: %v", g.position0(n), x)
+					}
+				default:
+					//dbg("%v: %T", g.position0(n), x) //TODO-
+					todo("%v: %T", g.position0(n), x)
+				}
+			}
+		}
+
 		g.rvalue2(n.Expr, n.TypeName.Type)
 	case c99.ExprUnaryMinus: // '-' Expr
 		g.w(" -")
@@ -1744,7 +1781,7 @@ func (g *gen) constant(n *c99.Expr, typedIntLiterals bool) {
 
 		if n.Operand.Type.Kind() == c99.Ptr {
 			switch {
-			case n.Operand.Type.String() == "pointer to struct{_ struct{}}" && x.Value == 1: // *__builtin_va_list
+			case n.Operand.Type.String() == vaListType && x.Value == 1:
 				g.w(" %s", ap)
 			default:
 				g.w(f, uint64(x.Value))
@@ -1877,6 +1914,13 @@ func (g *gen) uintptr(n *c99.Expr, ptr bool) {
 				}
 				g.w("%s", g.mangleDeclarator(a.Declarator))
 				return
+			case *c99.NamedType:
+				if x.Name == idVaList {
+					g.w(" %s", g.mangleDeclarator(a.Declarator))
+					return
+				}
+
+				todo("%v: %q", g.position0(n), dict.S(x.Name))
 			case *c99.TaggedStructType:
 				switch {
 				case ptr:
@@ -2089,6 +2133,20 @@ func (g *gen) uintptrValue(n *c99.Expr) {
 		default:
 			todo("", g.position0(n))
 		}
+	case c99.ExprSelect: // Expr '.' IDENTIFIER
+		a := n.Operand.Address
+		switch {
+		case g.escaped(a.Declarator):
+			g.w(" (%s+%d)", g.mangleDeclarator(a.Declarator), a.Offset)
+		default:
+			todo("", g.position0(n))
+		}
+	case c99.ExprAssign: // Expr '=' Expr
+		if t.Kind() != c99.Ptr {
+			panic(fmt.Errorf("%v: internal error: %s", g.position0(n), n.Operand))
+		}
+
+		g.rvalue(n, false)
 	default:
 		//dbg("", g.position0(n), n.Case, n.Operand)
 		todo("", g.position0(n), n.Case, n.Operand)
@@ -2123,7 +2181,12 @@ func (g *gen) assignmentValue(n *c99.Expr) {
 	switch {
 	case n.Expr.Operand.Type.Kind() == c99.Ptr:
 		g.w(" set%d(", g.registerType(g.assignTypes, voidPtrType))
-		g.uintptr(n.Expr, true)
+		switch a := n.Expr.Operand.Address; {
+		case a != nil && g.escaped(a.Declarator):
+			g.w("(*uintptr)(unsafe.Pointer(%s+%d))", g.mangleDeclarator(a.Declarator), a.Offset)
+		default:
+			g.uintptr(n.Expr, true)
+		}
 		g.w(", ")
 		g.rvalue2(n.Expr2, n.Operand.Type)
 		g.w(")")
@@ -2332,6 +2395,14 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
 		g.typ0(&buf, x)
 		return buf.String()
 	case *c99.NamedType:
+		if x.Name == idVaList {
+			if ptr2uintptr {
+				return "[]interface{}"
+			}
+
+			return fmt.Sprintf("%s", dict.S(x.Name))
+		}
+
 		g.enqueue(x)
 		return fmt.Sprintf("T%s", dict.S(x.Name))
 	case *c99.PointerType:
@@ -2415,6 +2486,11 @@ func (g *gen) typ0(buf *bytes.Buffer, t c99.Type) {
 			}
 			return
 		case *c99.NamedType:
+			if x.Name == idVaList {
+				buf.WriteString("[]interface{}")
+				return
+			}
+
 			g.enqueue(x)
 			fmt.Fprintf(buf, "T%s", dict.S(x.Name))
 			return

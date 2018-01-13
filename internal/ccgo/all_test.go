@@ -313,10 +313,8 @@ func testDir(t *testing.T, glob string, blacklist map[string]struct{}) {
 }
 
 func TestGCC(t *testing.T) {
-	testDir(t, "../c99/testdata/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/*.c", map[string]struct{}{
-		"pr22630.c": {}, //TODO ./main.go:44:12: cannot use &_q (type *uintptr) as type uintptr in argument to set1
-	})
-	// compiles: 462, builds: 150, runs: 150
+	testDir(t, "../c99/testdata/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/*.c", map[string]struct{}{})
+	// compiles: 463, builds: 158, runs: 158
 }
 
 func testFile(t *testing.T, pth string, compiles, builds, runs *int) {
