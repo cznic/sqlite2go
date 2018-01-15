@@ -314,7 +314,7 @@ func testDir(t *testing.T, glob string, blacklist map[string]struct{}) {
 
 func TestGCC(t *testing.T) {
 	testDir(t, "../c99/testdata/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/*.c", map[string]struct{}{})
-	// compiles: 463, builds: 158, runs: 158
+	// compiles: 463, builds: 170, runs: 170
 }
 
 func testFile(t *testing.T, pth string, compiles, builds, runs *int) {

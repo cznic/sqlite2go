@@ -153,6 +153,31 @@ func (m Model) Layout(t Type) []FieldProperties {
 			r[len(r)-1].Padding = int(off - z)
 		}
 		return r
+	case *UnionType:
+		if len(x.Fields) == 0 {
+			return nil
+		}
+
+		r := make([]FieldProperties, len(x.Fields))
+		var off int64
+		for i, v := range x.Fields {
+			sz := m.Sizeof(v.Type)
+			a := m.StructAlignof(v.Type)
+			z := off
+			if a != 0 {
+				off = roundup(off, int64(a))
+			}
+			if off != z {
+				r[i-1].Padding = int(off - z)
+			}
+			r[i] = FieldProperties{Offset: off, Size: sz, Bits: v.Bits}
+		}
+		z := off
+		off = roundup(off, int64(m.Alignof(t)))
+		if off != z {
+			r[len(r)-1].Padding = int(off - z)
+		}
+		return r
 	default:
 		panic(x)
 	}
