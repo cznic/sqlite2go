@@ -76,6 +76,7 @@ type gen struct {
 	assignTypes         map[string]int
 	bss                 int64
 	ds                  []byte
+	dsBits              []byte
 	errs                scanner.ErrorList
 	escapes             map[*c99.Declarator]struct{}
 	externs             map[int]*c99.Declarator
@@ -101,6 +102,7 @@ type gen struct {
 	strings             map[int]int64
 	text                []int
 	ts                  int64
+	tsBits              []byte
 	units               map[*c99.Declarator]int
 
 	needNZ64    bool //TODO -> crt
@@ -235,7 +237,7 @@ func (g *gen) gen(cmd bool) (err error) {
 	}
 	sort.Strings(a)
 	for _, k := range a {
-		g.w("\nfunc preinc%d(n *%[2]s) %[2]s { *r += n; return *r }", g.preIncTypes[k], k)
+		g.w("\nfunc preinc%d(n *%[2]s) %[2]s { *n++; return *n }", g.preIncTypes[k], k)
 	}
 	return newOpt().do(g.out, &g.out0, testFn, g.needBool2int)
 }
@@ -368,8 +370,8 @@ func (g *gen) tld(n *c99.Declarator) {
 	if n.Initializer == nil || n.Initializer.Expr != nil && n.Initializer.Expr.Operand.IsZero() {
 		switch x := n.Type.(type) {
 		case *c99.ArrayType:
-			if x.Size.Type == nil {
-				todo("")
+			if x.Size.Type == nil || x.Size.IsZero() {
+				todo("", g.position(n), x)
 			}
 			g.w("\nvar %s = bss + %d\n", g.mangleDeclarator(n), g.allocBSS(n.Type))
 		case
@@ -402,8 +404,8 @@ func (g *gen) tld(n *c99.Declarator) {
 	case c99.InitializerExpr: // Expr
 		switch x := n.Type.(type) {
 		case *c99.ArrayType:
-			if x.Size.Type == nil {
-				todo("", g.position0(n))
+			if x.Size.Type == nil || x.Size.IsZero() {
+				todo("", g.position(n), x)
 			}
 			g.w("\nvar %s = ds + %d\n", g.mangleDeclarator(n), g.allocDS(n.Type, n.Initializer))
 		case *c99.PointerType:
@@ -447,8 +449,18 @@ func (g *gen) tld(n *c99.Declarator) {
 		default:
 			todo("%v: %T", g.position(n), x)
 		}
+	case c99.InitializerCompLit:
+		switch x := n.Type.(type) {
+		case *c99.ArrayType:
+			if x.Size.Type == nil || x.Size.IsZero() {
+				todo("", g.position(n), x)
+			}
+			g.w("\nvar %s = ds + %d\n", g.mangleDeclarator(n), g.allocDS(n.Type, n.Initializer))
+		default:
+			todo("%v: %T", g.position(n), x)
+		}
 	default:
-		todo("", g.position0(n), n.Initializer.Case)
+		todo("", g.position(n), n.Initializer.Case)
 	}
 }
 
@@ -485,21 +497,76 @@ func (g *gen) allocDS(t c99.Type, n *c99.Initializer) int64 {
 		g.ds = append(g.ds, make([]byte, n)...)
 	}
 	r := len(g.ds)
-	g.ds = append(g.ds, g.renderInitializer(t, n)...)
+	ds, dsBits, tsBits := g.renderInitializer(t, n)
+	g.ds = append(g.ds, ds...)
+	g.dsBits = append(g.dsBits, dsBits...)
+	g.tsBits = append(g.dsBits, tsBits...)
 	return int64(r)
 }
 
-func (g *gen) renderInitializer(t c99.Type, n *c99.Initializer) []byte {
+func (g *gen) renderInitializer(t c99.Type, n *c99.Initializer) (ds, dsBits, tsBits []byte) {
 	switch n.Case {
 	case c99.InitializerExpr:
 		return g.renderInitializerExpr(t, n.Expr)
+	case c99.InitializerCompLit:
+		switch x := t.(type) {
+		case *c99.ArrayType:
+			if x.Size.Type == nil || x.Size.IsZero() {
+				todo("", g.position0(n), x)
+			}
+			len := x.Size.Value.(*ir.Int64Value).Value
+			sz := g.model.Sizeof(x.Item)
+			ds = make([]byte, len*sz)
+			dsBits = make([]byte, len*sz)
+			tsBits = make([]byte, len*sz)
+			var index int64
+			for l := n.InitializerList; l != nil; l = l.InitializerList {
+				if l.Designation != nil {
+					todo("", g.position0(l.Designation))
+				}
+				d, db, tb := g.renderInitializer(x.Item, l.Initializer)
+				off := index * sz
+				copy(ds[off:], d)
+				copy(dsBits[off:], db)
+				copy(tsBits[off:], tb)
+				index++
+			}
+			return ds, dsBits, tsBits
+		case *c99.StructType:
+			sz := g.model.Sizeof(x)
+			ds = make([]byte, sz)
+			dsBits = make([]byte, sz)
+			tsBits = make([]byte, sz)
+			layout := g.model.Layout(x)
+			field := 0
+			for l := n.InitializerList; l != nil; l = l.InitializerList {
+				if l.Designation != nil {
+					todo("", g.position0(l.Designation))
+				}
+				if x.Fields[field].Bits != 0 {
+					todo("", g.position0(l.Initializer))
+				}
+				d, db, tb := g.renderInitializer(x.Fields[field].Type, l.Initializer)
+				off := layout[field].Offset
+				copy(ds[off:], d)
+				copy(dsBits[off:], db)
+				copy(tsBits[off:], tb)
+				field++
+			}
+			return ds, dsBits, tsBits
+		default:
+			todo("%v: %T", g.position0(n), x)
+		}
 	default:
 		todo("", g.position0(n), n.Case)
 	}
 	panic("unreachable")
 }
 
-func (g *gen) renderInitializerExpr(t c99.Type, n *c99.Expr) []byte {
+func (g *gen) renderInitializerExpr(t c99.Type, n *c99.Expr) (ds, dsBits, tsBits []byte) {
+	ds = make([]byte, g.model.Sizeof(t))
+	dsBits = make([]byte, len(ds))
+	tsBits = make([]byte, len(ds))
 	switch x := t.(type) {
 	case *c99.ArrayType:
 		switch y := x.Item.(type) {
@@ -508,8 +575,8 @@ func (g *gen) renderInitializerExpr(t c99.Type, n *c99.Expr) []byte {
 			case c99.Char:
 				switch z := n.Operand.Value.(type) {
 				case *ir.StringValue:
-					b := append([]byte(nil), dict.S(int(z.StringID))...)
-					return append(b, 0)
+					ds = append(ds, dict.S(int(z.StringID))...)
+					return ds, dsBits, tsBits
 				default:
 					todo("%v: %T", g.position0(n), z)
 				}
@@ -518,6 +585,40 @@ func (g *gen) renderInitializerExpr(t c99.Type, n *c99.Expr) []byte {
 			}
 		default:
 			todo("%v: %T", g.position0(n), y)
+		}
+	case *c99.PointerType:
+		switch y := x.Item.(type) {
+		case c99.TypeKind:
+			switch y {
+			case c99.Char:
+				switch z := n.Operand.Value.(type) {
+				case *ir.StringValue:
+					*(*uintptr)(unsafe.Pointer(&ds[0])) = uintptr(g.allocString(int(z.StringID)))
+					tsBits[0] = 1
+				default:
+					todo("%v: %T", g.position0(n), z)
+				}
+				return ds, dsBits, tsBits
+			default:
+				todo("", g.position0(n), y)
+			}
+		default:
+			todo("%v: %T", g.position0(n), y)
+		}
+	case c99.TypeKind:
+		switch x {
+		case c99.Int:
+			dsBits = make([]byte, len(ds))
+			tsBits = make([]byte, len(ds))
+			switch len(ds) {
+			case 4:
+				*(*int32)(unsafe.Pointer(&ds[0])) = int32(n.Operand.Value.(*ir.Int64Value).Value)
+			default:
+				todo("", g.position0(n), len(ds))
+			}
+			return ds, dsBits, tsBits
+		default:
+			todo("", g.position0(n), x)
 		}
 	default:
 		todo("%v: %T", g.position0(n), x)
@@ -654,10 +755,11 @@ func (g *gen) functionBody(n *c99.FunctionBody, vars []*c99.Declarator, void boo
 	if vars == nil {
 		vars = []*c99.Declarator{}
 	}
-	g.compoundStmt(n.CompoundStmt, vars, nil, !void, nil, nil, escParams, rt, false)
+	f := false
+	g.compoundStmt(n.CompoundStmt, vars, nil, !void, nil, nil, escParams, rt, &f)
 }
 
-func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases map[*c99.LabeledStmt]int, sentinel bool, brk, cont *int, escParams []*c99.Declarator, rt c99.Type, deadcode bool) {
+func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases map[*c99.LabeledStmt]int, sentinel bool, brk, cont *int, escParams []*c99.Declarator, rt c99.Type, deadcode *bool) {
 	if vars != nil {
 		g.w(" {")
 	}
@@ -744,7 +846,7 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases ma
 	}
 	g.blockItemListOpt(n.BlockItemListOpt, cases, brk, cont, rt, deadcode)
 	if vars != nil {
-		if sentinel {
+		if sentinel && !*deadcode {
 			g.w(";return r")
 		}
 		g.w("\n}")
@@ -803,7 +905,7 @@ func (g gen) escaped(n *c99.Declarator) bool {
 	}
 }
 
-func (g *gen) blockItemListOpt(n *c99.BlockItemListOpt, cases map[*c99.LabeledStmt]int, brk, cont *int, rt c99.Type, deadcode bool) {
+func (g *gen) blockItemListOpt(n *c99.BlockItemListOpt, cases map[*c99.LabeledStmt]int, brk, cont *int, rt c99.Type, deadcode *bool) {
 	if n == nil {
 		return
 	}
@@ -811,13 +913,13 @@ func (g *gen) blockItemListOpt(n *c99.BlockItemListOpt, cases map[*c99.LabeledSt
 	g.blockItemList(n.BlockItemList, cases, brk, cont, rt, deadcode)
 }
 
-func (g *gen) blockItemList(n *c99.BlockItemList, cases map[*c99.LabeledStmt]int, brk, cont *int, rt c99.Type, deadcode bool) {
+func (g *gen) blockItemList(n *c99.BlockItemList, cases map[*c99.LabeledStmt]int, brk, cont *int, rt c99.Type, deadcode *bool) {
 	for ; n != nil; n = n.BlockItemList {
 		g.blockItem(n.BlockItem, cases, brk, cont, rt, deadcode)
 	}
 }
 
-func (g *gen) blockItem(n *c99.BlockItem, cases map[*c99.LabeledStmt]int, brk, cont *int, rt c99.Type, deadcode bool) {
+func (g *gen) blockItem(n *c99.BlockItem, cases map[*c99.LabeledStmt]int, brk, cont *int, rt c99.Type, deadcode *bool) {
 	switch n.Case {
 	case c99.BlockItemDecl: // Declaration
 		g.declaration(n.Declaration)
@@ -941,12 +1043,12 @@ func (g *gen) arrayCompositeValueItem(n []byte, op c99.Operand, itemSz int64) {
 	}
 }
 
-func (g *gen) stmt(n *c99.Stmt, cases map[*c99.LabeledStmt]int, brk, cont *int, rt c99.Type, deadcode bool) {
+func (g *gen) stmt(n *c99.Stmt, cases map[*c99.LabeledStmt]int, brk, cont *int, rt c99.Type, deadcode *bool) {
 	switch n.Case {
 	case c99.StmtBlock: // CompoundStmt
 		g.compoundStmt(n.CompoundStmt, nil, cases, false, brk, cont, nil, rt, deadcode)
 	case c99.StmtExpr: // ExprStmt
-		if deadcode {
+		if *deadcode {
 			break
 		}
 
@@ -954,9 +1056,9 @@ func (g *gen) stmt(n *c99.Stmt, cases map[*c99.LabeledStmt]int, brk, cont *int, 
 	case c99.StmtIter: // IterationStmt
 		g.iterationStmt(n.IterationStmt, cases, brk, cont, rt, deadcode)
 	case c99.StmtJump: // JumpStmt
-		g.jumpStmt(n.JumpStmt, brk, cont, rt)
+		g.jumpStmt(n.JumpStmt, brk, cont, rt, deadcode)
 	case c99.StmtLabeled: // LabeledStmt
-		g.labeledStmt(n.LabeledStmt, cases, brk, cont, rt)
+		g.labeledStmt(n.LabeledStmt, cases, brk, cont, rt, deadcode)
 	case c99.StmtSelect: // SelectionStmt
 		g.selectionStmt(n.SelectionStmt, cases, brk, cont, rt, deadcode)
 	default:
@@ -964,7 +1066,8 @@ func (g *gen) stmt(n *c99.Stmt, cases map[*c99.LabeledStmt]int, brk, cont *int, 
 	}
 }
 
-func (g *gen) labeledStmt(n *c99.LabeledStmt, cases map[*c99.LabeledStmt]int, brk, cont *int, rt c99.Type) {
+func (g *gen) labeledStmt(n *c99.LabeledStmt, cases map[*c99.LabeledStmt]int, brk, cont *int, rt c99.Type, deadcode *bool) {
+	f := false
 	switch n.Case {
 	case
 		c99.LabeledStmtSwitchCase, // "case" ConstExpr ':' Stmt
@@ -975,16 +1078,17 @@ func (g *gen) labeledStmt(n *c99.LabeledStmt, cases map[*c99.LabeledStmt]int, br
 			todo("", g.position0(n))
 		}
 		g.w("\n_%d:", l)
-		g.stmt(n.Stmt, cases, brk, cont, rt, false)
+		g.stmt(n.Stmt, cases, brk, cont, rt, &f)
 	case c99.LabeledStmtLabel: // IDENTIFIER ':' Stmt
 		g.w("\n%s:\n", mangleIdent(n.Token.Val, false))
-		g.stmt(n.Stmt, cases, brk, cont, rt, false)
+		g.stmt(n.Stmt, cases, brk, cont, rt, &f)
 	default:
 		todo("", g.position0(n), n.Case)
 	}
+	*deadcode = false
 }
 
-func (g *gen) jumpStmt(n *c99.JumpStmt, brk, cont *int, rt c99.Type) {
+func (g *gen) jumpStmt(n *c99.JumpStmt, brk, cont *int, rt c99.Type, deadcode *bool) {
 	switch n.Case {
 	case c99.JumpStmtBreak: // "break" ';'
 		if *brk < 0 {
@@ -997,6 +1101,7 @@ func (g *gen) jumpStmt(n *c99.JumpStmt, brk, cont *int, rt c99.Type) {
 			g.exprList2(o.ExprList, rt)
 		}
 		g.w("\n")
+		*deadcode = true
 	case c99.JumpStmtGoto: // "goto" IDENTIFIER ';'
 		g.w("\ngoto %s\n", mangleIdent(n.Token2.Val, false))
 	case c99.JumpStmtContinue: // "continue" ';'
@@ -1009,7 +1114,8 @@ func (g *gen) jumpStmt(n *c99.JumpStmt, brk, cont *int, rt c99.Type) {
 	}
 }
 
-func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int, brk, cont *int, rt c99.Type, deadcode bool) {
+func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int, brk, cont *int, rt c99.Type, deadcode *bool) {
+	t := true
 	switch n.Case {
 	case c99.IterationStmtDo: // "do" Stmt "while" '(' ExprList ')' ';'
 		if op := n.ExprList.Operand; op.Value != nil {
@@ -1019,7 +1125,7 @@ func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int
 				// goto A
 				// A:
 				a := -g.label()
-				g.stmt(n.Stmt, cases, &a, cont, rt, true)
+				g.stmt(n.Stmt, cases, &a, cont, rt, &t)
 				if a > 0 {
 					g.w("\ngoto _%d\n\n_%d:", a, a)
 				}
@@ -1109,7 +1215,8 @@ func (g *gen) label() int {
 	return r
 }
 
-func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int, brk, cont *int, rt c99.Type, deadcode bool) {
+func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int, brk, cont *int, rt c99.Type, deadcode *bool) {
+	t := true
 	switch n.Case {
 	case c99.SelectionStmtIf: // "if" '(' ExprList ')' Stmt
 		switch op := n.ExprList.Operand; {
@@ -1119,8 +1226,9 @@ func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int
 			}
 			a := g.label()
 			g.w("\ngoto _%d\n", a)
-			g.stmt(n.Stmt, cases, brk, cont, rt, true)
+			g.stmt(n.Stmt, cases, brk, cont, rt, &t)
 			g.w("\n_%d:", a)
+			*deadcode = false
 			return
 		case op.IsNonzero():
 			todo("", g.position0(n), n.ExprList.Operand)
@@ -1135,6 +1243,7 @@ func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int
 		g.w(" == 0 { goto _%d }\n", a)
 		g.stmt(n.Stmt, cases, brk, cont, rt, deadcode)
 		g.w("\n_%d:", a)
+		*deadcode = false
 	case c99.SelectionStmtIfElse: // "if" '(' ExprList ')' Stmt "else" Stmt
 		switch op := n.ExprList.Operand; {
 		case op.IsZero():
@@ -1159,6 +1268,7 @@ func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int
 		g.w("\n_%d:", a)
 		g.stmt(n.Stmt2, cases, brk, cont, rt, deadcode)
 		g.w("\n_%d:", b)
+		*deadcode = false
 	case c99.SelectionStmtSwitch: // "switch" '(' ExprList ')' Stmt
 		if n.ExprList.Operand.Value != nil {
 			todo("")
@@ -1195,6 +1305,7 @@ func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int
 		g.stmt(n.Stmt, cases, &after, cont, rt, deadcode)
 		if after > 0 {
 			g.w("\n_%d:", after)
+			*deadcode = false
 		}
 	default:
 		todo("", g.position0(n), n.Case)
@@ -1620,11 +1731,9 @@ func (g *gen) rvalue(n *c99.Expr, typedIntLiterals bool) {
 						g.w(")")
 						return
 					default:
-						//dbg("%v: %v", g.position0(n), x) //TODO-
 						todo("%v: %v", g.position0(n), x)
 					}
 				default:
-					//dbg("%v: %T", g.position0(n), x) //TODO-
 					todo("%v: %T", g.position0(n), x)
 				}
 			}
@@ -2258,7 +2367,6 @@ func (g *gen) uintptrValue(n *c99.Expr) {
 
 		g.rvalue(n, false)
 	default:
-		//dbg("", g.position0(n), n.Case, n.Operand)
 		todo("", g.position0(n), n.Case, n.Operand)
 	}
 }
@@ -2369,6 +2477,20 @@ func (g *gen) binop(n *c99.Expr) {
 }
 
 func (g *gen) rvalue2(n *c99.Expr, t c99.Type) {
+	if a := n.Operand.Address; a != nil && a.Declarator != nil && a.Declarator.Type.Kind() == c99.Array {
+		var it c99.Type
+		switch x := a.Declarator.Type.(type) {
+		case *c99.ArrayType:
+			it = x.Item
+		default:
+			todo("%v: %T", g.position0(n), x)
+		}
+		if t.Equal(&c99.PointerType{Item: it}) {
+			g.uintptr(n, false)
+			return
+		}
+	}
+
 	if n.Operand.Type.Equal(t) {
 		g.rvalue(n, true)
 		return
@@ -2525,6 +2647,9 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
 	case *c99.StructType:
 		buf.WriteString(" struct{")
 		for _, v := range x.Fields {
+			if v.Bits != 0 {
+				todo("", x)
+			}
 			fmt.Fprintf(&buf, "%s ", mangleIdent(v.Name, true))
 			g.typ0(&buf, v.Type)
 			buf.WriteByte(';')
@@ -2572,8 +2697,8 @@ func (g *gen) typ0(buf *bytes.Buffer, t c99.Type) {
 	for {
 		switch x := t.(type) {
 		case *c99.ArrayType:
-			if x.Size.Type == nil {
-				todo("")
+			if x.Size.Type == nil || x.Size.IsZero() {
+				todo("%s", x)
 			}
 			fmt.Fprintf(buf, "[%d]", x.Size.Value.(*ir.Int64Value).Value)
 			t = x.Item

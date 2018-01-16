@@ -313,8 +313,12 @@ func testDir(t *testing.T, glob string, blacklist map[string]struct{}) {
 }
 
 func TestGCC(t *testing.T) {
-	testDir(t, "../c99/testdata/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/*.c", map[string]struct{}{})
-	// compiles: 463, builds: 170, runs: 170
+	testDir(t, "../c99/testdata/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/*.c", map[string]struct{}{
+		"20001011-1.c": {}, //TODO
+		"20010910-1.c": {}, //TODO ./main.go:49:35: cannot use *(*[5]Sepic_rx_desc)(unsafe.Pointer(_rx_ring)) (type [5]Sepic_rx_desc) as type uintptr in assignment
+		"pr53084.c":    {}, //TODO
+	})
+	// compiles: 460, builds: 174, runs: 174
 }
 
 func testFile(t *testing.T, pth string, compiles, builds, runs *int) {

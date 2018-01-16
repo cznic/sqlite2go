@@ -23,22 +23,20 @@ type opt struct {
 	fset         *token.FileSet
 	needBool2int int
 	out          io.Writer
+	out0         bytes.Buffer
 	write        bool
 }
 
 func newOpt() *opt { return &opt{} }
 
 func (o *opt) Write(b []byte) (int, error) {
-	if traceOpt {
-		os.Stderr.Write(b)
-	}
 	if o.write {
-		return o.out.Write(b)
+		return o.out0.Write(b)
 	}
 
 	if i := bytes.IndexByte(b, '\n'); i >= 0 {
 		o.write = true
-		n, err := o.out.Write(b[i+1:])
+		n, err := o.out0.Write(b[i+1:])
 		return n + i, err
 	}
 
@@ -78,6 +76,16 @@ func bool2int(b bool) int32 {
 }
 `))
 	}
+	if err != nil {
+		return err
+	}
+
+	b := bytes.Replace(o.out0.Bytes(), []byte("\n\n}"), []byte("\n}"), -1)
+	b = bytes.Replace(b, []byte("\n\t;\n"), []byte("\n"), -1)
+	if traceOpt {
+		os.Stderr.Write(b)
+	}
+	_, err = o.out.Write(b)
 	return err
 }
 
@@ -192,6 +200,9 @@ func (o *opt) stmt(n *ast.Stmt) {
 
 func (o *opt) expr(n *ast.Expr) {
 	switch x := (*n).(type) {
+	case *ast.ArrayType:
+		o.expr(&x.Len)
+		o.expr(&x.Elt)
 	case *ast.BasicLit:
 		// nop
 	case *ast.BinaryExpr:

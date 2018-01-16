@@ -1831,20 +1831,20 @@ func (n *InitializerList) check(ctx *context, t Type) Operand {
 	for {
 		switch x := t.(type) {
 		case *ArrayType:
-			var index, max int64
+			var index, maxIndex int64 = 0, -1
 			for ; n != nil; n = n.InitializerList {
 				if n.Designation != nil {
 					panic(fmt.Errorf("%v: TODO", ctx.position(n.Initializer)))
 				}
 
 				r.Values = append(r.Values, n.Initializer.check(ctx, x.Item))
-				if index > max {
-					max = index
+				if index > maxIndex {
+					maxIndex = index
 				}
 				index++
 			}
 			if x.Size.Type == nil {
-				x.Size = newIntConst(ctx, n0, uint64(max), UInt, ULong, ULongLong)
+				x.Size = newIntConst(ctx, n0, uint64(maxIndex+1), UInt, ULong, ULongLong)
 			}
 			return Operand{Type: t, Value: r}
 		case *NamedType:
