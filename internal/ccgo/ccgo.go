@@ -189,6 +189,7 @@ func (g *gen) gen(cmd bool) (err error) {
 		g.w("bss = %sBSS(&bssInit[0])\n", crt)
 		g.w("bssInit [%d]byte\n", g.bss)
 	}
+	var tb []byte
 	if len(g.ds) != 0 {
 		g.w("ds = %sDS(dsInit)\n", crt)
 		g.w("dsInit = []byte{")
@@ -196,6 +197,25 @@ func (g *gen) gen(cmd bool) (err error) {
 			g.w("%d, ", v)
 		}
 		g.w("}\n")
+		b := g.tsBits
+		n := len(b) - 1
+		for n >= 0 && b[n] == 0 {
+			n--
+		}
+		b = b[:n+1]
+		tb = make([]byte, (len(b)+7)/8)
+		for i, v := range b {
+			if v != 0 {
+				tb[i/8] |= 1 << uint(i&7)
+			}
+		}
+		if len(tb) != 0 {
+			g.w("tsBits = []byte{")
+			for _, v := range tb {
+				g.w("%d, ", v)
+			}
+			g.w("}\n")
+		}
 	}
 	if g.needNZ64 {
 		g.w("nz64 float64\n")
@@ -206,6 +226,19 @@ func (g *gen) gen(cmd bool) (err error) {
 		g.w("%s\\x00", s[1:len(s)-1])
 	}
 	g.w("\")\n)\n")
+	if len(tb) != 0 {
+		g.w(`
+func init() {
+	for i, v := range tsBits {
+		for j := 0; v != 0 && j < 8; j++ {
+			if v&1 != 0 {
+				*(*uintptr)(unsafe.Pointer(&dsInit[8*i+j])) += ts
+			}
+			v >>= 1
+		}
+	}
+}`)
+	}
 	if g.needNZ64 {
 		g.w("\nfunc init() { nz64 = -nz64 }")
 	}
@@ -500,7 +533,7 @@ func (g *gen) allocDS(t c99.Type, n *c99.Initializer) int64 {
 	ds, dsBits, tsBits := g.renderInitializer(t, n)
 	g.ds = append(g.ds, ds...)
 	g.dsBits = append(g.dsBits, dsBits...)
-	g.tsBits = append(g.dsBits, tsBits...)
+	g.tsBits = append(g.tsBits, tsBits...)
 	return int64(r)
 }
 
@@ -575,7 +608,10 @@ func (g *gen) renderInitializerExpr(t c99.Type, n *c99.Expr) (ds, dsBits, tsBits
 			case c99.Char:
 				switch z := n.Operand.Value.(type) {
 				case *ir.StringValue:
-					ds = append(ds, dict.S(int(z.StringID))...)
+					if z.Offset != 0 {
+						todo("", g.position0(n))
+					}
+					copy(ds, dict.S(int(z.StringID)))
 					return ds, dsBits, tsBits
 				default:
 					todo("%v: %T", g.position0(n), z)
@@ -593,7 +629,7 @@ func (g *gen) renderInitializerExpr(t c99.Type, n *c99.Expr) (ds, dsBits, tsBits
 			case c99.Char:
 				switch z := n.Operand.Value.(type) {
 				case *ir.StringValue:
-					*(*uintptr)(unsafe.Pointer(&ds[0])) = uintptr(g.allocString(int(z.StringID)))
+					*(*uintptr)(unsafe.Pointer(&ds[0])) = uintptr(g.allocString(int(z.StringID))) + z.Offset
 					tsBits[0] = 1
 				default:
 					todo("%v: %T", g.position0(n), z)
@@ -1988,6 +2024,9 @@ func (g *gen) constant(n *c99.Expr, typedIntLiterals bool) {
 			}
 		}
 	case *ir.StringValue:
+		if x.Offset != 0 {
+			todo("", g.position0(n))
+		}
 		g.w(" ts+%d %s", g.allocString(int(x.StringID)), strComment(x))
 	default:
 		todo("%v: %T", g.position0(n), x)
@@ -2116,7 +2155,12 @@ func (g *gen) uintptr(n *c99.Expr, ptr bool) {
 			case *c99.PointerType:
 				switch a := n.Operand.Address; {
 				case a != nil:
-					g.w(" %s+%d", g.mangleDeclarator(a.Declarator), a.Offset)
+					switch {
+					case g.escaped(a.Declarator) && n.Operand.Type.Kind() == c99.Ptr:
+						g.w(" *(*uintptr)(unsafe.Pointer(%s+%d))", g.mangleDeclarator(a.Declarator), a.Offset)
+					default:
+						g.w(" %s+%d", g.mangleDeclarator(a.Declarator), a.Offset)
+					}
 					g.enqueue(a.Declarator)
 				default:
 					g.uintptr(n.Expr, false)
@@ -2155,6 +2199,9 @@ func (g *gen) uintptr(n *c99.Expr, ptr bool) {
 		}
 	case c99.ExprString: // STRINGLITERAL
 		x := n.Operand.Value.(*ir.StringValue)
+		if x.Offset != 0 {
+			todo("", g.position0(n))
+		}
 		g.w(" ts+%d %s", g.allocString(int(x.StringID)), strComment(x))
 	case c99.ExprCall: // Expr '(' ArgumentExprListOpt ')'
 		t := n.Operand.Type

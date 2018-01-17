@@ -830,6 +830,16 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			}
 
 			n.Operand.Address = nil
+			switch x := n.Expr.Operand.Value.(type) {
+			case nil:
+				// ok
+			case *ir.StringValue:
+				if rhs.Value != nil {
+					x.Offset += uintptr(rhs.Value.(*ir.Int64Value).Value)
+				}
+			default:
+				panic(fmt.Errorf("%v: %T", ctx.position(n), x))
+			}
 		case lhs.isIntegerType() && rhs.isPointerType():
 			n.Operand = rhs
 			if a := rhs.Address; a != nil && lhs.Value != nil {

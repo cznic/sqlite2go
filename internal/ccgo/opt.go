@@ -172,6 +172,11 @@ func (o *opt) stmt(n *ast.Stmt) {
 		case *ast.ParenExpr:
 			x.X = x2.X
 		}
+	case *ast.ForStmt:
+		o.stmt(&x.Init)
+		o.expr(&x.Cond)
+		o.stmt(&x.Post)
+		o.blockStmt(x.Body)
 	case *ast.IfStmt:
 		o.stmt(&x.Init)
 		o.expr(&x.Cond)
@@ -181,6 +186,11 @@ func (o *opt) stmt(n *ast.Stmt) {
 		o.expr(&x.X)
 	case *ast.LabeledStmt:
 		o.stmt(&x.Stmt)
+	case *ast.RangeStmt:
+		o.expr(&x.Key)
+		o.expr(&x.Value)
+		o.expr(&x.X)
+		o.blockStmt(x.Body)
 	case *ast.ReturnStmt:
 		for i := range x.Results {
 			o.expr(&x.Results[i])
