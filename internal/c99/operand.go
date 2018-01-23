@@ -833,7 +833,7 @@ func (o Operand) sub(ctx *context, p Operand) (r Operand) {
 }
 
 func (o Operand) unaryMinus(ctx *context) Operand {
-	//TODO o.Address = nil
+	o.Address = nil
 	if o.isIntegerType() {
 		o = o.integerPromotion(ctx.model)
 	}

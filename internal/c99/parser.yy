@@ -532,6 +532,7 @@ import (
 			//yy:field	vars			[]*Declarator
 			//yy:field	AddressTaken		bool
 			//yy:field	Embedded		bool			// [0]6.7.5-3: Not a full declarator.
+			//yy:field	IsField			bool
 			//yy:field	IsFunctionParameter	bool
                         Declarator:
                         	PointerOpt DirectDeclarator

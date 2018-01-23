@@ -115,6 +115,10 @@ func (o *opt) spec(n *ast.Spec) {
 	case *ast.ValueSpec:
 		for i := range x.Values {
 			o.expr(&x.Values[i])
+			switch x2 := x.Values[i].(type) {
+			case *ast.ParenExpr:
+				x.Values[i] = x2.X
+			}
 		}
 	default:
 		todo("%v: %T", o.pos(x), x)

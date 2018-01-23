@@ -261,6 +261,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		if !n.Operand.isScalarType() {
 			panic(ctx.position(n))
 		}
+		n.Operand.Address = nil
 	case ExprPreDec: // "--" Expr
 		// [0]6.5.3.1
 		//
@@ -271,6 +272,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		if !n.Operand.isScalarType() {
 			panic(ctx.position(n))
 		}
+		n.Operand.Address = nil
 	case ExprSizeofType: // "sizeof" '(' TypeName ')'
 		t := n.TypeName.check(ctx)
 		n.Operand = ctx.sizeof(t)
@@ -404,10 +406,10 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		// arithmetic type; of the ~ operator, integer type; of the !
 		// operator, scalar type.
 		n.Operand = n.Expr.eval(ctx, arr2ptr)
-		n.Operand.Address = nil
 		if !n.Operand.isArithmeticType() {
 			panic(ctx.position(n))
 		}
+		n.Operand.Address = nil
 	case ExprUnaryMinus: // '-' Expr
 		// [0]6.5.3.3
 		// The operand of the unary + or - operator shall have
@@ -480,6 +482,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		// [0]6.5.16.2
 		n.Expr.eval(ctx, arr2ptr).mod(ctx, n.Expr2.eval(ctx, arr2ptr))
 		n.Operand = n.Expr.Operand
+		n.Operand.Address = nil
 	case ExprLAnd: // Expr "&&" Expr
 		n.Operand = Operand{Type: Int}
 		a := n.Expr.eval(ctx, arr2ptr)
@@ -500,10 +503,12 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 	case ExprAndAssign: // Expr "&=" Expr
 		n.Expr.eval(ctx, arr2ptr).and(ctx, n.Expr2.eval(ctx, arr2ptr))
 		n.Operand = n.Expr.Operand
+		n.Operand.Address = nil
 	case ExprMulAssign: // Expr "*=" Expr
 		// [0]6.5.16.2
 		n.Expr.eval(ctx, arr2ptr).mul(ctx, n.Expr2.eval(ctx, arr2ptr))
 		n.Operand = n.Expr.Operand
+		n.Operand.Address = nil
 	case ExprPostInc: // Expr "++"
 		// [0]6.5.2.4
 		//
@@ -514,6 +519,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		if !n.Operand.isScalarType() {
 			panic(ctx.position(n))
 		}
+		n.Operand.Address = nil
 	case ExprAddAssign: // Expr "+=" Expr
 		// [0]6.5.16.2
 		//
@@ -534,6 +540,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			panic(ctx.position(n))
 		}
 		n.Operand = lhs
+		n.Operand.Address = nil
 	case ExprPostDec: // Expr "--"
 		// [0]6.5.2.4
 		//
@@ -544,6 +551,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		if !n.Operand.isScalarType() {
 			panic(ctx.position(n))
 		}
+		n.Operand.Address = nil
 	case ExprSubAssign: // Expr "-=" Expr
 		// [0]6.5.16.2
 		//
@@ -564,6 +572,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			panic(ctx.position(n))
 		}
 		n.Operand = lhs
+		n.Operand.Address = nil
 	case ExprPSelect: // Expr "->" IDENTIFIER
 		n.Expr.AssignedTo = n.AssignedTo
 		op := n.Expr.eval(ctx, arr2ptr)
@@ -625,11 +634,13 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		// [0]6.5.16.2
 		n.Expr.eval(ctx, arr2ptr).div(ctx, n.Expr2.eval(ctx, arr2ptr))
 		n.Operand = n.Expr.Operand
+		n.Operand.Address = nil
 	case ExprLsh: // Expr "<<" Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr).lsh(ctx, n.Expr2.eval(ctx, arr2ptr))
 	case ExprLshAssign: // Expr "<<=" Expr
 		n.Expr.eval(ctx, arr2ptr).lsh(ctx, n.Expr2.eval(ctx, arr2ptr))
 		n.Operand = n.Expr.Operand
+		n.Operand.Address = nil
 	case ExprLe: // Expr "<=" Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr).le(ctx, n.Expr2.eval(ctx, arr2ptr))
 	case ExprEq: // Expr "==" Expr
@@ -703,6 +714,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 	case ExprOrAssign: // Expr "|=" Expr
 		n.Expr.eval(ctx, arr2ptr).or(ctx, n.Expr2.eval(ctx, arr2ptr))
 		n.Operand = n.Expr.Operand
+		n.Operand.Address = nil
 	case ExprLOr: // Expr "||" Expr
 		n.Operand = Operand{Type: Int}
 		a := n.Expr.eval(ctx, arr2ptr)
@@ -829,6 +841,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				break
 			}
 
+			n.Operand.Value = nil
 			n.Operand.Address = nil
 			switch x := n.Expr.Operand.Value.(type) {
 			case nil:
@@ -889,6 +902,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			//dbg("", lhs, rhs)
 			panic(ctx.position(n))
 		}
+		n.Operand.Address = nil
 	case ExprSelect: // Expr '.' IDENTIFIER
 		n.Expr.AssignedTo = n.AssignedTo
 		op := n.Expr.eval(ctx, arr2ptr)
@@ -949,6 +963,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			}
 		}
 		n.Operand.Type.assign(ctx, n.Expr2.eval(ctx, arr2ptr))
+		n.Operand.Address = nil
 	case ExprGt: // Expr '>' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr).gt(ctx, n.Expr2.eval(ctx, arr2ptr))
 	case ExprCond: // Expr '?' ExprList ':' Expr
@@ -2011,8 +2026,8 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 			case LinkageExternal:
 				if !ex.Type.IsCompatible(n.Type) {
 					if !(n.Name() == idMain && n.scope.Parent == nil && n.Type.Kind() == Function) {
-						// dbg("", ctx.position(ex), ex.Type)
-						// dbg("", ctx.position(n), n.Type)
+						// fmt.Println("", ctx.position(ex), ex.Type)
+						// fmt.Println("", ctx.position(n), n.Type)
 						panic(ctx.position(n))
 					}
 				}
@@ -2442,6 +2457,7 @@ func (n *StructDeclarator) check(ctx *context, ds *DeclarationSpecifier, field i
 	switch n.Case {
 	case StructDeclaratorBase: // Declarator
 		f := Field{Type: n.Declarator.check(ctx, ds, ds.typ(), false, nil, nil), Name: n.Declarator.Name()}
+		n.Declarator.IsField = true
 		n.Declarator.Field = field
 		return f
 	case StructDeclaratorBits: // DeclaratorOpt ':' ConstExpr
@@ -2451,6 +2467,7 @@ func (n *StructDeclarator) check(ctx *context, ds *DeclarationSpecifier, field i
 		if n.DeclaratorOpt != nil {
 			d = n.DeclaratorOpt.Declarator
 			nm = d.Name()
+			d.IsField = true
 			d.Field = field
 			t = d.check(ctx, ds, t, false, nil, nil)
 		} else {

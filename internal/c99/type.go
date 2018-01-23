@@ -461,9 +461,14 @@ func (t *ArrayType) Equal(u Type) bool {
 		default:
 			panic("TODO")
 		}
+	case *PointerType:
+		return false
 	case TypeKind:
 		switch x {
-		case Void:
+		case
+			Int,
+			Void:
+
 			return false
 		default:
 			panic(x)
@@ -503,7 +508,7 @@ type EnumType struct {
 }
 
 // IsUnsigned implements Type.
-func (t *EnumType) IsUnsigned() bool { panic("TODO") }
+func (t *EnumType) IsUnsigned() bool { return false }
 
 // IsVoidPointerType implements Type.
 func (t *EnumType) IsVoidPointerType() bool { panic("TODO") }
@@ -551,7 +556,9 @@ type Field struct {
 	Type Type
 }
 
-func (f Field) equal(g Field) bool { return f.Name == g.Name && f.Type.Equal(g.Type) }
+func (f Field) equal(g Field) bool {
+	return f.Name == g.Name && f.Type.Equal(g.Type) && f.Bits == g.Bits
+}
 
 func (f Field) String() string { return fmt.Sprintf("%s %v", dict.S(f.Name), f.Type) }
 
@@ -569,9 +576,7 @@ func (t *FunctionType) IsUnsigned() bool { panic("TODO") }
 func (t *FunctionType) IsVoidPointerType() bool { panic("TODO") }
 
 // IsArithmeticType implements Type.
-func (t *FunctionType) IsArithmeticType() bool {
-	panic("TODO")
-}
+func (t *FunctionType) IsArithmeticType() bool { return false }
 
 // IsCompatible implements Type.
 func (t *FunctionType) IsCompatible(u Type) bool {
@@ -610,6 +615,8 @@ func (t *FunctionType) Equal(u Type) bool {
 			}
 		}
 		return true
+	case *PointerType:
+		return false
 	case TypeKind:
 		switch x {
 		case Void:
@@ -769,6 +776,8 @@ func (t *PointerType) Equal(u Type) bool {
 	}
 
 	switch x := u.(type) {
+	case *FunctionType:
+		return false
 	case *NamedType:
 		return t.Equal(x.Type)
 	case *PointerType:
@@ -978,7 +987,7 @@ type TaggedEnumType struct {
 }
 
 // IsUnsigned implements Type.
-func (t *TaggedEnumType) IsUnsigned() bool { panic("TODO") }
+func (t *TaggedEnumType) IsUnsigned() bool { return t.Type.IsUnsigned() }
 
 // Equal implements Type.
 func (t *TaggedEnumType) Equal(u Type) bool {
@@ -998,7 +1007,7 @@ func (t *TaggedEnumType) Equal(u Type) bool {
 }
 
 // IsArithmeticType implements Type.
-func (t *TaggedEnumType) IsArithmeticType() bool { panic("TODO") }
+func (t *TaggedEnumType) IsArithmeticType() bool { return true }
 
 // IsCompatible implements Type.
 func (t *TaggedEnumType) IsCompatible(u Type) bool { panic("TODO") }
@@ -1078,6 +1087,10 @@ func (t *TaggedStructType) Equal(u Type) bool {
 		return true
 	}
 
+	if x, ok := u.(*TaggedStructType); ok && t.Tag == x.Tag {
+		return true
+	}
+
 	switch x := t.getType().(type) {
 	case *StructType:
 		return x.Equal(u)
@@ -1085,7 +1098,7 @@ func (t *TaggedStructType) Equal(u Type) bool {
 		if x == t {
 			switch y := u.(type) {
 			case *NamedType:
-				return x.Equal(y.Type)
+				return t.Equal(y.Type)
 			case *StructType:
 				return false
 			case *TaggedStructType:

@@ -62,6 +62,7 @@ func use(...interface{}) {}
 func init() {
 	use(caller, dbg, TODO) //TODOOK
 	flag.BoolVar(&traceOpt, "to", false, "")
+	flag.BoolVar(&traceTODO, "todo", false, "")
 	flag.BoolVar(&traceWrites, "tw", false, "")
 }
 
@@ -81,6 +82,7 @@ const (
 #include <builtin.h>
 
 #define SIGNAL_SUPPRESS // gcc.c-torture/execute/20101011-1.c
+#define llabs(x) __builtin_llabs(x)
 `
 )
 
@@ -314,9 +316,13 @@ func testDir(t *testing.T, glob string, blacklist map[string]struct{}) {
 
 func TestGCC(t *testing.T) {
 	testDir(t, "../c99/testdata/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/*.c", map[string]struct{}{
-		"20010910-1.c": {}, //TODO ./main.go:49:35: cannot use *(*[5]Sepic_rx_desc)(unsafe.Pointer(_rx_ring)) (type [5]Sepic_rx_desc) as type uintptr in assignment
+		"20021127-1.c": {}, // non standard GCC behavior
+
+		"pr36321.c": {}, //TODO? alloca
+
+		"pr41750.c": {}, //TODO
 	})
-	// compiles: 462, builds: 176, runs: 176
+	// compiles: 460, builds: 173, runs: 173
 }
 
 func testFile(t *testing.T, pth string, compiles, builds, runs *int) {

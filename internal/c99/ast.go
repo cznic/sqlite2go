@@ -604,6 +604,7 @@ type Declarator struct {
 	vars                 []*Declarator
 	AddressTaken         bool
 	Embedded             bool // [0]6.7.5-3: Not a full declarator.
+	IsField              bool
 	IsFunctionParameter  bool
 	DirectDeclarator     *DirectDeclarator
 	PointerOpt           *PointerOpt
