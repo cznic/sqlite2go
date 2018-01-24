@@ -319,10 +319,8 @@ func TestGCC(t *testing.T) {
 		"20021127-1.c": {}, // non standard GCC behavior
 
 		"pr36321.c": {}, //TODO? alloca
-
-		"pr41750.c": {}, //TODO
 	})
-	// compiles: 460, builds: 173, runs: 173
+	// compiles: 461, builds: 174, runs: 174
 }
 
 func testFile(t *testing.T, pth string, compiles, builds, runs *int) {

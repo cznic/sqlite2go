@@ -630,6 +630,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				panic(x)
 			}
 		}
+		if n.Expr.Case != ExprIdent {
+			n.Operand.Address = nil
+		}
 	case ExprDivAssign: // Expr "/=" Expr
 		// [0]6.5.16.2
 		n.Expr.eval(ctx, arr2ptr).div(ctx, n.Expr2.eval(ctx, arr2ptr))

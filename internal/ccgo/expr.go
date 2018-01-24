@@ -455,6 +455,16 @@ func (g *gen) value(n *c99.Expr) {
 		default:
 			g.w(" == 0)")
 		}
+	case c99.ExprPSelect: // Expr "->" IDENTIFIER
+		g.w("*(*%s)(unsafe.Pointer(", g.typ(n.Operand.Type))
+		switch x := underlyingType(underlyingType(n.Expr.Operand.Type).(*c99.PointerType).Item).(type) {
+		case *c99.StructType:
+			g.uintptr(n.Expr)
+			g.w("+%d", g.model.Layout(x)[x.Field(n.Token2.Val).Field].Offset)
+		default:
+			todo("%v: %T", g.position0(n), x)
+		}
+		g.w("))")
 	default:
 		todo("", g.position0(n), n.Case, n.Operand) // value
 	}
@@ -481,6 +491,8 @@ func (g *gen) uintptr(n *c99.Expr) {
 		switch n.Case {
 		case c99.ExprIdent: // IDENTIFIER
 			g.w("%s+%d", g.mangleDeclarator(d), a.Offset)
+		case c99.ExprPSelect: // Expr "->" IDENTIFIER
+			g.w("*(*uintptr)(unsafe.Pointer(%s+%d))", g.mangleDeclarator(d), a.Offset)
 		default:
 			todo("", g.position0(n), n.Case, n.Operand) // value
 		}
@@ -664,15 +676,55 @@ func (g *gen) convert(n *c99.Expr, t c99.Type) {
 		if d := g.normalizeDeclarator(a.Declarator); d.Type.Equal(t) {
 			g.enqueue(d)
 			switch n.Case {
-			case c99.ExprPSelect: // Expr "->" IDENTIFIER
-				g.value(n)
-			default:
+			case c99.ExprIdent: // IDENTIFIER
 				switch {
-				case g.escaped(d):
-					g.w(" *(*%s)(unsafe.Pointer(%s))", g.typ(d.Type), g.mangleDeclarator(d))
+				case g.escaped(d) && underlyingType(d.Type).Kind() != c99.Array:
+					g.w(" *(*%s)(unsafe.Pointer(%s+%d))", g.typ(d.Type), g.mangleDeclarator(d), a.Offset)
 				default:
-					g.w(" (%s+%d)", g.mangleDeclarator(d), a.Offset)
+					g.w("(%s+%d)", g.mangleDeclarator(d), a.Offset)
 				}
+			case c99.ExprPExprList: // '(' ExprList ')'
+				switch {
+				case g.escaped(d) && underlyingType(d.Type).Kind() != c99.Array:
+					g.w("/*TODO677 */ (func() %s { panic(677) }())", g.typ(t))
+				default:
+					if isSingleExpression(n.ExprList) {
+						g.w("(%s+%d)", g.mangleDeclarator(d), a.Offset)
+						break
+					}
+
+					g.w("/*TODO679 */ (func() %s { panic(679) }())", g.typ(t))
+				}
+			case c99.ExprPSelect: // Expr "->" IDENTIFIER
+				switch {
+				case g.escaped(d) && underlyingType(d.Type).Kind() != c99.Array:
+					g.w("/*TODO689 */ (func() %s { panic(689) }())", g.typ(t))
+				default:
+					g.w("*(*%s)(unsafe.Pointer(%s+%d))", g.typ(n.Operand.Type), g.mangleDeclarator(d), a.Offset)
+				}
+			case c99.ExprCast: // '(' TypeName ')' Expr
+				switch {
+				case g.escaped(d) && underlyingType(d.Type).Kind() != c99.Array:
+					g.w("/*TODO697 */ (func() %s { panic(697) }())", g.typ(t))
+				default:
+					g.w("(%s+%d)", g.mangleDeclarator(d), a.Offset)
+				}
+			case c99.ExprAdd: // Expr '+' Expr
+				switch {
+				case g.escaped(d) && underlyingType(d.Type).Kind() != c99.Array:
+					g.w("/*TODO703 */ (func() %s { panic(703) }())", g.typ(t))
+				default:
+					g.w("(%s+%d)", g.mangleDeclarator(d), a.Offset)
+				}
+			case c99.ExprAddrof: // '&' Expr
+				switch {
+				case g.escaped(d) && underlyingType(d.Type).Kind() != c99.Array:
+					g.w("%s+%d", g.mangleDeclarator(d), a.Offset)
+				default:
+					g.w("/*TODO712 */ (func() %s { panic(712) }())", g.typ(t))
+				}
+			default:
+				g.w("/*TODO675 %v */ (func() %s { panic(%q) }())", n.Case, g.typ(t), n.Case.String())
 			}
 			return
 		}
