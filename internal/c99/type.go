@@ -261,6 +261,8 @@ func (t TypeKind) Equal(u Type) bool {
 			Char,
 			Int,
 			Long,
+			Short,
+			UShort,
 			Void:
 
 			return false

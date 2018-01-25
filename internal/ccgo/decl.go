@@ -119,6 +119,11 @@ func (g *gen) tld(n *c99.Declarator) {
 		}
 
 		switch x := t.(type) {
+		case
+			*c99.PointerType,
+			*c99.StructType:
+
+			g.w("\nvar %s = bss + %d\n", g.mangleDeclarator(n), g.allocBSS(n.Type))
 		case c99.TypeKind:
 			switch x {
 			case
@@ -151,7 +156,10 @@ func (g *gen) tld(n *c99.Declarator) {
 
 func (g *gen) escapedTLD(n *c99.Declarator) {
 	switch x := underlyingType(n.Type).(type) {
-	case *c99.ArrayType:
+	case
+		*c99.ArrayType,
+		*c99.StructType:
+
 		g.w("\nvar %s = ds + %d\n", g.mangleDeclarator(n), g.allocDS(n.Type, n.Initializer))
 	default:
 		todo("%v: %T", g.position(n), x)
@@ -176,7 +184,7 @@ func (g *gen) renderInitializer(t c99.Type, n *c99.Initializer) (ds, dsBits, tsB
 	case c99.InitializerExpr:
 		return g.renderInitializerExpr(t, n.Expr)
 	case c99.InitializerCompLit:
-		switch x := t.(type) {
+		switch x := underlyingType(t).(type) {
 		case *c99.ArrayType:
 			if x.Size.Type == nil || x.Size.IsZero() {
 				todo("", g.position0(n), x)
@@ -234,7 +242,7 @@ func (g *gen) renderInitializerExpr(t c99.Type, n *c99.Expr) (ds, dsBits, tsBits
 	ds = make([]byte, g.model.Sizeof(t))
 	dsBits = make([]byte, len(ds))
 	tsBits = make([]byte, len(ds))
-	switch x := t.(type) {
+	switch x := underlyingType(t).(type) {
 	case *c99.ArrayType:
 		switch y := x.Item.(type) {
 		case c99.TypeKind:
@@ -257,7 +265,16 @@ func (g *gen) renderInitializerExpr(t c99.Type, n *c99.Expr) (ds, dsBits, tsBits
 			todo("%v: %T", g.position0(n), y)
 		}
 	case *c99.PointerType:
-		switch y := x.Item.(type) {
+		switch y := underlyingType(x.Item).(type) {
+		case
+			*c99.FunctionType,
+			*c99.StructType:
+
+			if n.Operand.IsZero() {
+				return ds, dsBits, tsBits
+			}
+
+			todo("%v: %T", g.position0(n))
 		case c99.TypeKind:
 			switch y {
 			case c99.Char:
@@ -269,6 +286,12 @@ func (g *gen) renderInitializerExpr(t c99.Type, n *c99.Expr) (ds, dsBits, tsBits
 					todo("%v: %T", g.position0(n), z)
 				}
 				return ds, dsBits, tsBits
+			case c99.Void:
+				if n.Operand.IsZero() || n.Operand.Address == c99.Null {
+					return ds, dsBits, tsBits
+				}
+
+				todo("%v: %T", g.position0(n))
 			default:
 				todo("", g.position0(n), y)
 			}
@@ -277,12 +300,18 @@ func (g *gen) renderInitializerExpr(t c99.Type, n *c99.Expr) (ds, dsBits, tsBits
 		}
 	case c99.TypeKind:
 		switch x {
-		case c99.Int:
+		case
+			c99.Int,
+			c99.LongLong,
+			c99.UInt:
+
 			dsBits = make([]byte, len(ds))
 			tsBits = make([]byte, len(ds))
 			switch len(ds) {
 			case 4:
 				*(*int32)(unsafe.Pointer(&ds[0])) = int32(n.Operand.Value.(*ir.Int64Value).Value)
+			case 8:
+				*(*int64)(unsafe.Pointer(&ds[0])) = n.Operand.Value.(*ir.Int64Value).Value
 			default:
 				todo("", g.position0(n), len(ds))
 			}

@@ -1058,6 +1058,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		if a := op.Address; a != nil && index.Value != nil {
 			n.Operand.Address = &Address{Declarator: a.Declarator, Offset: a.Offset + uintptr(index.Value.(*ir.Int64Value).Value*ctx.model.Sizeof(n.Operand.Type))}
 		}
+		if n.Expr.Case != ExprIdent {
+			n.Operand.Address = nil
+		}
 	case ExprXor: // Expr '^' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr).xor(ctx, n.Expr2.eval(ctx, arr2ptr))
 	case ExprOr: // Expr '|' Expr
@@ -1698,7 +1701,7 @@ func (n *JumpStmt) check(ctx *context, fn *Declarator, inSwitch *SelectionStmt, 
 		}
 	case JumpStmtReturn: // "return" ExprListOpt ';'
 		// [0]6.8.6.4
-		op := n.ExprListOpt.check(ctx, true)
+		op := n.ExprListOpt.eval(ctx, true)
 		switch t := fn.Type.(*FunctionType).Result; t.Kind() {
 		case Void:
 			if op.Type != nil {
@@ -1721,22 +1724,7 @@ func (n *JumpStmt) check(ctx *context, fn *Declarator, inSwitch *SelectionStmt, 
 
 func (n *ExprStmt) check(ctx *context) {
 	// ExprListOpt ';'
-	n.ExprListOpt.check(ctx, true)
-}
-
-func (n *ExprListOpt) check(ctx *context, arr2ptr bool) Operand {
-	if n == nil {
-		return Operand{}
-	}
-
-	return n.ExprList.check(ctx, arr2ptr)
-}
-
-func (n *ExprList) check(ctx *context, arr2ptr bool) (r Operand) {
-	for ; n != nil; n = n.ExprList {
-		r = n.Expr.eval(ctx, arr2ptr)
-	}
-	return r
+	n.ExprListOpt.eval(ctx, true)
 }
 
 func (n *Declaration) check(ctx *context, sc []int, fn *Declarator) {
@@ -1924,7 +1912,6 @@ func (n *InitializerList) check(ctx *context, t Type) Operand {
 }
 
 func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObject bool, sc []int, fn *Declarator) (r Type) {
-	//rtCaller("%s: %s %v\n", ctx.position(n), dict.S(n.Name()), n.Initializer != nil) //TODO-
 	// PointerOpt DirectDeclarator
 	if l := len(sc); l != 0 {
 		n.ScopeNum = sc[l-1]

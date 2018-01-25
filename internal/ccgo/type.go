@@ -259,7 +259,8 @@ func underlyingType(t c99.Type) c99.Type {
 				c99.UInt,
 				c99.ULong,
 				c99.ULongLong,
-				c99.UShort:
+				c99.UShort,
+				c99.Void:
 
 				return x
 			default:
