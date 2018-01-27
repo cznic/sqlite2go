@@ -386,6 +386,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		default:
 			panic(x)
 		}
+		if n.Expr.Case != ExprIdent {
+			n.Operand.Address = nil
+		}
 	case ExprDeref: // '*' Expr
 		// [0]6.5.3
 		op := n.Expr.eval(ctx, arr2ptr)

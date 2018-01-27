@@ -319,9 +319,8 @@ func TestGCC(t *testing.T) {
 		"20021127-1.c": {}, // non standard GCC behavior
 		"pr36321.c":    {}, // depends on alloca addresses difference
 
-		"20010910-1.c": {}, //TODO out: unexpected fault address 0x500000005 err: exit status 2
 	})
-	// compiles: 460, builds: 218, runs: 218
+	// compiles: 461, builds: 227, runs: 227
 }
 
 func testFile(t *testing.T, pth string, compiles, builds, runs *int) {
