@@ -121,6 +121,7 @@ type FieldProperties struct {
 	Offset  int64 // Byte offset relative to start of the struct/union.
 	Size    int64 // Field size for copying.
 	Padding int   // Adjustment to enforce proper alignment.
+	BitType Type
 }
 
 // Layout computes the memory layout of t.
@@ -134,17 +135,139 @@ func (m Model) Layout(t Type) []FieldProperties {
 
 		r := make([]FieldProperties, len(x.Fields))
 		var off int64
+		bitoff := 0
 		for i, v := range x.Fields {
-			sz := m.Sizeof(v.Type)
-			a := m.StructAlignof(v.Type)
+			switch {
+			case v.Bits != 0:
+				switch {
+				case bitoff == 0:
+					r[i] = FieldProperties{Offset: off, Bitoff: bitoff, Bits: v.Bits}
+					bitoff = v.Bits
+				default:
+					n := bitoff + v.Bits
+					if n > 64 {
+						var t Type
+						switch {
+						case bitoff <= 8:
+							t = UChar
+						case bitoff <= 16:
+							t = UShort
+						case bitoff <= 32:
+							t = UInt
+						case bitoff <= 64:
+							t = ULongLong
+						default:
+							panic("internal error")
+						}
+						sz := m.Sizeof(t)
+						a := m.StructAlignof(t)
+						z := off
+						if a != 0 {
+							off = roundup(off, int64(a))
+						}
+						var first int
+						for first = i; first >= 0 && r[first].Bits != 0; first-- {
+						}
+						first++
+						if off != z && first > 0 {
+							r[first-1].Padding = int(off - z)
+						}
+						for i := range r[first:] {
+							r[i].Offset = off
+							r[i].Size = sz
+							r[i].BitType = t
+						}
+						off += sz
+						r[i] = FieldProperties{Offset: off, Bits: v.Bits}
+						bitoff = v.Bits
+						break
+					}
+
+					r[i] = FieldProperties{Offset: off, Bitoff: bitoff, Bits: v.Bits}
+					bitoff = n
+					break
+				}
+			default:
+				if bitoff != 0 {
+					var t Type
+					switch {
+					case bitoff <= 8:
+						t = UChar
+					case bitoff <= 16:
+						t = UShort
+					case bitoff <= 32:
+						t = UInt
+					case bitoff <= 64:
+						t = ULongLong
+					default:
+						panic("internal error")
+					}
+					sz := m.Sizeof(t)
+					a := m.StructAlignof(t)
+					z := off
+					if a != 0 {
+						off = roundup(off, int64(a))
+					}
+					var first int
+					for first = i; first >= 0 && r[first].Bits != 0; first-- {
+					}
+					first++
+					if off != z && first > 0 {
+						r[first-1].Padding = int(off - z)
+					}
+					for i := range r[first:] {
+						r[i].Offset = off
+						r[i].Size = sz
+						r[i].BitType = t
+					}
+					off += sz
+				}
+				sz := m.Sizeof(v.Type)
+				a := m.StructAlignof(v.Type)
+				z := off
+				if a != 0 {
+					off = roundup(off, int64(a))
+				}
+				if off != z {
+					r[i-1].Padding = int(off - z)
+				}
+				r[i] = FieldProperties{Offset: off, Size: sz}
+				off += sz
+			}
+		}
+		i := len(r) - 1
+		if bitoff != 0 {
+			var t Type
+			switch {
+			case bitoff <= 8:
+				t = UChar
+			case bitoff <= 16:
+				t = UShort
+			case bitoff <= 32:
+				t = UInt
+			case bitoff <= 64:
+				t = ULongLong
+			default:
+				panic("internal error")
+			}
+			sz := m.Sizeof(t)
+			a := m.StructAlignof(t)
 			z := off
 			if a != 0 {
 				off = roundup(off, int64(a))
 			}
-			if off != z {
-				r[i-1].Padding = int(off - z)
+			var first int
+			for first = i; first >= 0 && r[first].Bits != 0; first-- {
 			}
-			r[i] = FieldProperties{Offset: off, Size: sz, Bits: v.Bits}
+			first++
+			if off != z && first > 0 {
+				r[first-1].Padding = int(off - z)
+			}
+			for i := range r[first:] {
+				r[i].Offset = off
+				r[i].Size = sz
+				r[i].BitType = t
+			}
 			off += sz
 		}
 		z := off
@@ -161,16 +284,21 @@ func (m Model) Layout(t Type) []FieldProperties {
 		r := make([]FieldProperties, len(x.Fields))
 		var off int64
 		for i, v := range x.Fields {
-			sz := m.Sizeof(v.Type)
-			a := m.StructAlignof(v.Type)
-			z := off
-			if a != 0 {
-				off = roundup(off, int64(a))
+			switch {
+			case v.Bits != 0:
+				panic("internal error")
+			default:
+				sz := m.Sizeof(v.Type)
+				a := m.StructAlignof(v.Type)
+				z := off
+				if a != 0 {
+					off = roundup(off, int64(a))
+				}
+				if off != z {
+					r[i-1].Padding = int(off - z)
+				}
+				r[i] = FieldProperties{Offset: off, Size: sz, Bits: v.Bits}
 			}
-			if off != z {
-				r[i-1].Padding = int(off - z)
-			}
-			r[i] = FieldProperties{Offset: off, Size: sz, Bits: v.Bits}
 		}
 		z := off
 		off = roundup(off, int64(m.Alignof(t)))

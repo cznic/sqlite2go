@@ -48,10 +48,17 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
 		return buf.String()
 	case *c99.StructType:
 		buf.WriteString(" struct{")
-		for _, v := range x.Fields {
+		layout := g.model.Layout(x)
+		for i, v := range x.Fields {
 			if v.Bits != 0 {
-				todo("", x)
+				if layout[i].Bitoff == 0 {
+					fmt.Fprintf(&buf, "F%d ", layout[i].Offset)
+					g.typ0(&buf, layout[i].BitType)
+					buf.WriteByte(';')
+				}
+				continue
 			}
+
 			fmt.Fprintf(&buf, "%s ", mangleIdent(v.Name, true))
 			g.typ0(&buf, v.Type)
 			buf.WriteByte(';')
@@ -93,9 +100,6 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
 	case *c99.UnionType:
 		buf.WriteString(" [%d]byte")
 		for _, v := range x.Fields {
-			if v.Bits != 0 {
-				todo("", x)
-			}
 			fmt.Fprintf(&buf, "%s ", mangleIdent(v.Name, true))
 			g.typ0(&buf, v.Type)
 			buf.WriteByte(';')
@@ -154,10 +158,17 @@ func (g *gen) typ0(buf *bytes.Buffer, t c99.Type) {
 			buf.WriteByte('*')
 		case *c99.StructType:
 			buf.WriteString(" struct{")
-			for _, v := range x.Fields {
+			layout := g.model.Layout(x)
+			for i, v := range x.Fields {
 				if v.Bits != 0 {
-					todo("", x)
+					if layout[i].Bitoff == 0 {
+						fmt.Fprintf(buf, "F%d ", layout[i].Offset)
+						g.typ0(buf, layout[i].BitType)
+						buf.WriteByte(';')
+					}
+					continue
 				}
+
 				fmt.Fprintf(buf, "%s ", mangleIdent(v.Name, true))
 				g.typ0(buf, v.Type)
 				buf.WriteByte(';')
@@ -226,6 +237,7 @@ func underlyingType(t c99.Type) c99.Type {
 			*c99.EnumType,
 			*c99.FunctionType,
 			*c99.PointerType,
+			*c99.StructType,
 			*c99.UnionType:
 
 			return x
@@ -235,14 +247,6 @@ func underlyingType(t c99.Type) c99.Type {
 			}
 
 			t = x.Type
-		case *c99.StructType:
-			for _, v := range x.Fields {
-				if v.Bits != 0 {
-					todo("", x)
-				}
-			}
-
-			return x
 		case *c99.TaggedEnumType:
 			if x.Type == nil {
 				return x

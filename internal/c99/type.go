@@ -1189,6 +1189,16 @@ type UnionType struct {
 	//TODO cache size, alignment, struct alignment.
 }
 
+// Field returns the declarator of field nm.
+func (t *UnionType) Field(nm int) *Declarator {
+	switch x := t.scope.Idents[nm].(type) {
+	case *Declarator:
+		return x
+	default:
+		panic(fmt.Errorf("%T", x))
+	}
+}
+
 // IsUnsigned implements Type.
 func (t *UnionType) IsUnsigned() bool { panic("TODO") }
 

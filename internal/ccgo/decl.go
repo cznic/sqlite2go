@@ -98,15 +98,6 @@ func (g *gen) defineTaggedStructType(t *c99.TaggedStructType) {
 
 func (g *gen) tld(n *c99.Declarator) {
 	t := underlyingType(n.Type)
-	switch t.(type) {
-	case *c99.StructType, *c99.UnionType:
-		for _, v := range g.model.Layout(t) {
-			if v.Bits != 0 {
-				todo("", g.position(n))
-			}
-		}
-	}
-
 	if t.Kind() == c99.Function {
 		g.functionDefinition(n)
 		return
@@ -128,7 +119,12 @@ func (g *gen) tld(n *c99.Declarator) {
 			switch x {
 			case
 				c99.Char,
-				c99.Int:
+				c99.Int,
+				c99.Long,
+				c99.Short,
+				c99.SChar,
+				c99.UChar,
+				c99.UInt:
 
 				g.w("\nvar %s %s\n", g.mangleDeclarator(n), g.typ(n.Type))
 			default:
@@ -301,6 +297,7 @@ func (g *gen) renderInitializerExpr(t c99.Type, n *c99.Expr) (ds, dsBits, tsBits
 	case c99.TypeKind:
 		switch x {
 		case
+			c99.Char,
 			c99.Int,
 			c99.LongLong,
 			c99.UInt:
@@ -308,6 +305,8 @@ func (g *gen) renderInitializerExpr(t c99.Type, n *c99.Expr) (ds, dsBits, tsBits
 			dsBits = make([]byte, len(ds))
 			tsBits = make([]byte, len(ds))
 			switch len(ds) {
+			case 1:
+				*(*int8)(unsafe.Pointer(&ds[0])) = int8(n.Operand.Value.(*ir.Int64Value).Value)
 			case 4:
 				*(*int32)(unsafe.Pointer(&ds[0])) = int32(n.Operand.Value.(*ir.Int64Value).Value)
 			case 8:
@@ -315,6 +314,11 @@ func (g *gen) renderInitializerExpr(t c99.Type, n *c99.Expr) (ds, dsBits, tsBits
 			default:
 				todo("", g.position0(n), len(ds))
 			}
+			return ds, dsBits, tsBits
+		case c99.Double:
+			dsBits = make([]byte, len(ds))
+			tsBits = make([]byte, len(ds))
+			*(*float64)(unsafe.Pointer(&ds[0])) = n.Operand.Value.(*ir.Float64Value).Value
 			return ds, dsBits, tsBits
 		default:
 			todo("", g.position0(n), x)

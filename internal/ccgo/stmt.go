@@ -74,7 +74,7 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases ma
 				default:
 					g.w("\n\t%s %s", g.mangleDeclarator(v), g.typ(v.Type))
 				}
-				if v.Referenced == 0 || v.Referenced == 1 && v.AssignedTo == 1 {
+				if v.Referenced == 0 || v.Referenced == v.AssignedTo {
 					g.w("\n_ = %s", g.mangleDeclarator(v))
 				}
 			}
