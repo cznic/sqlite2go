@@ -291,7 +291,7 @@ func (g *gen) renderInitializerExpr(t c99.Type, n *c99.Expr) (ds, dsBits, tsBits
 					return ds, dsBits, tsBits
 				}
 
-				todo("%v: %T", g.position0(n))
+				todo("", g.position0(n), n.Operand)
 			default:
 				todo("", g.position0(n), y)
 			}
@@ -334,7 +334,7 @@ func (g *gen) allocBSS(t c99.Type) int64 {
 
 func (g *gen) functionDefinition(n *c99.Declarator) {
 	g.nextLabel = 1
-	g.w("\n\nfunc %s(tls *%sTLS", g.mangleDeclarator(n), crt)
+	g.w("\n\n// %s is defined at %v\nfunc %s(tls *%sTLS", g.mangleDeclarator(n), g.position(n), g.mangleDeclarator(n), crt)
 	names := n.ParameterNames()
 	t := n.Type.(*c99.FunctionType)
 	if len(names) != len(t.Params) {
@@ -387,6 +387,7 @@ func (g *gen) functionDefinition(n *c99.Declarator) {
 		g.w("(r %s)", g.typ(t.Result))
 	}
 	g.functionBody(n.FunctionDefinition.FunctionBody, n.FunctionDefinition.LocalVariables(), void, escParams, t.Result)
+	g.w("\n")
 }
 
 func (g *gen) functionBody(n *c99.FunctionBody, vars []*c99.Declarator, void bool, escParams []*c99.Declarator, rt c99.Type) {
@@ -424,11 +425,13 @@ func (g *gen) normalizeDeclarator(n *c99.Declarator) *c99.Declarator {
 		return nil
 	}
 
-	if n.Linkage == c99.LinkageExternal {
+	switch n.Linkage {
+	case c99.LinkageExternal:
 		if d, ok := g.externs[n.Name()]; ok {
 			return d
 		}
 	}
+
 	return n
 }
 

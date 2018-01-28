@@ -334,6 +334,7 @@ func (g *gen) collectSymbols() error {
 					if _, ok := internal[nm]; ok {
 						todo("")
 					}
+
 					internal[nm] = x
 					if _, ok := g.internalNames[nm]; ok {
 						g.num++

@@ -687,6 +687,7 @@ func (t *NamedType) Equal(u Type) bool {
 	case *NamedType:
 		return t.Name == x.Name && t.Type.Equal(x.Type)
 	case
+		*FunctionType,
 		*PointerType,
 		*TaggedStructType:
 
@@ -714,7 +715,7 @@ func (t *NamedType) Equal(u Type) bool {
 			panic(x)
 		}
 	default:
-		panic(fmt.Errorf("%T", x))
+		panic(fmt.Errorf("%T: %v, %v", x, t.Type, u))
 	}
 }
 
@@ -778,7 +779,10 @@ func (t *PointerType) Equal(u Type) bool {
 	}
 
 	switch x := u.(type) {
-	case *FunctionType:
+	case
+		*FunctionType,
+		*TaggedStructType:
+
 		return false
 	case *NamedType:
 		return t.Equal(x.Type)

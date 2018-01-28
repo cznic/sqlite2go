@@ -90,6 +90,17 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
 		default:
 			todo("", x)
 		}
+	case *c99.UnionType:
+		buf.WriteString(" [%d]byte")
+		for _, v := range x.Fields {
+			if v.Bits != 0 {
+				todo("", x)
+			}
+			fmt.Fprintf(&buf, "%s ", mangleIdent(v.Name, true))
+			g.typ0(&buf, v.Type)
+			buf.WriteByte(';')
+		}
+		return buf.String()
 	default:
 		todo("%T %v", x, x)
 	}

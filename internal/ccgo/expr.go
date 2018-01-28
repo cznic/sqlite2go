@@ -82,7 +82,10 @@ func (g *gen) void(n *c99.Expr) {
 			}
 		case c99.TypeKind:
 			switch x {
-			case c99.Int:
+			case
+				c99.Int,
+				c99.UInt:
+
 				g.w(" *(")
 				g.lvalue(n.Expr)
 				g.w(")++")
@@ -295,7 +298,7 @@ func (g *gen) value(n *c99.Expr) {
 			case arr:
 				todo("", g.position0(n), n.Operand, d.Type, n.Expr.Case)
 			case g.escaped(d):
-				todo("", g.position0(n), n.Operand, d.Type, n.Expr.Case)
+				g.w(" *(*%s)(unsafe.Pointer(%s+%d))", g.typ(d.Type), g.mangleDeclarator(d), a.Offset)
 			default:
 				if isVaList(n.Expr.Operand.Type) {
 					g.w("%sVA%s(&", crt, g.typ(t))
@@ -331,18 +334,12 @@ func (g *gen) value(n *c99.Expr) {
 		case c99.ExprAdd: // Expr '+' Expr
 			switch {
 			case arr:
-				todo("", g.position0(n), n.Operand)
+				g.w("%s+%d", g.mangleDeclarator(d), a.Offset)
 			case g.escaped(d):
 				g.w("%s+%d", g.mangleDeclarator(d), a.Offset)
 			default:
 				todo("", g.position0(n))
 			}
-			//TODO- switch {
-			//TODO- case g.escaped(d) && underlyingType(d.Type).Kind() != c99.Array:
-			//TODO- 	g.w("%s+%d", g.mangleDeclarator(d), a.Offset)
-			//TODO- default:
-			//TODO- 	todo("", g.position0(n))
-			//TODO- }
 		default:
 			todo("", g.position0(n), n.Case, n.Operand) // value
 		}
@@ -454,8 +451,6 @@ func (g *gen) value(n *c99.Expr) {
 			g.value(n.Expr)
 			g.w("))")
 		}
-	//TODO- case c99.ExprPExprList: // '(' ExprList ')'
-	//TODO- 	g.exprList(n.ExprList, false)
 	case c99.ExprAssign: // Expr '=' Expr
 		g.assignmentValue(n)
 	case c99.ExprLOr: // Expr "||" Expr
@@ -545,6 +540,9 @@ func (g *gen) value(n *c99.Expr) {
 		g.value(n.Expr)
 	case c99.ExprAddrof: // '&' Expr
 		g.uintptr(n.Expr)
+	case c99.ExprCpl: // '~' Expr
+		g.w("^ ")
+		g.value(n.Expr)
 	default:
 		todo("", g.position0(n), n.Case, n.Operand) // value
 	}
@@ -608,19 +606,17 @@ func (g *gen) uintptr(n *c99.Expr) {
 						g.w("%s+%d", g.mangleDeclarator(d), a.Offset)
 					}
 				default:
-					todo("", g.position0(n), n.Operand)
+					switch {
+					case arr:
+						todo("", g.position0(n), n.Operand)
+					case g.escaped(d):
+						todo("", g.position0(n), n.Operand)
+					default:
+						g.w("%s+%d", g.mangleDeclarator(d), a.Offset)
+					}
 				}
 			default:
 				todo("%v: %T", g.position0(n), x)
-			}
-
-			switch {
-			case arr:
-				todo("", g.position0(n), n.Operand)
-			case g.escaped(d):
-				todo("", g.position0(n), n.Operand)
-			default:
-				g.w("%s+%d", g.mangleDeclarator(d), a.Offset)
 			}
 		case c99.ExprSelect: // Expr '.' IDENTIFIER
 			switch {
@@ -631,30 +627,6 @@ func (g *gen) uintptr(n *c99.Expr) {
 			default:
 				todo("", g.position0(n), n.Operand)
 			}
-			//TODO- switch {
-			//TODO- case g.escaped(d):
-			//TODO- 	g.w("%s+%d", g.mangleDeclarator(d), a.Offset)
-			//TODO- default:
-			//TODO- 	g.w("uintptr(unsafe.Pointer(&%s))+%d", g.mangleDeclarator(d), a.Offset)
-			//TODO- }
-		//TODO- case c99.ExprPExprList: // '(' ExprList ')'
-		//TODO- 	if isSingleExpression(n.ExprList) {
-		//TODO- 		switch {
-		//TODO- 		case arr:
-		//TODO- 			todo("", g.position0(n), n.Operand)
-		//TODO- 		case g.escaped(d):
-		//TODO- 			todo("", g.position0(n), n.Operand, d.Type)
-		//TODO- 		default:
-		//TODO- 			todo("", g.position0(n), n.Operand)
-		//TODO- 		}
-		//TODO- 	}
-		//TODO- 	break
-		//TODO- 	//TODO- if isSingleExpression(n.ExprList) {
-		//TODO- 	//TODO- 	g.uintptr(n.ExprList.Expr)
-		//TODO- 	//TODO- 	break
-		//TODO- 	//TODO- }
-
-		//TODO- 	todo("", g.position0(n))
 		case c99.ExprAddrof: // '&' Expr
 			switch {
 			case arr:
@@ -676,13 +648,6 @@ func (g *gen) uintptr(n *c99.Expr) {
 		g.w(" +%d*uintptr(", g.model.Sizeof(underlyingType(underlyingType(n.Expr.Operand.Type).(*c99.PointerType).Item)))
 		g.exprList(n.ExprList, false)
 		g.w(")")
-	//TODO- case c99.ExprPExprList: // '(' ExprList ')'
-	//TODO- 	if isSingleExpression(n.ExprList) {
-	//TODO- 		g.uintptr(n.ExprList.Expr)
-	//TODO- 		break
-	//TODO- 	}
-
-	//TODO- 	todo("", g.position0(n))
 	case c99.ExprDeref: // '*' Expr
 		i := 1
 		for n.Expr.Case == c99.ExprDeref {
@@ -692,6 +657,20 @@ func (g *gen) uintptr(n *c99.Expr) {
 		g.w(" %[1]s(%[1]suintptr)(unsafe.Pointer(", strings.Repeat("*", i))
 		g.value(n.Expr)
 		g.w("))")
+	case c99.ExprPSelect: // Expr "->" IDENTIFIER
+		switch x := underlyingType(underlyingType(n.Expr.Operand.Type).(*c99.PointerType).Item).(type) {
+		case *c99.StructType:
+			f := x.Field(n.Token2.Val)
+			switch {
+			case underlyingType(f.Type).Kind() == c99.Array:
+				todo("", g.position0(n))
+			default:
+				g.value(n.Expr)
+				g.w("+%d", g.model.Layout(x)[f.Field].Offset)
+			}
+		default:
+			todo("%v: %T", g.position0(n), x)
+		}
 	default:
 		todo("", g.position0(n), n.Case, n.Operand) // value
 	}
@@ -878,18 +857,6 @@ func (g *gen) convert(n *c99.Expr, t c99.Type) {
 				default:
 					g.w("(%s+%d)", g.mangleDeclarator(d), a.Offset)
 				}
-			//TODO- case c99.ExprPExprList: // '(' ExprList ')'
-			//TODO- 	switch {
-			//TODO- 	case g.escaped(d) && underlyingType(d.Type).Kind() != c99.Array:
-			//TODO- 		todo("", g.position0(n))
-			//TODO- 	default:
-			//TODO- 		if isSingleExpression(n.ExprList) {
-			//TODO- 			g.w("(%s+%d)", g.mangleDeclarator(d), a.Offset)
-			//TODO- 			break
-			//TODO- 		}
-
-			//TODO- 		todo("", g.position0(n))
-			//TODO- 	}
 			case c99.ExprPSelect: // Expr "->" IDENTIFIER
 				switch x := underlyingType(underlyingType(n.Expr.Operand.Type).(*c99.PointerType).Item).(type) {
 				case *c99.StructType:

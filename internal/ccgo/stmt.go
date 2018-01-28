@@ -344,9 +344,22 @@ func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int
 			g.w("\n_%d:", b)
 		}
 	case c99.IterationStmtWhile: // "while" '(' ExprList ')' Stmt
-		if n.ExprList.Operand.Value != nil {
+		if n.ExprList.Operand.IsZero() {
 			todo("", g.position0(n))
 		}
+
+		if n.ExprList.Operand.IsNonzero() {
+			a := g.label()
+			g.w("\n_%d:", a)
+			b := -g.label()
+			g.exprList(n.ExprList, true)
+			g.stmt(n.Stmt, cases, &b, &a, rt, deadcode)
+			g.w("\ngoto _%d\n", a)
+			if b > 0 {
+				g.w("\n_%d:", b)
+			}
+		}
+
 		// A:
 		// if exprList == 0 { goto B }
 		// stmt

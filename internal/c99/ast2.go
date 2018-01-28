@@ -386,7 +386,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 		default:
 			panic(x)
 		}
-		if n.Expr.Case != ExprIdent {
+		if n.Expr.Case != ExprIdent && n.Operand.Address != Null {
 			n.Operand.Address = nil
 		}
 	case ExprDeref: // '*' Expr
@@ -674,12 +674,10 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				}
 
 				if rhs.Address != nil {
-					var val int64
 					if lhs.Address == rhs.Address || *lhs.Address == *rhs.Address {
-						val = 1
+						n.Operand = Operand{Type: Int, Value: &ir.Int64Value{Value: 1}}
+						break
 					}
-					n.Operand = Operand{Type: Int, Value: &ir.Int64Value{Value: val}}
-					break
 				}
 			}
 
@@ -2026,6 +2024,7 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 				}
 
 				if isFunction && n.isFnDefinition() {
+					ex.FunctionDefinition = n.FunctionDefinition
 					n.scope.Idents[nm] = n
 				}
 			default:
@@ -2041,6 +2040,7 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 				}
 
 				if isFunction && n.isFnDefinition() {
+					ex.FunctionDefinition = n.FunctionDefinition
 					n.scope.Idents[nm] = n
 				}
 			default:
