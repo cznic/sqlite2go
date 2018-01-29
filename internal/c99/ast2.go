@@ -930,6 +930,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 				if a := op.Address; a != nil {
 					layout := ctx.model.Layout(x)
 					n.Operand.Address = &Address{Declarator: a.Declarator, Offset: a.Offset + uintptr(layout[d.Field].Offset)}
+					if n.Operand.Type.Kind() == Array {
+						a.Declarator.AddressTaken = true
+					}
 				}
 				break out3
 			case *TaggedStructType:
@@ -945,7 +948,12 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 					panic(ctx.position(n))
 				}
 				d := d0.(*Declarator)
-				n.Operand = Operand{Type: x.Fields[d.Field].Type}
+				n.Operand = Operand{Type: x.Fields[d.Field].Type, Address: op.Address}
+				if a := op.Address; a != nil {
+					if n.Operand.Type.Kind() == Array {
+						a.Declarator.AddressTaken = true
+					}
+				}
 				break out3
 			default:
 				//dbg("%v: %T", ctx.position(n), x)

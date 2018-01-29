@@ -318,13 +318,11 @@ func TestGCC(t *testing.T) {
 	testDir(t, "../c99/testdata/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/*.c", map[string]struct{}{
 		"20021127-1.c":      {}, // non standard GCC behavior
 		"20070824-1.c":      {}, // alloca
-		"20081103-1.c":      {}, //TODO out:  err: exit status 2: # _/tmp/test-ccgo-162109688 ./main.go:29:31: invalid operation: _s + 1 (mismatched types SS and int)
-		"20120919-1.c":      {}, //TODO out:  err: exit status 2: # _/tmp/test-ccgo-116848171 ./main.go:81:14: invalid operation: int32(0) != _n (mismatched types int32 and uintptr)
 		"built-in-setjmp.c": {}, // alloca
 		"pr36321.c":         {}, // alloca + depends on alloca addresses difference
 		"pr60003.c":         {}, //TODO __builtin_setjmp
 	})
-	// compiles: 458, builds: 317, runs: 317
+	// compiles: 462, builds: 350, runs: 350
 }
 
 func testFile(t *testing.T, pth string, compiles, builds, runs *int) {

@@ -20,7 +20,7 @@ func isVaList(t c99.Type) bool {
 func (g *gen) typ(t c99.Type) string { return g.ptyp(t, true) }
 
 func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
-	if ptr2uintptr && underlyingType(t).Kind() == c99.Ptr && !isVaList(t) {
+	if ptr2uintptr && c99.UnderlyingType(t).Kind() == c99.Ptr && !isVaList(t) {
 		return "uintptr"
 	}
 
@@ -98,12 +98,13 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
 			todo("", x)
 		}
 	case *c99.UnionType:
-		buf.WriteString(" [%d]byte")
+		fmt.Fprintf(&buf, "struct{[%d]byte; [0]struct{", g.model.Sizeof(x))
 		for _, v := range x.Fields {
 			fmt.Fprintf(&buf, "%s ", mangleIdent(v.Name, true))
 			g.typ0(&buf, v.Type)
 			buf.WriteByte(';')
 		}
+		buf.WriteString("}}")
 		return buf.String()
 	default:
 		todo("%T %v", x, x)
@@ -193,6 +194,7 @@ func (g *gen) typ0(buf *bytes.Buffer, t c99.Type) {
 				c99.UChar,
 				c99.UInt,
 				c99.ULong,
+				c99.ULongLong,
 				c99.UShort:
 
 				buf.WriteString(g.ptyp(x, false))
@@ -220,64 +222,6 @@ func prefer(t c99.Type) bool {
 				c99.Void:
 
 				return true
-			default:
-				todo("", x)
-			}
-		default:
-			todo("%T", x)
-		}
-	}
-}
-
-func underlyingType(t c99.Type) c99.Type {
-	for {
-		switch x := t.(type) {
-		case
-			*c99.ArrayType,
-			*c99.EnumType,
-			*c99.FunctionType,
-			*c99.PointerType,
-			*c99.StructType,
-			*c99.UnionType:
-
-			return x
-		case *c99.NamedType:
-			if x.Type == nil {
-				return x
-			}
-
-			t = x.Type
-		case *c99.TaggedEnumType:
-			if x.Type == nil {
-				return x
-			}
-
-			t = x.Type
-		case *c99.TaggedStructType:
-			if x.Type == nil {
-				return x
-			}
-
-			t = x.Type
-		case c99.TypeKind:
-			switch x {
-			case
-				c99.Char,
-				c99.Double,
-				c99.Float,
-				c99.Int,
-				c99.Long,
-				c99.LongLong,
-				c99.SChar,
-				c99.Short,
-				c99.UChar,
-				c99.UInt,
-				c99.ULong,
-				c99.ULongLong,
-				c99.UShort,
-				c99.Void:
-
-				return x
 			default:
 				todo("", x)
 			}

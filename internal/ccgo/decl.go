@@ -97,7 +97,7 @@ func (g *gen) defineTaggedStructType(t *c99.TaggedStructType) {
 }
 
 func (g *gen) tld(n *c99.Declarator) {
-	t := underlyingType(n.Type)
+	t := c99.UnderlyingType(n.Type)
 	if t.Kind() == c99.Function {
 		g.functionDefinition(n)
 		return
@@ -124,7 +124,8 @@ func (g *gen) tld(n *c99.Declarator) {
 				c99.Short,
 				c99.SChar,
 				c99.UChar,
-				c99.UInt:
+				c99.UInt,
+				c99.UShort:
 
 				g.w("\nvar %s %s\n", g.mangleDeclarator(n), g.typ(n.Type))
 			default:
@@ -144,6 +145,7 @@ func (g *gen) tld(n *c99.Declarator) {
 	if n.Initializer.Case == c99.InitializerExpr {
 		g.w("\n\nvar %s = ", g.mangleDeclarator(n))
 		g.convert(n.Initializer.Expr, n.Type)
+		g.w("\n")
 		return
 	}
 
@@ -151,7 +153,7 @@ func (g *gen) tld(n *c99.Declarator) {
 }
 
 func (g *gen) escapedTLD(n *c99.Declarator) {
-	switch x := underlyingType(n.Type).(type) {
+	switch x := c99.UnderlyingType(n.Type).(type) {
 	case
 		*c99.ArrayType,
 		*c99.StructType:
@@ -180,7 +182,7 @@ func (g *gen) renderInitializer(t c99.Type, n *c99.Initializer) (ds, dsBits, tsB
 	case c99.InitializerExpr:
 		return g.renderInitializerExpr(t, n.Expr)
 	case c99.InitializerCompLit:
-		switch x := underlyingType(t).(type) {
+		switch x := c99.UnderlyingType(t).(type) {
 		case *c99.ArrayType:
 			if x.Size.Type == nil || x.Size.IsZero() {
 				todo("", g.position0(n), x)
@@ -238,7 +240,7 @@ func (g *gen) renderInitializerExpr(t c99.Type, n *c99.Expr) (ds, dsBits, tsBits
 	ds = make([]byte, g.model.Sizeof(t))
 	dsBits = make([]byte, len(ds))
 	tsBits = make([]byte, len(ds))
-	switch x := underlyingType(t).(type) {
+	switch x := c99.UnderlyingType(t).(type) {
 	case *c99.ArrayType:
 		switch y := x.Item.(type) {
 		case c99.TypeKind:
@@ -261,7 +263,7 @@ func (g *gen) renderInitializerExpr(t c99.Type, n *c99.Expr) (ds, dsBits, tsBits
 			todo("%v: %T", g.position0(n), y)
 		}
 	case *c99.PointerType:
-		switch y := underlyingType(x.Item).(type) {
+		switch y := c99.UnderlyingType(x.Item).(type) {
 		case
 			*c99.FunctionType,
 			*c99.StructType:
@@ -300,6 +302,7 @@ func (g *gen) renderInitializerExpr(t c99.Type, n *c99.Expr) (ds, dsBits, tsBits
 			c99.Char,
 			c99.Int,
 			c99.LongLong,
+			c99.UChar,
 			c99.UInt:
 
 			dsBits = make([]byte, len(ds))
@@ -368,7 +371,7 @@ func (g *gen) functionDefinition(n *c99.Declarator) {
 				g.w("a%s %s", dict.S(nm), g.typ(v))
 				escParams = append(escParams, param)
 			default:
-				if x, ok := underlyingType(v).(*c99.PointerType); ok && x.Item.Kind() == c99.Function {
+				if x, ok := c99.UnderlyingType(v).(*c99.PointerType); ok && x.Item.Kind() == c99.Function {
 					v = x.Item
 				}
 				g.w("%s %s", mangleIdent(nm, false), g.typ(v))
@@ -390,16 +393,16 @@ func (g *gen) functionDefinition(n *c99.Declarator) {
 	if !void {
 		g.w("(r %s)", g.typ(t.Result))
 	}
-	g.functionBody(n.FunctionDefinition.FunctionBody, n.FunctionDefinition.LocalVariables(), void, escParams, t.Result)
+	g.functionBody(n.FunctionDefinition.FunctionBody, n.FunctionDefinition.LocalVariables(), void, escParams)
 	g.w("\n")
 }
 
-func (g *gen) functionBody(n *c99.FunctionBody, vars []*c99.Declarator, void bool, escParams []*c99.Declarator, rt c99.Type) {
+func (g *gen) functionBody(n *c99.FunctionBody, vars []*c99.Declarator, void bool, escParams []*c99.Declarator) {
 	if vars == nil {
 		vars = []*c99.Declarator{}
 	}
 	f := false
-	g.compoundStmt(n.CompoundStmt, vars, nil, !void, nil, nil, escParams, rt, &f)
+	g.compoundStmt(n.CompoundStmt, vars, nil, !void, nil, nil, escParams, &f)
 }
 
 func (g *gen) mangleDeclarator(n *c99.Declarator) string {

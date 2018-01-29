@@ -27,7 +27,7 @@ func (g *gen) initializer(d *c99.Declarator) {
 
 	switch x := n.InitializerList.Operand.Value.(type) {
 	case *ir.CompositeValue:
-		switch y := underlyingType(d.Type).(type) {
+		switch y := c99.UnderlyingType(d.Type).(type) {
 		case *c99.ArrayType:
 			b := make([]byte, g.model.Sizeof(d.Type))
 			g.arrayCompositeValue(b, x, y.Item)

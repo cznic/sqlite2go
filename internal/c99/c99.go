@@ -204,7 +204,13 @@ func (c *context) popScope() (old, new *Scope) {
 func (c *context) ptrDiff() Type {
 	d, ok := c.scope.LookupIdent(idPtrdiffT).(*Declarator)
 	if !ok {
-		return LongLong
+		psz := c.model[Ptr].Size
+		for _, v := range []TypeKind{Int, Long, LongLong} {
+			if c.model[v].Size >= psz {
+				return v
+			}
+		}
+		panic("internal error")
 	}
 
 	if !d.DeclarationSpecifier.IsTypedef() {
@@ -218,7 +224,13 @@ func (c *context) sizeof(t Type) Operand {
 	sz := c.model.Sizeof(t)
 	d, ok := c.scope.LookupIdent(idSizeT).(*Declarator)
 	if !ok {
-		return newIntConst(c, nopos, uint64(sz), UInt, ULong, ULongLong)
+		psz := c.model[Ptr].Size
+		for _, v := range []TypeKind{UInt, ULong, ULongLong} {
+			if c.model[v].Size >= psz {
+				return newIntConst(c, nopos, uint64(sz), v)
+			}
+		}
+		panic("internal error")
 	}
 
 	if !d.DeclarationSpecifier.IsTypedef() {

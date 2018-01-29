@@ -262,6 +262,7 @@ func (t TypeKind) Equal(u Type) bool {
 			Int,
 			Long,
 			Short,
+			ULong,
 			UShort,
 			Void:
 
@@ -1285,9 +1286,14 @@ func (t *UnionType) Equal(u Type) bool {
 	switch x := u.(type) {
 	case *NamedType:
 		return t.Equal(x.Type)
+	case *PointerType:
+		return false
 	case TypeKind:
 		switch x {
-		case Void:
+		case
+			Int,
+			Void:
+
 			return false
 		default:
 			panic(x)
@@ -1373,6 +1379,65 @@ func AdjustedParameterType(t Type) Type {
 			}
 		default:
 			panic(x)
+		}
+	}
+}
+
+// UnderlyingType returns the concrete type of t, if posible.
+func UnderlyingType(t Type) Type {
+	for {
+		switch x := t.(type) {
+		case
+			*ArrayType,
+			*EnumType,
+			*FunctionType,
+			*PointerType,
+			*StructType,
+			*UnionType:
+
+			return x
+		case *NamedType:
+			if x.Type == nil {
+				return x
+			}
+
+			t = x.Type
+		case *TaggedEnumType:
+			if x.Type == nil {
+				return x
+			}
+
+			t = x.Type
+		case *TaggedStructType:
+			if x.Type == nil {
+				return x
+			}
+
+			t = x.Type
+		case TypeKind:
+			switch x {
+			case
+				Char,
+				Double,
+				Float,
+				Int,
+				Long,
+				LongLong,
+				SChar,
+				Short,
+				UChar,
+				UInt,
+				ULong,
+				ULongLong,
+				UShort,
+				Void:
+
+				return x
+			default:
+				panic(fmt.Errorf("%v", x))
+			}
+		default:
+			panic(fmt.Errorf("%T", x))
 		}
 	}
 }

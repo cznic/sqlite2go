@@ -54,7 +54,9 @@ type gen struct {
 	nums                map[*c99.Declarator]int
 	out                 io.Writer
 	out0                bytes.Buffer
+	postDecTypes        map[string]int
 	postIncTypes        map[string]int
+	preDecTypes         map[string]int
 	preIncTypes         map[string]int
 	producedDeclarators map[*c99.Declarator]struct{}
 	producedEnumTags    map[int]struct{}
@@ -67,9 +69,11 @@ type gen struct {
 	tsBits              []byte
 	units               map[*c99.Declarator]int
 
-	needNZ64    bool //TODO -> crt
 	needNZ32    bool //TODO -> crt
+	needNZ64    bool //TODO -> crt
+	needPostDec bool
 	needPostInc bool
+	needPreDec  bool
 	needPreInc  bool
 }
 
@@ -82,7 +86,9 @@ func newGen(out io.Writer, in []*c99.TranslationUnit) *gen {
 		nums:                map[*c99.Declarator]int{},
 		assignTypes:         map[string]int{},
 		out:                 out,
+		postDecTypes:        map[string]int{},
 		postIncTypes:        map[string]int{},
+		preDecTypes:         map[string]int{},
 		preIncTypes:         map[string]int{},
 		producedDeclarators: map[*c99.Declarator]struct{}{},
 		producedEnumTags:    map[int]struct{}{},
@@ -238,8 +244,14 @@ func init() {
 	if g.needPostInc {
 		g.w("\nfunc postinc(p *uintptr, n uintptr) uintptr { r := *p; *p += n; return r }")
 	}
+	if g.needPostDec {
+		g.w("\nfunc postdec(p *uintptr, n uintptr) uintptr { r := *p; *p -= n; return r }")
+	}
 	if g.needPreInc {
 		g.w("\nfunc preinc(p *uintptr, n uintptr) uintptr { *p += n; return *p }")
+	}
+	if g.needPreDec {
+		g.w("\nfunc predec(p *uintptr, n uintptr) uintptr { *p -= n; return *p }")
 	}
 	var a []string
 	for k := range g.assignTypes {
@@ -256,6 +268,22 @@ func init() {
 	sort.Strings(a)
 	for _, k := range a {
 		g.w("\nfunc postinc%d(n *%[2]s) %[2]s { r := *n; *n++; return r }", g.postIncTypes[k], k)
+	}
+	a = a[:0]
+	for k := range g.preDecTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		g.w("\nfunc predec%d(n *%[2]s) %[2]s { *n--; return *n }", g.preDecTypes[k], k)
+	}
+	a = a[:0]
+	for k := range g.postDecTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		g.w("\nfunc postdec%d(n *%[2]s) %[2]s { r := *n; *n--; return r }", g.postDecTypes[k], k)
 	}
 	a = a[:0]
 	for k := range g.preIncTypes {
@@ -371,7 +399,7 @@ func (g gen) escaped(n *c99.Declarator) bool {
 		return true
 	}
 
-	switch underlyingType(n.Type).(type) {
+	switch c99.UnderlyingType(n.Type).(type) {
 	case *c99.ArrayType:
 		return true
 	case
