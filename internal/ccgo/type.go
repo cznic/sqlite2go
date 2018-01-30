@@ -98,7 +98,7 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
 			todo("", x)
 		}
 	case *c99.UnionType:
-		fmt.Fprintf(&buf, "struct{[%d]byte; [0]struct{", g.model.Sizeof(x))
+		fmt.Fprintf(&buf, "struct{X [%d]byte; _ [0]struct{", g.model.Sizeof(x))
 		for _, v := range x.Fields {
 			fmt.Fprintf(&buf, "%s ", mangleIdent(v.Name, true))
 			g.typ0(&buf, v.Type)

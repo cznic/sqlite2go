@@ -810,7 +810,12 @@ func (o Operand) rsh(ctx *context, p Operand) (r Operand) { // [0]6.5.7
 
 	switch x := o.Value.(type) {
 	case *ir.Int64Value:
-		return Operand{Type: o.Type, Value: &ir.Int64Value{Value: x.Value >> uint64(p.Value.(*ir.Int64Value).Value)}}.normalize(ctx.model)
+		switch {
+		case o.isSigned():
+			return Operand{Type: o.Type, Value: &ir.Int64Value{Value: x.Value >> uint64(p.Value.(*ir.Int64Value).Value)}}.normalize(ctx.model)
+		default:
+			return Operand{Type: o.Type, Value: &ir.Int64Value{Value: int64(uint64(x.Value) >> uint64(p.Value.(*ir.Int64Value).Value))}}.normalize(ctx.model)
+		}
 	default:
 		panic(fmt.Errorf("TODO %T", x))
 	}

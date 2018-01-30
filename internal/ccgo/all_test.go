@@ -110,7 +110,6 @@ func TestOpt(t *testing.T) {
 }
 
 func testTCC(t *testing.T, pth string) {
-	//dbg("", pth)
 	testFn = pth
 	fset := token.NewFileSet()
 	predefSource := c99.NewStringSource("<predefine>", fmt.Sprintf(inject, runtime.GOARCH, runtime.GOOS))
@@ -322,7 +321,7 @@ func TestGCC(t *testing.T) {
 		"pr36321.c":         {}, // alloca + depends on alloca addresses difference
 		"pr60003.c":         {}, //TODO __builtin_setjmp
 	})
-	// compiles: 462, builds: 350, runs: 350
+	// compiles: 494, builds: 405, runs: 405
 }
 
 func testFile(t *testing.T, pth string, compiles, builds, runs *int) {

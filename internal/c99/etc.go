@@ -84,3 +84,22 @@ func printError(w io.Writer, pref string, err error) {
 		fmt.Fprintf(w, "%s%v\n", pref, err)
 	}
 }
+
+func isConst(n *Expr) bool {
+	switch n.Case {
+	case
+		ExprSizeofExpr,
+		ExprSizeofType,
+		ExprChar,
+		ExprFloat,
+		ExprIdent,
+		ExprInt,
+		ExprLChar,
+		ExprLString,
+		ExprString:
+
+		return true
+	default:
+		return false
+	}
+}

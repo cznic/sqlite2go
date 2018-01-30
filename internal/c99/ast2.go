@@ -838,7 +838,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			n.Operand = lhs.add(ctx, rhs)
 		case lhs.isPointerType() && rhs.isIntegerType():
 			n.Operand = lhs
-			if a := lhs.Address; a != nil && rhs.Value != nil {
+			if a := lhs.Address; a != nil && rhs.Value != nil && isConst(n.Expr2) {
 				b := *a
 				b.Offset += uintptr(ctx.model.Sizeof(pitem(lhs.Type)) * rhs.Value.(*ir.Int64Value).Value)
 				n.Operand.Address = &b
@@ -1205,9 +1205,11 @@ func (n *Expr) eval(ctx *context, arr2ptr bool) Operand {
 			n.Operand = newIntConst(ctx, n, v, Int, UInt, Long, ULong, LongLong, ULongLong)
 		case suff == "L" && decadic:
 			n.Operand = newIntConst(ctx, n, v, Long, LongLong)
-		case suff == "U" && !decadic:
-			n.Operand = newIntConst(ctx, n, v, Int, UInt, ULong, ULongLong)
-		case suff == "UL" && decadic:
+		case suff == "L" && !decadic:
+			n.Operand = newIntConst(ctx, n, v, Int, UInt, Long, ULong, LongLong, ULongLong)
+		case suff == "U":
+			n.Operand = newIntConst(ctx, n, v, UInt, ULong, ULongLong)
+		case suff == "UL":
 			n.Operand = newIntConst(ctx, n, v, ULong, ULongLong)
 		case suff == "ULL":
 			n.Operand = newIntConst(ctx, n, v, ULongLong)

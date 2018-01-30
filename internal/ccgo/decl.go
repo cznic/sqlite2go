@@ -114,7 +114,7 @@ func (g *gen) tld(n *c99.Declarator) {
 			*c99.PointerType,
 			*c99.StructType:
 
-			g.w("\nvar %s = bss + %d\n", g.mangleDeclarator(n), g.allocBSS(n.Type))
+			g.w("\n\nvar %s = bss + %d\n", g.mangleDeclarator(n), g.allocBSS(n.Type))
 		case c99.TypeKind:
 			switch x {
 			case
@@ -127,7 +127,7 @@ func (g *gen) tld(n *c99.Declarator) {
 				c99.UInt,
 				c99.UShort:
 
-				g.w("\nvar %s %s\n", g.mangleDeclarator(n), g.typ(n.Type))
+				g.w("\n\nvar %s %s\n", g.mangleDeclarator(n), g.typ(n.Type))
 			default:
 				todo("%v: %v", g.position(n), x)
 			}
@@ -158,7 +158,12 @@ func (g *gen) escapedTLD(n *c99.Declarator) {
 		*c99.ArrayType,
 		*c99.StructType:
 
-		g.w("\nvar %s = ds + %d\n", g.mangleDeclarator(n), g.allocDS(n.Type, n.Initializer))
+		g.w("\n\nvar %s = ds + %d\n", g.mangleDeclarator(n), g.allocDS(n.Type, n.Initializer))
+	case c99.TypeKind:
+		switch x {
+		default:
+			todo("", g.position(n), x)
+		}
 	default:
 		todo("%v: %T", g.position(n), x)
 	}
@@ -272,7 +277,7 @@ func (g *gen) renderInitializerExpr(t c99.Type, n *c99.Expr) (ds, dsBits, tsBits
 				return ds, dsBits, tsBits
 			}
 
-			todo("%v: %T", g.position0(n))
+			todo("", g.position0(n))
 		case c99.TypeKind:
 			switch y {
 			case c99.Char:

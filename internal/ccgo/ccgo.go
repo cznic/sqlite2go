@@ -37,6 +37,7 @@ func Package(w io.Writer, in []*c99.TranslationUnit) error {
 }
 
 type gen struct {
+	addTypes            map[string]int
 	assignTypes         map[string]int
 	bss                 int64
 	ds                  []byte
@@ -64,10 +65,12 @@ type gen struct {
 	producedStructTags  map[int]struct{}
 	queue               list.List
 	strings             map[int]int64
+	subTypes            map[string]int
 	text                []int
 	ts                  int64
 	tsBits              []byte
 	units               map[*c99.Declarator]int
+	xorTypes            map[string]int
 
 	needNZ32    bool //TODO -> crt
 	needNZ64    bool //TODO -> crt
@@ -79,12 +82,13 @@ type gen struct {
 
 func newGen(out io.Writer, in []*c99.TranslationUnit) *gen {
 	return &gen{
+		addTypes:            map[string]int{},
+		assignTypes:         map[string]int{},
 		externs:             map[int]*c99.Declarator{},
 		in:                  in,
 		internalNames:       map[int]struct{}{},
 		internals:           make([]map[int]*c99.Declarator, len(in)),
 		nums:                map[*c99.Declarator]int{},
-		assignTypes:         map[string]int{},
 		out:                 out,
 		postDecTypes:        map[string]int{},
 		postIncTypes:        map[string]int{},
@@ -95,7 +99,9 @@ func newGen(out io.Writer, in []*c99.TranslationUnit) *gen {
 		producedNamedTypes:  map[int]struct{}{},
 		producedStructTags:  map[int]struct{}{},
 		strings:             map[int]int64{},
+		subTypes:            map[string]int{},
 		units:               map[*c99.Declarator]int{},
+		xorTypes:            map[string]int{},
 	}
 }
 
@@ -292,6 +298,30 @@ func init() {
 	sort.Strings(a)
 	for _, k := range a {
 		g.w("\nfunc preinc%d(n *%[2]s) %[2]s { *n++; return *n }", g.preIncTypes[k], k)
+	}
+	a = a[:0]
+	for k := range g.xorTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		g.w("\nfunc xor%d(n *%[2]s, m %[2]s) %[2]s { *n ^= m; return *n }", g.xorTypes[k], k)
+	}
+	a = a[:0]
+	for k := range g.subTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		g.w("\nfunc sub%d(n *%[2]s, m %[2]s) %[2]s { *n -= m; return *n }", g.subTypes[k], k)
+	}
+	a = a[:0]
+	for k := range g.addTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		g.w("\nfunc add%d(n *%[2]s, m %[2]s) %[2]s { *n += m; return *n }", g.addTypes[k], k)
 	}
 	return newOpt().do(g.out, &g.out0, testFn, g.needBool2int)
 }

@@ -33,8 +33,22 @@ func (g *gen) initializer(d *c99.Declarator) {
 			g.arrayCompositeValue(b, x, y.Item)
 			g.w("\n%sCopy(%s, ts+%d, %d)", crt, g.mangleDeclarator(d), g.allocString(dict.ID(b)), len(b))
 		case *c99.StructType:
+			for _, v := range g.model.Layout(y) {
+				if v.Bits != 0 {
+					todo("bit field")
+				}
+			}
 			b := make([]byte, g.model.Sizeof(d.Type))
 			g.structCompositeValue(b, x, y)
+			switch {
+			case g.escaped(d):
+				g.w("\n%sCopy(%s, ts+%d, %d)", crt, g.mangleDeclarator(d), g.allocString(dict.ID(b)), len(b))
+			default:
+				g.w("\n%s = *(*%s)(unsafe.Pointer(ts+%d))", g.mangleDeclarator(d), g.typ(d.Type), g.allocString(dict.ID(b)))
+			}
+		case *c99.UnionType:
+			b := make([]byte, g.model.Sizeof(d.Type))
+			g.unionCompositeValue(b, x, y)
 			switch {
 			case g.escaped(d):
 				g.w("\n%sCopy(%s, ts+%d, %d)", crt, g.mangleDeclarator(d), g.allocString(dict.ID(b)), len(b))
@@ -69,6 +83,13 @@ func (g *gen) arrayCompositeValueItem(n []byte, op c99.Operand, itemSz int64) {
 	switch x := op.Type.(type) {
 	case *c99.ArrayType:
 		g.arrayCompositeValue(n, op.Value.(*ir.CompositeValue), x.Item)
+	case *c99.StructType:
+		for _, v := range g.model.Layout(x) {
+			if v.Bits != 0 {
+				todo("bit field")
+			}
+		}
+		todo("")
 	case c99.TypeKind:
 		switch x {
 		case c99.Int:
@@ -119,5 +140,22 @@ func (g *gen) structCompositeValueItem(n []byte, op c99.Operand) {
 		}
 	default:
 		todo("%T", x)
+	}
+}
+
+func (g *gen) unionCompositeValue(b []byte, v *ir.CompositeValue, t *c99.UnionType) {
+	layout := g.model.Layout(t)
+	if len(v.Values) > 1 {
+		todo("", len(v.Values))
+	}
+	for _, v := range v.Values {
+		switch x := v.(type) {
+		case c99.Operand:
+			lo := layout[0].Offset
+			hi := lo + layout[0].Size
+			g.structCompositeValueItem(b[lo:hi:hi], x)
+		default:
+			todo("%T", x)
+		}
 	}
 }

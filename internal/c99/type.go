@@ -1292,6 +1292,7 @@ func (t *UnionType) Equal(u Type) bool {
 		switch x {
 		case
 			Int,
+			ULongLong,
 			Void:
 
 			return false
