@@ -204,6 +204,15 @@ func (g *gen) typ0(buf *bytes.Buffer, t c99.Type) {
 			default:
 				todo("", x)
 			}
+		case *c99.UnionType:
+			fmt.Fprintf(buf, "struct{X [%d]byte; _ [0]struct{", g.model.Sizeof(x))
+			for _, v := range x.Fields {
+				fmt.Fprintf(buf, "%s ", mangleIdent(v.Name, true))
+				g.typ0(buf, v.Type)
+				buf.WriteByte(';')
+			}
+			buf.WriteString("}}")
+			return
 		default:
 			todo("%T(%v)", x, x)
 		}

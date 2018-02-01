@@ -95,10 +95,11 @@ func (g *gen) initializer(d *c99.Declarator) { // non TLD
 
 	switch {
 	case g.escaped(d):
-		g.w("\n*(*%s)(unsafe.Pointer(%s)) = ", g.typ(d.Type), g.mangleDeclarator(d))
+		g.w("\n*(*%s)(unsafe.Pointer(%s))", g.typ(d.Type), g.mangleDeclarator(d))
 	default:
-		todo("", g.position(d))
+		g.w("\n%s", g.mangleDeclarator(d))
 	}
+	g.w(" = ")
 	g.literal(d.Type, n)
 }
 
@@ -132,18 +133,13 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 		}
 		g.w("}")
 	case *c99.PointerType:
-		if x.Item.Kind() == c99.Function {
-			switch {
-			case n.Expr.Operand.IsZero():
-				g.w("nil")
-			default:
-				g.value(n.Expr)
-			}
+		if n.Expr.Operand.IsZero() || n.Expr.Operand.Address == c99.Null {
+			g.w("nil")
 			return
 		}
 
-		if n.Expr.Operand.IsZero() || n.Expr.Operand.Address == c99.Null {
-			g.w("0")
+		if x.Item.Kind() == c99.Function {
+			g.value(n.Expr)
 			return
 		}
 
@@ -151,6 +147,11 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 		g.value(n.Expr)
 		g.w("))")
 	case *c99.StructType:
+		if n.Expr != nil {
+			g.value(n.Expr)
+			return
+		}
+
 		g.w("%s{", g.typ(t))
 		if !g.isZeroInitializer(n) {
 			layout := g.model.Layout(t)
@@ -239,17 +240,7 @@ func (g *gen) renderInitializer(b []byte, t c99.Type, n *c99.Initializer) {
 			fld++
 		}
 	case c99.TypeKind:
-		switch x {
-		case
-			c99.Char,
-			c99.Int,
-			c99.Long,
-			c99.SChar,
-			c99.UChar,
-			c99.UInt,
-			c99.ULongLong,
-			c99.UShort:
-
+		if x.IsIntegerType() {
 			v := n.Expr.Operand.Value.(*ir.Int64Value).Value
 			switch sz := g.model[x].Size; sz {
 			case 1:
@@ -263,10 +254,41 @@ func (g *gen) renderInitializer(b []byte, t c99.Type, n *c99.Initializer) {
 			default:
 				todo("", g.position0(n), sz)
 			}
+			return
+		}
+
+		switch x {
+		case c99.Float:
+			*(*float32)(unsafe.Pointer(&b[0])) = float32(n.Expr.Operand.Value.(*ir.Float64Value).Value)
 		case c99.Double:
 			*(*float64)(unsafe.Pointer(&b[0])) = n.Expr.Operand.Value.(*ir.Float64Value).Value
 		default:
 			todo("", g.position0(n), x)
+		}
+	case *c99.UnionType:
+		if n.Expr != nil {
+			todo("", g.position0(n))
+		}
+
+		layout := g.model.Layout(t)
+		fld := 0
+		fields := x.Fields
+		i := 0
+		for l := n.InitializerList; l != nil; l = l.InitializerList {
+			if i != 0 {
+				todo("%v", g.position0(n))
+			}
+			if l.Designation != nil {
+				todo("", g.position0(n))
+			}
+			if layout[fld].Bits != 0 {
+				todo("%v: bit field", g.position0(n))
+			}
+			lo := layout[fld].Offset
+			hi := lo + layout[fld].Size
+			g.renderInitializer(b[lo:hi:hi], fields[fld].Type, l.Initializer)
+			fld++
+			i++
 		}
 	default:
 		todo("%v: %T", g.position0(n), x)

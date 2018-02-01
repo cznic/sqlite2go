@@ -345,7 +345,7 @@ func (g *gen) value(n *c99.Expr) {
 			d := x.Field(n.Token2.Val)
 			layout := g.model.Layout(x)
 			if bits := layout[d.Field].Bits; bits != 0 {
-				todo("", g.position0(n), n.Operand)
+				todo("bit field %v %v", g.position0(n), n.Operand)
 			}
 			switch {
 			case d.Type.Kind() == c99.Array:
@@ -365,7 +365,7 @@ func (g *gen) value(n *c99.Expr) {
 			}
 			switch {
 			case d.Type.Kind() == c99.Array:
-				todo("", g.position0(n))
+				g.uintptr(n.Expr)
 			default:
 				g.w("*(*%s)(unsafe.Pointer(", g.typ(n.Operand.Type))
 				g.uintptr(n.Expr)
@@ -380,7 +380,7 @@ func (g *gen) value(n *c99.Expr) {
 			layout := g.model.Layout(x)
 			f := x.Field(n.Token2.Val)
 			if bits := layout[f.Field].Bits; bits != 0 {
-				todo("", g.position0(n), n.Operand)
+				todo("bit field %v: %v", g.position0(n), n.Operand)
 			}
 			switch {
 			case f.Type.Kind() == c99.Array:
@@ -470,25 +470,6 @@ func (g *gen) value(n *c99.Expr) {
 		g.w(" != 0) && (")
 		g.value(n.Expr2)
 		g.w(" != 0))")
-	case c99.ExprPostInc: // Expr "++"
-		switch x := c99.UnderlyingType(n.Operand.Type).(type) {
-		case *c99.PointerType:
-			g.needPostInc = true
-			g.w(" postinc(")
-			g.lvalue(n.Expr)
-			g.w(", %d)", g.model.Sizeof(x.Item))
-		case c99.TypeKind:
-			if x.IsArithmeticType() {
-				g.w(" postinc%d(", g.registerType(g.postIncTypes, x))
-				g.lvalue(n.Expr)
-				g.w(")")
-				return
-			}
-
-			todo("%v: %v", g.position0(n), x)
-		default:
-			todo("%v: %T", g.position0(n), x)
-		}
 	case c99.ExprCond: // Expr '?' ExprList ':' Expr
 		t := n.Operand.Type
 		t0 := t
@@ -529,6 +510,25 @@ func (g *gen) value(n *c99.Expr) {
 		default:
 			todo("%v: %T", g.position0(n), x)
 		}
+	case c99.ExprPostInc: // Expr "++"
+		switch x := c99.UnderlyingType(n.Operand.Type).(type) {
+		case *c99.PointerType:
+			g.needPostInc = true
+			g.w(" postinc(")
+			g.lvalue(n.Expr)
+			g.w(", %d)", g.model.Sizeof(x.Item))
+		case c99.TypeKind:
+			if x.IsArithmeticType() {
+				g.w(" postinc%d(", g.registerType(g.postIncTypes, x))
+				g.lvalue(n.Expr)
+				g.w(")")
+				return
+			}
+
+			todo("%v: %v", g.position0(n), x)
+		default:
+			todo("%v: %T", g.position0(n), x)
+		}
 	case c99.ExprPreDec: // "--" Expr
 		switch x := c99.UnderlyingType(n.Operand.Type).(type) {
 		case *c99.PointerType:
@@ -539,6 +539,24 @@ func (g *gen) value(n *c99.Expr) {
 		case c99.TypeKind:
 			if x.IsArithmeticType() {
 				g.w(" predec%d(", g.registerType(g.preDecTypes, n.Operand.Type))
+				g.lvalue(n.Expr)
+				g.w(")")
+				return
+			}
+			todo("%v: %v", g.position0(n), x)
+		default:
+			todo("%v: %T", g.position0(n), x)
+		}
+	case c99.ExprPostDec: // Expr "--"
+		switch x := c99.UnderlyingType(n.Operand.Type).(type) {
+		case *c99.PointerType:
+			g.needPostDec = true
+			g.w(" postdec(")
+			g.lvalue(n.Expr)
+			g.w(", %d)", g.model.Sizeof(x.Item))
+		case c99.TypeKind:
+			if x.IsArithmeticType() {
+				g.w(" postdec%d(", g.registerType(g.postDecTypes, x))
 				g.lvalue(n.Expr)
 				g.w(")")
 				return
@@ -568,6 +586,88 @@ func (g *gen) value(n *c99.Expr) {
 	case c99.ExprCpl: // '~' Expr
 		g.w("^ ")
 		g.value(n.Expr)
+	case c99.ExprAddAssign: // Expr "+=" Expr
+		switch x := c99.UnderlyingType(n.Expr.Operand.Type).(type) {
+		case *c99.PointerType:
+			g.needPreInc = true
+			g.w("preinc(")
+			g.lvalue(n.Expr)
+			g.w(", %d*uintptr(", g.model.Sizeof(x.Item))
+			g.value(n.Expr2)
+			g.w("))")
+		case c99.TypeKind:
+			if x.IsArithmeticType() {
+				g.w(" add%d(", g.registerType(g.addTypes, x))
+				g.lvalue(n.Expr)
+				g.w(", ")
+				g.convert(n.Expr2, x)
+				g.w(")")
+				return
+			}
+			todo("", g.position0(n), x)
+		default:
+			todo("%v: %T", g.position0(n), x)
+		}
+	case c99.ExprSubAssign: // Expr "-=" Expr
+		switch x := c99.UnderlyingType(n.Expr.Operand.Type).(type) {
+		case c99.TypeKind:
+			if x.IsArithmeticType() {
+				g.w(" sub%d(", g.registerType(g.subTypes, x))
+				g.lvalue(n.Expr)
+				g.w(", ")
+				g.convert(n.Expr2, x)
+				g.w(")")
+				return
+			}
+			todo("", g.position0(n), x)
+		default:
+			todo("%v: %T", g.position0(n), x)
+		}
+	case c99.ExprXorAssign: // Expr "^=" Expr
+		switch x := c99.UnderlyingType(n.Expr.Operand.Type).(type) {
+		case c99.TypeKind:
+			if x.IsArithmeticType() {
+				g.w(" xor%d(", g.registerType(g.xorTypes, x))
+				g.lvalue(n.Expr)
+				g.w(", ")
+				g.convert(n.Expr2, n.Operand.Type)
+				g.w(")")
+				return
+			}
+			todo("", g.position0(n), x)
+		default:
+			todo("%v: %T", g.position0(n), x)
+		}
+	case c99.ExprPExprList: // '(' ExprList ')'
+		var e *c99.Expr
+		i := 0
+		for l := n.ExprList; l != nil; l = l.ExprList {
+			if !g.voidCanIgnore(l.Expr) {
+				e = l.Expr
+				i++
+			}
+		}
+		_ = e //TODO-
+		switch i {
+		//TODO string-opt-5.c
+		//TODO case 0:
+		//TODO 	panic("internal error")
+		//TODO case 1:
+		//TODO 	g.value(e)
+		default:
+			g.w("func() %v {", g.typ(n.Operand.Type))
+			for l := n.ExprList; l != nil; l = l.ExprList {
+				switch {
+				case l.ExprList == nil:
+					g.w("return ")
+					g.convert(l.Expr, n.Operand.Type)
+				default:
+					g.void(l.Expr)
+				}
+				g.w(";")
+			}
+			g.w("}()")
+		}
 	default:
 		todo("", g.position0(n), n.Case, n.Operand) // value
 	}
@@ -637,13 +737,15 @@ func (g *gen) uintptr(n *c99.Expr) {
 			if bits := layout[f.Field].Bits; bits != 0 {
 				todo("", g.position0(n), n.Operand)
 			}
-			switch {
-			case f.Type.Kind() == c99.Array:
-				todo("", g.position0(n))
-			default:
-				g.uintptr(n.Expr)
-				g.w("+%d", layout[f.Field].Offset)
+			g.uintptr(n.Expr)
+			g.w("+%d", layout[f.Field].Offset)
+		case *c99.UnionType:
+			f := x.Field(n.Token2.Val)
+			layout := g.model.Layout(x)
+			if bits := layout[f.Field].Bits; bits != 0 {
+				todo("", g.position0(n), n.Operand)
 			}
+			g.uintptr(n.Expr)
 		default:
 			todo("%v: %T", g.position0(n), x)
 		}
@@ -759,6 +861,7 @@ func (g *gen) voidCanIgnore(n *c99.Expr) bool {
 	case c99.ExprLOr: // Expr "||" Expr
 		return n.Operand.Value != nil && g.voidCanIgnore(n.Expr)
 	case
+		c99.ExprAddrof,     // '&' Expr
 		c99.ExprCpl,        // '~' Expr
 		c99.ExprUnaryMinus, // '-' Expr
 		c99.ExprUnaryPlus:  // '+' Expr
