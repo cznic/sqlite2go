@@ -317,11 +317,14 @@ func TestGCC(t *testing.T) {
 	testDir(t, "../c99/testdata/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/*.c", map[string]struct{}{
 		"20021127-1.c":      {}, // non standard GCC behavior
 		"20070824-1.c":      {}, // alloca
+		"920711-1.c":        {}, //TODO
 		"built-in-setjmp.c": {}, // alloca
+		"pr34456.c":         {}, //TODO
 		"pr36321.c":         {}, // alloca + depends on alloca addresses difference
+		"pr45034.c":         {}, //TODO
 		"pr60003.c":         {}, //TODO __builtin_setjmp
 	})
-	// compiles: 494, builds: 405, runs: 405
+	// compiles: 493, builds: 423, runs: 421
 }
 
 func testFile(t *testing.T, pth string, compiles, builds, runs *int) {

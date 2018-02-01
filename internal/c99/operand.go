@@ -546,6 +546,8 @@ func (o Operand) IsNonzero() bool {
 		return false
 	case *ir.Int64Value:
 		return x.Value != 0
+	case *ir.StringValue:
+		return true
 	default:
 		panic(fmt.Errorf("TODO %T", x))
 	}

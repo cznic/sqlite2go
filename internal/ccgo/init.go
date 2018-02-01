@@ -11,7 +11,63 @@ import (
 	"github.com/cznic/sqlite2go/internal/c99"
 )
 
-func (g *gen) initializer(d *c99.Declarator) {
+func (g *gen) isZeroInitializer(n *c99.Initializer) bool {
+	if n == nil {
+		return true
+	}
+
+	if n.Case == c99.InitializerExpr { // Expr
+		return n.Expr.Operand.IsZero()
+	}
+
+	// '{' InitializerList CommaOpt '}'
+	for l := n.InitializerList; l != nil; l = l.InitializerList {
+		if !g.isZeroInitializer(l.Initializer) {
+			return false
+		}
+	}
+	return true
+}
+
+func (g *gen) isConstInitializer(n *c99.Initializer) bool {
+	if n.Case == c99.InitializerCompLit { // '{' InitializerList CommaOpt '}'
+		for l := n.InitializerList; l != nil; l = l.InitializerList {
+			if !g.isConstInitializer(l.Initializer) {
+				return false
+			}
+		}
+		return true
+	}
+
+	// Expr
+	if n.Expr.Operand.Value != nil && g.voidCanIgnore(n.Expr) {
+		_, ok := n.Expr.Operand.Value.(*ir.StringValue)
+		return !ok
+	}
+
+	return false
+}
+
+func (g *gen) allocBSS(t c99.Type) int64 {
+	g.bss = roundup(g.bss, int64(g.model.Alignof(t)))
+	r := g.bss
+	g.bss += g.model.Sizeof(t)
+	return r
+}
+
+func (g *gen) allocDS(t c99.Type, n *c99.Initializer) int64 {
+	up := roundup(int64(len(g.ds)), int64(g.model.Alignof(t)))
+	if n := up - int64(len(g.ds)); n != 0 {
+		g.ds = append(g.ds, make([]byte, n)...)
+	}
+	r := len(g.ds)
+	b := make([]byte, g.model.Sizeof(t))
+	g.renderInitializer(b, t, n)
+	g.ds = append(g.ds, b...)
+	return int64(r)
+}
+
+func (g *gen) initializer(d *c99.Declarator) { // non TLD
 	n := d.Initializer
 	if n.Case == c99.InitializerExpr { // Expr
 		switch {
@@ -25,137 +81,194 @@ func (g *gen) initializer(d *c99.Declarator) {
 		return
 	}
 
-	switch x := n.InitializerList.Operand.Value.(type) {
-	case *ir.CompositeValue:
-		switch y := c99.UnderlyingType(d.Type).(type) {
-		case *c99.ArrayType:
-			b := make([]byte, g.model.Sizeof(d.Type))
-			g.arrayCompositeValue(b, x, y.Item)
+	if g.isConstInitializer(n) {
+		b := make([]byte, g.model.Sizeof(d.Type))
+		g.renderInitializer(b, d.Type, n)
+		switch {
+		case g.escaped(d):
 			g.w("\n%sCopy(%s, ts+%d, %d)", crt, g.mangleDeclarator(d), g.allocString(dict.ID(b)), len(b))
-		case *c99.StructType:
-			for _, v := range g.model.Layout(y) {
-				if v.Bits != 0 {
-					todo("bit field")
-				}
-			}
-			b := make([]byte, g.model.Sizeof(d.Type))
-			g.structCompositeValue(b, x, y)
-			switch {
-			case g.escaped(d):
-				g.w("\n%sCopy(%s, ts+%d, %d)", crt, g.mangleDeclarator(d), g.allocString(dict.ID(b)), len(b))
-			default:
-				g.w("\n%s = *(*%s)(unsafe.Pointer(ts+%d))", g.mangleDeclarator(d), g.typ(d.Type), g.allocString(dict.ID(b)))
-			}
-		case *c99.UnionType:
-			b := make([]byte, g.model.Sizeof(d.Type))
-			g.unionCompositeValue(b, x, y)
-			switch {
-			case g.escaped(d):
-				g.w("\n%sCopy(%s, ts+%d, %d)", crt, g.mangleDeclarator(d), g.allocString(dict.ID(b)), len(b))
-			default:
-				g.w("\n%s = *(*%s)(unsafe.Pointer(ts+%d))", g.mangleDeclarator(d), g.typ(d.Type), g.allocString(dict.ID(b)))
-			}
 		default:
-			todo("%v: %T", g.position(d), y)
+			g.w("\n%s = *(*%s)(unsafe.Pointer(ts+%d))", g.mangleDeclarator(d), g.typ(d.Type), g.allocString(dict.ID(b)))
 		}
+		return
+	}
+
+	switch {
+	case g.escaped(d):
+		g.w("\n*(*%s)(unsafe.Pointer(%s)) = ", g.typ(d.Type), g.mangleDeclarator(d))
 	default:
-		todo("%v: %T", g.position(d), x)
+		todo("", g.position(d))
+	}
+	g.literal(d.Type, n)
+}
+
+func (g *gen) literal(t c99.Type, n *c99.Initializer) {
+	switch x := c99.UnderlyingType(t).(type) {
+	case *c99.ArrayType:
+		if n.Expr != nil {
+			switch x.Item.Kind() {
+			case c99.Char:
+				//g.w("*(*%s)(unsafe.Pointer(ts+%d))", g.typ(t), g.allocString(int(n.Expr.Operand.Value.(*ir.StringValue).StringID)))
+				g.w("*(*%s)(unsafe.Pointer(")
+				g.value(n.Expr)
+				g.w("))", g.typ(t), g.allocString(int(n.Expr.Operand.Value.(*ir.StringValue).StringID)))
+			default:
+				todo("", g.position0(n), x.Item.Kind())
+			}
+			return
+		}
+
+		g.w("%s{", g.typ(t))
+		if !g.isZeroInitializer(n) {
+			index := 0
+			for l := n.InitializerList; l != nil; l = l.InitializerList {
+				if l.Designation != nil {
+					todo("", g.position0(n))
+				}
+				g.literal(x.Item, l.Initializer)
+				g.w(", ")
+				index++
+			}
+		}
+		g.w("}")
+	case *c99.PointerType:
+		if x.Item.Kind() == c99.Function {
+			switch {
+			case n.Expr.Operand.IsZero():
+				g.w("nil")
+			default:
+				g.value(n.Expr)
+			}
+			return
+		}
+
+		if n.Expr.Operand.IsZero() || n.Expr.Operand.Address == c99.Null {
+			g.w("0")
+			return
+		}
+
+		g.w("(*%s)(unsafe.Pointer(", g.ptyp(x.Item, false))
+		g.value(n.Expr)
+		g.w("))")
+	case *c99.StructType:
+		g.w("%s{", g.typ(t))
+		if !g.isZeroInitializer(n) {
+			layout := g.model.Layout(t)
+			fld := 0
+			fields := x.Fields
+			for l := n.InitializerList; l != nil; l = l.InitializerList {
+				if l.Designation != nil {
+					todo("", g.position0(n))
+				}
+				if layout[fld].Bits != 0 {
+					todo("%v: bit field", g.position0(n))
+				}
+				g.literal(fields[fld].Type, l.Initializer)
+				g.w(", ")
+				fld++
+			}
+		}
+		g.w("}")
+	case c99.TypeKind:
+		if x.IsArithmeticType() {
+			g.convert(n.Expr, t)
+			return
+		}
+		todo("", g.position0(n), x)
+	default:
+		todo("%v: %T", g.position0(n), x)
 	}
 }
 
-func (g *gen) arrayCompositeValue(b []byte, v *ir.CompositeValue, item c99.Type) {
-	itemSz := g.model.Sizeof(item)
-	var index int64
-	for _, v := range v.Values {
-		switch x := v.(type) {
-		case c99.Operand:
+func (g *gen) renderInitializer(b []byte, t c99.Type, n *c99.Initializer) {
+	switch x := c99.UnderlyingType(t).(type) {
+	case *c99.ArrayType:
+		if n.Expr != nil {
+			switch y := n.Expr.Operand.Value.(type) {
+			case *ir.StringValue:
+				switch z := x.Item.Kind(); z {
+				case c99.Char:
+					copy(b, dict.S(int(y.StringID)))
+				default:
+					todo("", g.position0(n), z)
+				}
+			default:
+				todo("%v: %T", g.position0(n), y)
+			}
+			return
+		}
+
+		itemSz := g.model.Sizeof(x.Item)
+		var index int64
+		for l := n.InitializerList; l != nil; l = l.InitializerList {
+			if l.Designation != nil {
+				todo("", g.position0(n))
+			}
 			lo := index * itemSz
 			hi := lo + itemSz
-			g.arrayCompositeValueItem(b[lo:hi:hi], x, itemSz)
+			g.renderInitializer(b[lo:hi:hi], x.Item, l.Initializer)
 			index++
-		default:
-			todo("%T", x)
 		}
-	}
-}
-
-func (g *gen) arrayCompositeValueItem(n []byte, op c99.Operand, itemSz int64) {
-	switch x := op.Type.(type) {
-	case *c99.ArrayType:
-		g.arrayCompositeValue(n, op.Value.(*ir.CompositeValue), x.Item)
+	case *c99.PointerType:
+		switch {
+		case n.Expr.Operand.IsNonzero():
+			todo("", g.position0(n))
+		case n.Expr.Operand.IsZero():
+			// nop
+		default:
+			todo("", g.position0(n), n.Expr.Operand)
+		}
 	case *c99.StructType:
-		for _, v := range g.model.Layout(x) {
-			if v.Bits != 0 {
-				todo("bit field")
-			}
+		if n.Expr != nil {
+			todo("", g.position0(n))
 		}
-		todo("")
-	case c99.TypeKind:
-		switch x {
-		case c99.Int:
-			switch itemSz {
-			case 1:
-				*(*int8)(unsafe.Pointer(&n[0])) = int8(op.Value.(*ir.Int64Value).Value)
-			case 4:
-				*(*int32)(unsafe.Pointer(&n[0])) = int32(op.Value.(*ir.Int64Value).Value)
-			case 8:
-				*(*int64)(unsafe.Pointer(&n[0])) = op.Value.(*ir.Int64Value).Value
-			default:
-				todo("", itemSz)
-			}
-		default:
-			todo("", x)
-		}
-	default:
-		todo("%T", x)
-	}
-}
 
-func (g *gen) structCompositeValue(b []byte, v *ir.CompositeValue, t *c99.StructType) {
-	layout := g.model.Layout(t)
-	fld := 0
-	for _, v := range v.Values {
-		switch x := v.(type) {
-		case c99.Operand:
+		layout := g.model.Layout(t)
+		fld := 0
+		fields := x.Fields
+		for l := n.InitializerList; l != nil; l = l.InitializerList {
+			if l.Designation != nil {
+				todo("", g.position0(n))
+			}
+			if layout[fld].Bits != 0 {
+				todo("%v: bit field", g.position0(n))
+			}
 			lo := layout[fld].Offset
 			hi := lo + layout[fld].Size
-			g.structCompositeValueItem(b[lo:hi:hi], x)
+			g.renderInitializer(b[lo:hi:hi], fields[fld].Type, l.Initializer)
 			fld++
-		default:
-			todo("%T", x)
 		}
-	}
-}
-
-func (g *gen) structCompositeValueItem(n []byte, op c99.Operand) {
-	switch x := op.Type.(type) {
-	case *c99.ArrayType:
-		g.arrayCompositeValue(n, op.Value.(*ir.CompositeValue), x.Item)
 	case c99.TypeKind:
 		switch x {
-		case c99.Int:
-			*(*int32)(unsafe.Pointer(&n[0])) = int32(op.Value.(*ir.Int64Value).Value)
+		case
+			c99.Char,
+			c99.Int,
+			c99.Long,
+			c99.SChar,
+			c99.UChar,
+			c99.UInt,
+			c99.ULongLong,
+			c99.UShort:
+
+			v := n.Expr.Operand.Value.(*ir.Int64Value).Value
+			switch sz := g.model[x].Size; sz {
+			case 1:
+				*(*int8)(unsafe.Pointer(&b[0])) = int8(v)
+			case 2:
+				*(*int16)(unsafe.Pointer(&b[0])) = int16(v)
+			case 4:
+				*(*int32)(unsafe.Pointer(&b[0])) = int32(v)
+			case 8:
+				*(*int64)(unsafe.Pointer(&b[0])) = v
+			default:
+				todo("", g.position0(n), sz)
+			}
+		case c99.Double:
+			*(*float64)(unsafe.Pointer(&b[0])) = n.Expr.Operand.Value.(*ir.Float64Value).Value
 		default:
-			todo("", x)
+			todo("", g.position0(n), x)
 		}
 	default:
-		todo("%T", x)
-	}
-}
-
-func (g *gen) unionCompositeValue(b []byte, v *ir.CompositeValue, t *c99.UnionType) {
-	layout := g.model.Layout(t)
-	if len(v.Values) > 1 {
-		todo("", len(v.Values))
-	}
-	for _, v := range v.Values {
-		switch x := v.(type) {
-		case c99.Operand:
-			lo := layout[0].Offset
-			hi := lo + layout[0].Size
-			g.structCompositeValueItem(b[lo:hi:hi], x)
-		default:
-			todo("%T", x)
-		}
+		todo("%v: %T", g.position0(n), x)
 	}
 }

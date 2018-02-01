@@ -115,12 +115,7 @@ func strComment(sv *ir.StringValue) string {
 			todo("")
 		}
 	}
-	switch {
-	case sv.Offset == 0:
-		return fmt.Sprintf("/* %q */", s)
-	default:
-		return fmt.Sprintf("/* %q+%d */", s, sv.Offset)
-	}
+	return fmt.Sprintf("/* %q */", s)
 }
 
 func todo(msg string, args ...interface{}) {

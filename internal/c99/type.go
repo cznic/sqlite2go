@@ -618,7 +618,10 @@ func (t *FunctionType) Equal(u Type) bool {
 			}
 		}
 		return true
-	case *PointerType:
+	case
+		*NamedType,
+		*PointerType:
+
 		return false
 	case TypeKind:
 		switch x {

@@ -156,7 +156,9 @@ func (g *gen) typ0(buf *bytes.Buffer, t c99.Type) {
 				return
 			}
 
-			buf.WriteByte('*')
+			if t.Kind() != c99.Function {
+				buf.WriteByte('*')
+			}
 		case *c99.StructType:
 			buf.WriteString(" struct{")
 			layout := g.model.Layout(x)

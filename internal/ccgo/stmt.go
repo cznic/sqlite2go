@@ -54,19 +54,10 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases ma
 			g.w("\n\t%s = %sMustMalloc(%d) // *%s", g.mangleDeclarator(v), crt, g.model.Sizeof(v.Type), g.ptyp(v.Type, false))
 		}
 		for _, v := range vars {
-			initializer := v.Initializer
-			malloc := "MustMalloc"
-			if initializer != nil && initializer.Case == c99.InitializerExpr {
-				o := initializer.Expr.Operand
-				if o.Type != nil && (o.IsZero() || o.Address == c99.Null) {
-					initializer = nil
-					malloc = "MustCalloc"
-				}
-			}
 			switch {
 			case g.escaped(v):
 				free = append(free, v)
-				g.w("\n\t%s = %s%s(%d) // *%s", g.mangleDeclarator(v), crt, malloc, g.model.Sizeof(v.Type), g.ptyp(v.Type, false))
+				g.w("\n\t%s = %sMustMalloc(%d) // *%s", g.mangleDeclarator(v), crt, g.model.Sizeof(v.Type), g.ptyp(v.Type, false))
 			default:
 				switch {
 				case v.Type.Kind() == c99.Ptr:

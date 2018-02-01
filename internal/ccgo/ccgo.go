@@ -41,7 +41,6 @@ type gen struct {
 	assignTypes         map[string]int
 	bss                 int64
 	ds                  []byte
-	dsBits              []byte
 	errs                scanner.ErrorList
 	externs             map[int]*c99.Declarator
 	fset                *token.FileSet
@@ -68,7 +67,6 @@ type gen struct {
 	subTypes            map[string]int
 	text                []int
 	ts                  int64
-	tsBits              []byte
 	units               map[*c99.Declarator]int
 	xorTypes            map[string]int
 
@@ -188,7 +186,6 @@ func (g *gen) gen(cmd bool) (err error) {
 		g.w("bss = %sBSS(&bssInit[0])\n", crt)
 		g.w("bssInit [%d]byte\n", g.bss)
 	}
-	var tb []byte
 	if len(g.ds) != 0 {
 		g.w("ds = %sDS(dsInit)\n", crt)
 		g.w("dsInit = []byte{")
@@ -196,25 +193,6 @@ func (g *gen) gen(cmd bool) (err error) {
 			g.w("%d, ", v)
 		}
 		g.w("}\n")
-		b := g.tsBits
-		n := len(b) - 1
-		for n >= 0 && b[n] == 0 {
-			n--
-		}
-		b = b[:n+1]
-		tb = make([]byte, (len(b)+7)/8)
-		for i, v := range b {
-			if v != 0 {
-				tb[i/8] |= 1 << uint(i&7)
-			}
-		}
-		if len(tb) != 0 {
-			g.w("tsBits = []byte{")
-			for _, v := range tb {
-				g.w("%d, ", v)
-			}
-			g.w("}\n")
-		}
 	}
 	if g.needNZ64 {
 		g.w("nz64 float64\n")
@@ -228,19 +206,6 @@ func (g *gen) gen(cmd bool) (err error) {
 		g.w("%s\\x00", s[1:len(s)-1])
 	}
 	g.w("\")\n)\n")
-	if len(tb) != 0 {
-		g.w(`
-func init() {
-	for i, v := range tsBits {
-		for j := 0; v != 0 && j < 8; j++ {
-			if v&1 != 0 {
-				*(*uintptr)(unsafe.Pointer(&dsInit[8*i+j])) += ts
-			}
-			v >>= 1
-		}
-	}
-}`)
-	}
 	if g.needNZ64 {
 		g.w("\nfunc init() { nz64 = -nz64 }")
 	}

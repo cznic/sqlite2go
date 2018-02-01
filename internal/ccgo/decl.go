@@ -6,7 +6,6 @@ package ccgo
 
 import (
 	"fmt"
-	"unsafe"
 
 	"github.com/cznic/ir"
 	"github.com/cznic/sqlite2go/internal/c99"
@@ -97,15 +96,16 @@ func (g *gen) defineTaggedStructType(t *c99.TaggedStructType) {
 }
 
 func (g *gen) tld(n *c99.Declarator) {
+	g.w("\n\n// %s is defined at %v", g.mangleDeclarator(n), g.position(n))
 	t := c99.UnderlyingType(n.Type)
 	if t.Kind() == c99.Function {
 		g.functionDefinition(n)
 		return
 	}
 
-	if n.Initializer == nil || n.Initializer.Expr != nil && n.Initializer.Expr.Operand.IsZero() {
+	if g.isZeroInitializer(n.Initializer) {
 		if g.escaped(n) {
-			g.w("\n\nvar %s = bss + %d", g.mangleDeclarator(n), g.allocBSS(n.Type))
+			g.w("\nvar %s = bss + %d", g.mangleDeclarator(n), g.allocBSS(n.Type))
 			return
 		}
 
@@ -114,23 +114,13 @@ func (g *gen) tld(n *c99.Declarator) {
 			*c99.PointerType,
 			*c99.StructType:
 
-			g.w("\n\nvar %s = bss + %d\n", g.mangleDeclarator(n), g.allocBSS(n.Type))
+			g.w("\nvar %s = bss + %d\n", g.mangleDeclarator(n), g.allocBSS(n.Type))
 		case c99.TypeKind:
-			switch x {
-			case
-				c99.Char,
-				c99.Int,
-				c99.Long,
-				c99.Short,
-				c99.SChar,
-				c99.UChar,
-				c99.UInt,
-				c99.UShort:
-
-				g.w("\n\nvar %s %s\n", g.mangleDeclarator(n), g.typ(n.Type))
-			default:
-				todo("%v: %v", g.position(n), x)
+			if x.IsArithmeticType() {
+				g.w("\nvar %s %s\n", g.mangleDeclarator(n), g.typ(n.Type))
+				break
 			}
+			todo("%v: %v", g.position(n), x)
 		default:
 			todo("%v: %s %v %T", g.position(n), dict.S(n.Name()), n.Type, x)
 		}
@@ -142,211 +132,39 @@ func (g *gen) tld(n *c99.Declarator) {
 		return
 	}
 
-	if n.Initializer.Case == c99.InitializerExpr {
-		g.w("\n\nvar %s = ", g.mangleDeclarator(n))
+	switch n.Initializer.Case {
+	case c99.InitializerExpr: // Expr
+		g.w("\nvar %s = ", g.mangleDeclarator(n))
 		g.convert(n.Initializer.Expr, n.Type)
 		g.w("\n")
-		return
+	default:
+		todo("", g.position0(n), n.Initializer.Case)
 	}
-
-	todo("%v: %s %v", g.position(n), dict.S(n.Name()), n.Type)
 }
 
 func (g *gen) escapedTLD(n *c99.Declarator) {
+	if g.isConstInitializer(n.Initializer) {
+		g.w("\nvar %s = ds + %d\n", g.mangleDeclarator(n), g.allocDS(n.Type, n.Initializer))
+		return
+	}
+
 	switch x := c99.UnderlyingType(n.Type).(type) {
-	case
-		*c99.ArrayType,
-		*c99.StructType:
-
-		g.w("\n\nvar %s = ds + %d\n", g.mangleDeclarator(n), g.allocDS(n.Type, n.Initializer))
-	case c99.TypeKind:
-		switch x {
-		default:
-			todo("", g.position(n), x)
-		}
-	default:
-		todo("%v: %T", g.position(n), x)
-	}
-}
-
-func (g *gen) allocDS(t c99.Type, n *c99.Initializer) int64 {
-	up := roundup(int64(len(g.ds)), int64(g.model.Alignof(t)))
-	if n := up - int64(len(g.ds)); n != 0 {
-		g.ds = append(g.ds, make([]byte, n)...)
-	}
-	r := len(g.ds)
-	ds, dsBits, tsBits := g.renderInitializer(t, n)
-	g.ds = append(g.ds, ds...)
-	g.dsBits = append(g.dsBits, dsBits...)
-	g.tsBits = append(g.tsBits, tsBits...)
-	return int64(r)
-}
-
-func (g *gen) renderInitializer(t c99.Type, n *c99.Initializer) (ds, dsBits, tsBits []byte) {
-	switch n.Case {
-	case c99.InitializerExpr:
-		return g.renderInitializerExpr(t, n.Expr)
-	case c99.InitializerCompLit:
-		switch x := c99.UnderlyingType(t).(type) {
-		case *c99.ArrayType:
-			if x.Size.Type == nil || x.Size.IsZero() {
-				todo("", g.position0(n), x)
-			}
-			len := x.Size.Value.(*ir.Int64Value).Value
-			sz := g.model.Sizeof(x.Item)
-			ds = make([]byte, len*sz)
-			dsBits = make([]byte, len*sz)
-			tsBits = make([]byte, len*sz)
-			var index int64
-			for l := n.InitializerList; l != nil; l = l.InitializerList {
-				if l.Designation != nil {
-					todo("", g.position0(l.Designation))
-				}
-				d, db, tb := g.renderInitializer(x.Item, l.Initializer)
-				off := index * sz
-				copy(ds[off:], d)
-				copy(dsBits[off:], db)
-				copy(tsBits[off:], tb)
-				index++
-			}
-			return ds, dsBits, tsBits
-		case *c99.StructType:
-			sz := g.model.Sizeof(x)
-			ds = make([]byte, sz)
-			dsBits = make([]byte, sz)
-			tsBits = make([]byte, sz)
-			layout := g.model.Layout(x)
-			field := 0
-			for l := n.InitializerList; l != nil; l = l.InitializerList {
-				if l.Designation != nil {
-					todo("", g.position0(l.Designation))
-				}
-				if x.Fields[field].Bits != 0 {
-					todo("", g.position0(l.Initializer))
-				}
-				d, db, tb := g.renderInitializer(x.Fields[field].Type, l.Initializer)
-				off := layout[field].Offset
-				copy(ds[off:], d)
-				copy(dsBits[off:], db)
-				copy(tsBits[off:], tb)
-				field++
-			}
-			return ds, dsBits, tsBits
-		default:
-			todo("%v: %T", g.position0(n), x)
-		}
-	default:
-		todo("", g.position0(n), n.Case)
-	}
-	panic("unreachable")
-}
-
-func (g *gen) renderInitializerExpr(t c99.Type, n *c99.Expr) (ds, dsBits, tsBits []byte) {
-	ds = make([]byte, g.model.Sizeof(t))
-	dsBits = make([]byte, len(ds))
-	tsBits = make([]byte, len(ds))
-	switch x := c99.UnderlyingType(t).(type) {
 	case *c99.ArrayType:
-		switch y := x.Item.(type) {
-		case c99.TypeKind:
-			switch y {
-			case c99.Char:
-				switch z := n.Operand.Value.(type) {
-				case *ir.StringValue:
-					if z.Offset != 0 {
-						todo("", g.position0(n))
-					}
-					copy(ds, dict.S(int(z.StringID)))
-					return ds, dsBits, tsBits
-				default:
-					todo("%v: %T", g.position0(n), z)
-				}
-			default:
-				todo("", g.position0(n), y)
-			}
-		default:
-			todo("%v: %T", g.position0(n), y)
+		if x.Item.Kind() == c99.Char && n.Initializer.Expr.Operand.Value != nil {
+			g.w("\nvar %s = ts + %d\n", g.mangleDeclarator(n), g.allocString(int(n.Initializer.Expr.Operand.Value.(*ir.StringValue).StringID)))
+			return
 		}
-	case *c99.PointerType:
-		switch y := c99.UnderlyingType(x.Item).(type) {
-		case
-			*c99.FunctionType,
-			*c99.StructType:
-
-			if n.Operand.IsZero() {
-				return ds, dsBits, tsBits
-			}
-
-			todo("", g.position0(n))
-		case c99.TypeKind:
-			switch y {
-			case c99.Char:
-				switch z := n.Operand.Value.(type) {
-				case *ir.StringValue:
-					*(*uintptr)(unsafe.Pointer(&ds[0])) = uintptr(g.allocString(int(z.StringID))) + z.Offset
-					tsBits[0] = 1
-				default:
-					todo("%v: %T", g.position0(n), z)
-				}
-				return ds, dsBits, tsBits
-			case c99.Void:
-				if n.Operand.IsZero() || n.Operand.Address == c99.Null {
-					return ds, dsBits, tsBits
-				}
-
-				todo("", g.position0(n), n.Operand)
-			default:
-				todo("", g.position0(n), y)
-			}
-		default:
-			todo("%v: %T", g.position0(n), y)
-		}
-	case c99.TypeKind:
-		switch x {
-		case
-			c99.Char,
-			c99.Int,
-			c99.LongLong,
-			c99.UChar,
-			c99.UInt:
-
-			dsBits = make([]byte, len(ds))
-			tsBits = make([]byte, len(ds))
-			switch len(ds) {
-			case 1:
-				*(*int8)(unsafe.Pointer(&ds[0])) = int8(n.Operand.Value.(*ir.Int64Value).Value)
-			case 4:
-				*(*int32)(unsafe.Pointer(&ds[0])) = int32(n.Operand.Value.(*ir.Int64Value).Value)
-			case 8:
-				*(*int64)(unsafe.Pointer(&ds[0])) = n.Operand.Value.(*ir.Int64Value).Value
-			default:
-				todo("", g.position0(n), len(ds))
-			}
-			return ds, dsBits, tsBits
-		case c99.Double:
-			dsBits = make([]byte, len(ds))
-			tsBits = make([]byte, len(ds))
-			*(*float64)(unsafe.Pointer(&ds[0])) = n.Operand.Value.(*ir.Float64Value).Value
-			return ds, dsBits, tsBits
-		default:
-			todo("", g.position0(n), x)
-		}
-	default:
-		todo("%v: %T", g.position0(n), x)
 	}
-	panic("unreachable")
-}
 
-func (g *gen) allocBSS(t c99.Type) int64 {
-	g.bss = roundup(g.bss, int64(g.model.Alignof(t)))
-	r := g.bss
-	g.bss += g.model.Sizeof(t)
-	return r
+	g.w("\nvar %s = bss + %d // %v \n", g.mangleDeclarator(n), g.allocBSS(n.Type), n.Type)
+	g.w("\n\nfunc init() { *(*%s)(unsafe.Pointer(%s)) = ", g.ptyp(n.Type, false), g.mangleDeclarator(n))
+	g.literal(n.Type, n.Initializer)
+	g.w("}")
 }
 
 func (g *gen) functionDefinition(n *c99.Declarator) {
 	g.nextLabel = 1
-	g.w("\n\n// %s is defined at %v\nfunc %s(tls *%sTLS", g.mangleDeclarator(n), g.position(n), g.mangleDeclarator(n), crt)
+	g.w("\nfunc %s(tls *%sTLS", g.mangleDeclarator(n), crt)
 	names := n.ParameterNames()
 	t := n.Type.(*c99.FunctionType)
 	if len(names) != len(t.Params) {

@@ -126,8 +126,7 @@ type FieldProperties struct {
 
 // Layout computes the memory layout of t.
 func (m Model) Layout(t Type) []FieldProperties {
-	//TODO bit fields
-	switch x := t.(type) {
+	switch x := UnderlyingType(t).(type) {
 	case *StructType:
 		if len(x.Fields) == 0 {
 			return nil
