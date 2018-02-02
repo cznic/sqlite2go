@@ -80,6 +80,7 @@ const (
 #define __arch__ %s
 #define __os__ %s
 #include <builtin.h>
+#include <stdlib.h>
 
 #define SIGNAL_SUPPRESS // gcc.c-torture/execute/20101011-1.c
 #define llabs(x) __builtin_llabs(x)
@@ -315,16 +316,18 @@ func testDir(t *testing.T, glob string, blacklist map[string]struct{}) {
 
 func TestGCC(t *testing.T) {
 	testDir(t, "../c99/testdata/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/*.c", map[string]struct{}{
-		"20021127-1.c":      {}, // non standard GCC behavior
-		"20070824-1.c":      {}, // alloca
-		"920711-1.c":        {}, //TODO
-		"built-in-setjmp.c": {}, // alloca
-		"pr34456.c":         {}, //TODO
-		"pr36321.c":         {}, // alloca + depends on alloca addresses difference
-		"pr45034.c":         {}, //TODO
+		"20010904-1.c":    {}, // __attribute__((aligned(32)))
+		"20010904-2.c":    {}, // __attribute__((aligned(32)))
+		"20021127-1.c":    {}, // non standard GCC behavior
+		"frame-address.c": {}, // __builtin_frame_address
+		"pr17377.c":       {}, // __builtin_return_address
+
+		"981001-1.c":        {}, //TODO out:  err: exit status 1
+		"built-in-setjmp.c": {}, //TODO __builtin_setjmp
+		"pr23467.c":         {}, //TODO out:  err: exit status 1
 		"pr60003.c":         {}, //TODO __builtin_setjmp
 	})
-	// compiles: 491, builds: 441, runs: 441
+	// compiles: 672, builds: 590, runs: 590
 }
 
 func testFile(t *testing.T, pth string, compiles, builds, runs *int) {
@@ -336,7 +339,8 @@ func testFile(t *testing.T, pth string, compiles, builds, runs *int) {
 	inc := []string{"@", ccir.LibcIncludePath}
 	sysInc := []string{ccir.LibcIncludePath}
 	tweaks := &c99.Tweaks{
-		EnableEmptyStructs: true,
+		EnableEmptyStructs:         true,
+		EnableImplicitDeclarations: true,
 	}
 	crt0, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, crt0Source)
 	if err != nil {

@@ -104,6 +104,11 @@ func (g *gen) tld(n *c99.Declarator) {
 	}
 
 	if g.isZeroInitializer(n.Initializer) {
+		if isVaList(n.Type) {
+			g.w("\nvar %s []interface{}", g.mangleDeclarator(n))
+			return
+		}
+
 		if g.escaped(n) {
 			g.w("\nvar %s = bss + %d", g.mangleDeclarator(n), g.allocBSS(n.Type))
 			return
@@ -151,7 +156,7 @@ func (g *gen) escapedTLD(n *c99.Declarator) {
 	switch x := c99.UnderlyingType(n.Type).(type) {
 	case *c99.ArrayType:
 		if x.Item.Kind() == c99.Char && n.Initializer.Expr.Operand.Value != nil {
-			g.w("\nvar %s = ts + %d\n", g.mangleDeclarator(n), g.allocString(int(n.Initializer.Expr.Operand.Value.(*ir.StringValue).StringID)))
+			g.w("\nvar %s = ds + %d\n", g.mangleDeclarator(n), g.allocDS(n.Type, n.Initializer))
 			return
 		}
 	}
@@ -216,7 +221,11 @@ func (g *gen) functionDefinition(n *c99.Declarator) {
 	if !void {
 		g.w("(r %s)", g.typ(t.Result))
 	}
-	g.functionBody(n.FunctionDefinition.FunctionBody, n.FunctionDefinition.LocalVariables(), void, escParams)
+	vars := n.FunctionDefinition.LocalVariables()
+	if n.Alloca {
+		vars = append(vars, allocaDeclarator)
+	}
+	g.functionBody(n.FunctionDefinition.FunctionBody, vars, void, escParams)
 	g.w("\n")
 }
 

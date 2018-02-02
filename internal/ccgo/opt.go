@@ -339,6 +339,9 @@ func (o *opt) expr(n *ast.Expr) {
 		for i := range x.Elts {
 			o.expr(&x.Elts[i])
 		}
+	case *ast.KeyValueExpr:
+		o.expr(&x.Key)
+		o.expr(&x.Value)
 	default:
 		todo("%v: %T", o.pos(x), x)
 	}

@@ -215,7 +215,11 @@ type Operand struct {
 func newIntConst(ctx *context, n Node, v uint64, t ...TypeKind) (r Operand) {
 	b := bits.Len64(v)
 	for _, t := range t {
-		if ctx.model[t].Size*8 >= b {
+		sign := 1
+		if t.IsUnsigned() {
+			sign = 0
+		}
+		if ctx.model[t].Size*8 >= b+sign {
 			return Operand{Type: t, Value: &ir.Int64Value{Value: int64(v)}}.normalize(ctx.model)
 		}
 	}

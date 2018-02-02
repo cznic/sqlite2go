@@ -70,6 +70,7 @@ type gen struct {
 	units               map[*c99.Declarator]int
 	xorTypes            map[string]int
 
+	needAlloca  bool
 	needNZ32    bool //TODO -> crt
 	needNZ64    bool //TODO -> crt
 	needPostDec bool
@@ -223,6 +224,9 @@ func (g *gen) gen(cmd bool) (err error) {
 	}
 	if g.needPreDec {
 		g.w("\nfunc predec(p *uintptr, n uintptr) uintptr { *p -= n; return *p }")
+	}
+	if g.needAlloca {
+		g.w("\nfunc alloca(p *[]uintptr, n int) uintptr { r := %sMustMalloc(n); *p = append(*p, r); return r }", crt)
 	}
 	var a []string
 	for k := range g.assignTypes {
@@ -403,7 +407,7 @@ func (g gen) escaped(n *c99.Declarator) bool {
 		*c99.TaggedUnionType,
 		*c99.UnionType:
 
-		return n.IsTLD()
+		return n.IsTLD() || n.DeclarationSpecifier.IsStatic()
 	default:
 		return false
 	}

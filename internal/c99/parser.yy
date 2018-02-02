@@ -531,6 +531,7 @@ import (
 			//yy:field	scope			*Scope			// Declare the name in scope.
 			//yy:field	vars			[]*Declarator
 			//yy:field	AddressTaken		bool
+			//yy:field	Alloca			bool			// Function declarator: Body calls __builtin_alloca
 			//yy:field	Embedded		bool			// [0]6.7.5-3: Not a full declarator.
 			//yy:field	IsField			bool
 			//yy:field	IsFunctionParameter	bool

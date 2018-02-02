@@ -26,10 +26,12 @@ const (
 )
 
 var (
-	bNL    = []byte{'\n'}
-	bPanic = []byte("panic")
-	dict   = xc.Dict
+	allocaDeclarator = &c99.Declarator{}
+	bNL              = []byte{'\n'}
+	bPanic           = []byte("panic")
+	dict             = xc.Dict
 
+	idAlloca   = dict.SID("__builtin_alloca")
 	idFuncName = dict.SID("__func__")
 	idMain     = dict.SID("main")
 	idStart    = dict.SID("_start")

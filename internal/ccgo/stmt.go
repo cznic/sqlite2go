@@ -14,17 +14,19 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases ma
 	}
 	w := 0
 	for _, v := range vars {
-		if v.Referenced == 0 && v.Initializer != nil && v.Linkage == c99.LinkageNone && v.DeclarationSpecifier.IsStatic() && v.Name() == idFuncName {
-			continue
-		}
+		if v != allocaDeclarator {
+			if v.Referenced == 0 && v.Initializer != nil && v.Linkage == c99.LinkageNone && v.DeclarationSpecifier.IsStatic() && v.Name() == idFuncName {
+				continue
+			}
 
-		if v.Referenced == 0 && v.Initializer == nil && !v.AddressTaken {
-			continue
-		}
+			if v.Referenced == 0 && v.Initializer == nil && !v.AddressTaken {
+				continue
+			}
 
-		if v.DeclarationSpecifier.IsStatic() {
-			g.enqueueNumbered(v)
-			continue
+			if v.DeclarationSpecifier.IsStatic() {
+				g.enqueueNumbered(v)
+				continue
+			}
 		}
 
 		vars[w] = v
@@ -32,10 +34,15 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases ma
 	}
 	vars = vars[:w]
 	var free []*c99.Declarator
+	alloca := false
 	if len(vars)+len(escParams) != 0 {
 		localNames := map[int]struct{}{}
 		num := 0
 		for _, v := range vars {
+			if v == allocaDeclarator {
+				continue
+			}
+
 			nm := v.Name()
 			if _, ok := localNames[nm]; ok {
 				num++
@@ -55,6 +62,10 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases ma
 		}
 		for _, v := range vars {
 			switch {
+			case v == allocaDeclarator:
+				g.w("\nallocs []uintptr")
+				g.needAlloca = true
+				alloca = true
 			case g.escaped(v):
 				free = append(free, v)
 				g.w("\n\t%s = %sMustMalloc(%d) // *%s", g.mangleDeclarator(v), crt, g.model.Sizeof(v.Type), g.ptyp(v.Type, false))
@@ -77,10 +88,16 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases ma
 			g.w("\n*(*%s)(unsafe.Pointer(%s)) = a%s", g.typ(v.Type), g.mangleDeclarator(v), dict.S(v.Name()))
 		}
 	}
-	if len(free) != 0 {
+	if len(free) != 0 || alloca {
 		g.w("\ndefer func() {")
 		for _, v := range free {
 			g.w("\n%sFree(%s)", crt, g.mangleDeclarator(v))
+		}
+		if alloca {
+			g.w(`
+for _, v := range allocs {
+	%sFree(v)
+}`, crt)
 		}
 		g.w("\n}()")
 	}
@@ -177,11 +194,11 @@ func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int
 			todo("", g.position0(n))
 		}
 		g.w("{")
-		after := -g.label()
+		after := -g.local()
 		cases := map[*c99.LabeledStmt]int{}
 		var deflt *c99.LabeledStmt
 		for _, v := range n.Cases {
-			l := g.label()
+			l := g.local()
 			cases[v] = l
 			switch ce := v.ConstExpr; {
 			case ce != nil:
@@ -209,7 +226,7 @@ func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int
 			for l := n.ExprList; l != nil; l = l.ExprList {
 				g.void(l.Expr)
 			}
-			a := g.label()
+			a := g.local()
 			g.w("\ngoto _%d\n", a)
 			t := true
 			g.stmt(n.Stmt, cases, brk, cont, &t)
@@ -227,7 +244,7 @@ func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int
 		// if exprList == 0 { goto A }
 		// stmt
 		// A:
-		a := g.label()
+		a := g.local()
 		g.w("\nif ")
 		g.exprList(n.ExprList, false)
 		g.w(" == 0 { goto _%d }\n", a)
@@ -243,8 +260,8 @@ func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int
 			// A:
 			// stmt2
 			// B:
-			a := g.label()
-			b := g.label()
+			a := g.local()
+			b := g.local()
 			g.exprList(n.ExprList, true)
 			g.w("\ngoto _%d\n\n", a)
 			t := true
@@ -265,8 +282,8 @@ func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int
 		// A:
 		// stmt2
 		// B:
-		a := g.label()
-		b := g.label()
+		a := g.local()
+		b := g.local()
 		g.w("\nif ")
 		g.exprList(n.ExprList, false)
 		g.w(" == 0 { goto _%d }\n", a)
@@ -290,7 +307,7 @@ func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int
 				// stmt
 				// goto A
 				// A:
-				a := -g.label()
+				a := -g.local()
 				t := true
 				g.stmt(n.Stmt, cases, &a, cont, &t)
 				if a > 0 {
@@ -302,8 +319,8 @@ func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int
 				// stmt
 				// goto A
 				// B:
-				a := g.label()
-				b := -g.label()
+				a := g.local()
+				b := -g.local()
 				g.w("\n_%d:", a)
 				g.stmt(n.Stmt, cases, &b, cont, deadcode)
 				g.w("\ngoto _%d\n\n", a)
@@ -321,9 +338,9 @@ func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int
 		// if exprList != 0 { goto A }
 		// goto B
 		// B:
-		a := g.label()
-		c := -g.label()
-		b := -g.label()
+		a := g.local()
+		c := -g.local()
+		b := -g.local()
 		g.w("\n_%d:", a)
 		g.stmt(n.Stmt, cases, &b, &c, deadcode)
 		if c > 0 {
@@ -337,19 +354,30 @@ func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int
 		}
 	case c99.IterationStmtFor: // "for" '(' ExprListOpt ';' ExprListOpt ';' ExprListOpt ')' Stmt
 		if n.ExprListOpt2 == nil {
+			// ExprListOpt
+			// A:
+			// Stmt
+			// B: <- continue
+			// ExprListOpt3
+			// goto A
+			// C: <- break
 			g.w("\n")
 			g.exprListOpt(n.ExprListOpt, true)
-			a := g.label()
-			b := -g.label()
+			a := g.local()
+			b := -g.local()
+			c := -g.local()
 			g.w("\n_%d:", a)
-			g.stmt(n.Stmt, cases, &b, &a, deadcode)
+			g.stmt(n.Stmt, cases, &c, &b, deadcode)
 			if n.ExprListOpt3 != nil {
 				g.w("\n")
 			}
-			g.exprListOpt(n.ExprListOpt3, true)
-			g.w("\ngoto _%d\n", a)
 			if b > 0 {
 				g.w("\n_%d:", b)
+			}
+			g.exprListOpt(n.ExprListOpt3, true)
+			g.w("\ngoto _%d\n", a)
+			if c > 0 {
+				g.w("\n_%d:", c)
 			}
 			return
 		}
@@ -357,14 +385,34 @@ func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int
 		if op := n.ExprListOpt2.ExprList.Operand; op.Value != nil {
 			switch {
 			case op.IsZero():
+				// ExprListOpt
+				// A:
+				// ExprListOpt2
+				// Stmt
+				// B: <- continue
+				// ExprListOpt3
+				// goto A
+				// C: <- break
+				g.w("\n")
 				g.exprListOpt(n.ExprListOpt, true)
-				a := g.label()
-				b := g.label()
-				g.w("\n_%d: goto _%d\n\n", a, b)
-				t := true
-				g.stmt(n.Stmt, cases, &b, &a, &t)
-				g.w("\ngoto _%d\n\n", a)
-				g.w("\n_%d:", b)
+				a := g.local()
+				b := -g.local()
+				c := -g.local()
+				g.w("\n_%d:", a)
+				g.w("if ")
+				g.exprListOpt(n.ExprListOpt2, true)
+				g.stmt(n.Stmt, cases, &c, &b, deadcode)
+				if n.ExprListOpt3 != nil {
+					g.w("\n")
+				}
+				if b > 0 {
+					g.w("\n_%d:", b)
+				}
+				g.exprListOpt(n.ExprListOpt3, true)
+				g.w("\ngoto _%d\n", a)
+				if c > 0 {
+					g.w("\n_%d:", c)
+				}
 				return
 			case op.IsNonzero():
 				todo("", g.position0(n))
@@ -375,46 +423,47 @@ func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int
 
 		// ExprListOpt
 		// A:
-		// if ExprListOpt2 == 0 { goto B }
+		// if ExprListOpt2 == 0 { goto C }
 		// Stmt
+		// B: <- continue
 		// ExprListOpt3
 		// goto A
-		// B:
+		// C: <- break
 		g.w("\n")
 		g.exprListOpt(n.ExprListOpt, true)
-		a := g.label()
-		b := -g.label()
+		a := g.local()
+		b := -g.local()
+		c := g.local()
 		g.w("\n_%d:", a)
-		if n.ExprListOpt2 != nil {
-			g.w("if ")
-			g.exprListOpt(n.ExprListOpt2, false)
-			b = -b
-			g.w(" == 0 { goto _%d }\n", b)
-		}
-		g.stmt(n.Stmt, cases, &b, &a, deadcode)
+		g.w("if ")
+		g.exprListOpt(n.ExprListOpt2, false)
+		g.w(" == 0 { goto _%d }\n", c)
+		g.stmt(n.Stmt, cases, &c, &b, deadcode)
 		if n.ExprListOpt3 != nil {
 			g.w("\n")
 		}
-		g.exprListOpt(n.ExprListOpt3, true)
-		g.w("\ngoto _%d\n", a)
 		if b > 0 {
 			g.w("\n_%d:", b)
 		}
+		g.exprListOpt(n.ExprListOpt3, true)
+		g.w("\ngoto _%d\n", a)
+		g.w("\n_%d:", c)
 	case c99.IterationStmtWhile: // "while" '(' ExprList ')' Stmt
 		if n.ExprList.Operand.IsZero() {
 			todo("", g.position0(n))
 		}
 
 		if n.ExprList.Operand.IsNonzero() {
-			a := g.label()
+			a := g.local()
 			g.w("\n_%d:", a)
-			b := -g.label()
+			b := -g.local()
 			g.exprList(n.ExprList, true)
 			g.stmt(n.Stmt, cases, &b, &a, deadcode)
 			g.w("\ngoto _%d\n", a)
 			if b > 0 {
 				g.w("\n_%d:", b)
 			}
+			return
 		}
 
 		// A:
@@ -422,8 +471,8 @@ func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int
 		// stmt
 		// goto A
 		// B:
-		a := g.label()
-		b := g.label()
+		a := g.local()
+		b := g.local()
 		g.w("\n_%d:\nif ", a)
 		g.exprList(n.ExprList, false)
 		g.w(" == 0 { goto _%d }\n", b)
@@ -434,7 +483,7 @@ func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int
 	}
 }
 
-func (g *gen) label() int {
+func (g *gen) local() int {
 	r := g.nextLabel
 	g.nextLabel++
 	return r

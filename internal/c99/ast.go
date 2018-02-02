@@ -603,6 +603,7 @@ type Declarator struct {
 	scope                *Scope           // Declare the name in scope.
 	vars                 []*Declarator
 	AddressTaken         bool
+	Alloca               bool // Function declarator: Body calls __builtin_alloca
 	Embedded             bool // [0]6.7.5-3: Not a full declarator.
 	IsField              bool
 	IsFunctionParameter  bool

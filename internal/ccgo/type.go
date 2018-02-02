@@ -20,8 +20,15 @@ func isVaList(t c99.Type) bool {
 func (g *gen) typ(t c99.Type) string { return g.ptyp(t, true) }
 
 func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
-	if ptr2uintptr && c99.UnderlyingType(t).Kind() == c99.Ptr && !isVaList(t) {
-		return "uintptr"
+	switch x := c99.UnderlyingType(t).(type) {
+	case *c99.PointerType:
+		if x.Item.Kind() == c99.Function {
+			return g.typ(x.Item)
+		}
+
+		if ptr2uintptr && !isVaList(t) {
+			return "uintptr"
+		}
 	}
 
 	var buf bytes.Buffer

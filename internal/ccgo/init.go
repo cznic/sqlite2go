@@ -109,7 +109,6 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 		if n.Expr != nil {
 			switch x.Item.Kind() {
 			case c99.Char:
-				//g.w("*(*%s)(unsafe.Pointer(ts+%d))", g.typ(t), g.allocString(int(n.Expr.Operand.Value.(*ir.StringValue).StringID)))
 				g.w("*(*%s)(unsafe.Pointer(")
 				g.value(n.Expr)
 				g.w("))", g.typ(t), g.allocString(int(n.Expr.Operand.Value.(*ir.StringValue).StringID)))
@@ -126,6 +125,7 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 				if l.Designation != nil {
 					todo("", g.position0(n))
 				}
+				g.w("%d: ", index)
 				g.literal(x.Item, l.Initializer)
 				g.w(", ")
 				index++
@@ -164,7 +164,9 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 				if layout[fld].Bits != 0 {
 					todo("%v: bit field", g.position0(n))
 				}
-				g.literal(fields[fld].Type, l.Initializer)
+				d := fields[fld]
+				g.w("%s: ", mangleIdent(d.Name, true))
+				g.literal(d.Type, l.Initializer)
 				g.w(", ")
 				fld++
 			}
