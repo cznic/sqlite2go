@@ -941,6 +941,12 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 					panic("TODO")
 				}
 				t = y
+			case *TaggedUnionType:
+				y := x.getType()
+				if x == y {
+					panic("TODO")
+				}
+				t = y
 			case *UnionType:
 				nm := n.Token2.Val
 				d0, ok := x.scope.Idents[nm]
@@ -1128,6 +1134,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 				*StructType,
 				*TaggedEnumType,
 				*TaggedStructType,
+				*TaggedUnionType,
 				*UnionType:
 
 				n.Operand = Operand{Type: t0}
@@ -1220,9 +1227,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			n.Operand = newIntConst(ctx, n, v, LongLong, ULongLong)
 		case suff == "U":
 			n.Operand = newIntConst(ctx, n, v, UInt, ULong, ULongLong)
-		case suff == "UL":
+		case suff == "UL", suff == "LU":
 			n.Operand = newIntConst(ctx, n, v, ULong, ULongLong)
-		case suff == "ULL":
+		case suff == "ULL", suff == "LLU":
 			n.Operand = newIntConst(ctx, n, v, ULongLong)
 		default:
 			panic(fmt.Errorf("%v: TODO %q %q decadic: %v\n%s", ctx.position(n), s, suff, decadic, PrettyString(n)))
@@ -1263,6 +1270,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			*StructType,
 			*TaggedEnumType,
 			*TaggedStructType,
+			*TaggedUnionType,
 			*UnionType:
 
 			return n.Operand

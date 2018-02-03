@@ -273,7 +273,20 @@ func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int
 			*deadcode = false
 			return
 		case op.IsNonzero():
-			todo("", g.position0(n), n.ExprList.Operand)
+			// exprList
+			// stmt
+			// goto A
+			// stmt2
+			// A:
+			a := g.local()
+			g.exprList(n.ExprList, true)
+			g.stmt(n.Stmt, cases, brk, cont, deadcode)
+			g.w("\ngoto _%d\n", a)
+			t := true
+			g.stmt(n.Stmt2, cases, brk, cont, &t)
+			g.w("\n_%d:", a)
+			*deadcode = false
+			return
 		}
 
 		// if exprList == 0 { goto A }
@@ -290,7 +303,8 @@ func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int
 		g.stmt(n.Stmt, cases, brk, cont, deadcode)
 		g.w("\ngoto _%d\n", b)
 		g.w("\n_%d:", a)
-		g.stmt(n.Stmt2, cases, brk, cont, deadcode)
+		f := false
+		g.stmt(n.Stmt2, cases, brk, cont, &f)
 		g.w("\n_%d:", b)
 		*deadcode = false
 	default:

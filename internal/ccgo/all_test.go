@@ -321,13 +321,12 @@ func TestGCC(t *testing.T) {
 		"20021127-1.c":    {}, // non standard GCC behavior
 		"frame-address.c": {}, // __builtin_frame_address
 		"pr17377.c":       {}, // __builtin_return_address
+		"pr23467.c":       {}, // __attribute__ ((aligned (8)))
 
-		"981001-1.c":        {}, //TODO out:  err: exit status 1
 		"built-in-setjmp.c": {}, //TODO __builtin_setjmp
-		"pr23467.c":         {}, //TODO out:  err: exit status 1
 		"pr60003.c":         {}, //TODO __builtin_setjmp
 	})
-	// compiles: 672, builds: 590, runs: 590
+	// compiles: 675, builds: 609, runs: 609
 }
 
 func testFile(t *testing.T, pth string, compiles, builds, runs *int) {
@@ -341,6 +340,7 @@ func testFile(t *testing.T, pth string, compiles, builds, runs *int) {
 	tweaks := &c99.Tweaks{
 		EnableEmptyStructs:         true,
 		EnableImplicitDeclarations: true,
+		EnableOmitFuncDeclSpec:     true,
 	}
 	crt0, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, crt0Source)
 	if err != nil {

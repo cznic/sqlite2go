@@ -668,6 +668,51 @@ func (g *gen) value(n *c99.Expr) {
 			}
 			g.w("}()")
 		}
+	case c99.ExprMulAssign: // Expr "*=" Expr
+		switch x := c99.UnderlyingType(n.Expr.Operand.Type).(type) {
+		case c99.TypeKind:
+			if x.IsArithmeticType() {
+				g.w(" mul%d(", g.registerType(g.mulTypes, x))
+				g.lvalue(n.Expr)
+				g.w(", ")
+				g.convert(n.Expr2, n.Operand.Type)
+				g.w(")")
+				return
+			}
+			todo("", g.position0(n), x)
+		default:
+			todo("%v: %T", g.position0(n), x)
+		}
+	case c99.ExprDivAssign: // Expr "/=" Expr
+		switch x := c99.UnderlyingType(n.Expr.Operand.Type).(type) {
+		case c99.TypeKind:
+			if x.IsArithmeticType() {
+				g.w(" div%d(", g.registerType(g.divTypes, x))
+				g.lvalue(n.Expr)
+				g.w(", ")
+				g.convert(n.Expr2, n.Operand.Type)
+				g.w(")")
+				return
+			}
+			todo("", g.position0(n), x)
+		default:
+			todo("%v: %T", g.position0(n), x)
+		}
+	case c99.ExprModAssign: // Expr "%=" Expr
+		switch x := c99.UnderlyingType(n.Expr.Operand.Type).(type) {
+		case c99.TypeKind:
+			if x.IsArithmeticType() {
+				g.w(" mod%d(", g.registerType(g.modTypes, x))
+				g.lvalue(n.Expr)
+				g.w(", ")
+				g.convert(n.Expr2, n.Operand.Type)
+				g.w(")")
+				return
+			}
+			todo("", g.position0(n), x)
+		default:
+			todo("%v: %T", g.position0(n), x)
+		}
 	default:
 		todo("", g.position0(n), n.Case, n.Operand) // value
 	}
@@ -863,10 +908,14 @@ func (g *gen) voidCanIgnore(n *c99.Expr) bool {
 	case
 		c99.ExprAddrof,     // '&' Expr
 		c99.ExprCpl,        // '~' Expr
+		c99.ExprNot,        // '!' Expr
+		c99.ExprSelect,     // Expr '.' IDENTIFIER
 		c99.ExprUnaryMinus, // '-' Expr
 		c99.ExprUnaryPlus:  // '+' Expr
 
 		return g.voidCanIgnore(n.Expr)
+	case c99.ExprIndex: // Expr '[' ExprList ']'
+		return g.voidCanIgnore(n.Expr) && g.voidCanIgnoreExprList(n.ExprList)
 	default:
 		todo("", g.position0(n), n.Case, n.Operand) // voidCanIgnore
 	}
@@ -913,7 +962,8 @@ func (g *gen) constant(n *c99.Expr) {
 			case
 				c99.Char,
 				c99.Double,
-				c99.Int:
+				c99.Int,
+				c99.LongDouble:
 
 				switch {
 				case x.Value == 0 && math.Copysign(1, x.Value) == -1:
@@ -1173,4 +1223,5 @@ func (g *gen) convert(n *c99.Expr, t c99.Type) {
 		return
 	}
 
+	todo("", g.position0(n), n.Operand, t, n.Operand.Type.Equal(t))
 }

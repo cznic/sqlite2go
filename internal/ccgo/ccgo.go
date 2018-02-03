@@ -40,6 +40,7 @@ type gen struct {
 	addTypes            map[string]int
 	assignTypes         map[string]int
 	bss                 int64
+	divTypes            map[string]int
 	ds                  []byte
 	errs                scanner.ErrorList
 	externs             map[int]*c99.Declarator
@@ -47,7 +48,9 @@ type gen struct {
 	in                  []*c99.TranslationUnit
 	internalNames       map[int]struct{}          //TODO-?
 	internals           []map[int]*c99.Declarator //TODO-?
+	modTypes            map[string]int
 	model               c99.Model
+	mulTypes            map[string]int
 	needBool2int        int
 	nextLabel           int
 	num                 int
@@ -83,10 +86,13 @@ func newGen(out io.Writer, in []*c99.TranslationUnit) *gen {
 	return &gen{
 		addTypes:            map[string]int{},
 		assignTypes:         map[string]int{},
+		divTypes:            map[string]int{},
 		externs:             map[int]*c99.Declarator{},
 		in:                  in,
 		internalNames:       map[int]struct{}{},
 		internals:           make([]map[int]*c99.Declarator, len(in)),
+		modTypes:            map[string]int{},
+		mulTypes:            map[string]int{},
 		nums:                map[*c99.Declarator]int{},
 		out:                 out,
 		postDecTypes:        map[string]int{},
@@ -275,6 +281,30 @@ func (g *gen) gen(cmd bool) (err error) {
 	sort.Strings(a)
 	for _, k := range a {
 		g.w("\nfunc xor%d(n *%[2]s, m %[2]s) %[2]s { *n ^= m; return *n }", g.xorTypes[k], k)
+	}
+	a = a[:0]
+	for k := range g.mulTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		g.w("\nfunc mul%d(n *%[2]s, m %[2]s) %[2]s { *n *= m; return *n }", g.mulTypes[k], k)
+	}
+	a = a[:0]
+	for k := range g.modTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		g.w("\nfunc mod%d(n *%[2]s, m %[2]s) %[2]s { *n %%= m; return *n }", g.modTypes[k], k)
+	}
+	a = a[:0]
+	for k := range g.divTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		g.w("\nfunc div%d(n *%[2]s, m %[2]s) %[2]s { *n /= m; return *n }", g.divTypes[k], k)
 	}
 	a = a[:0]
 	for k := range g.subTypes {

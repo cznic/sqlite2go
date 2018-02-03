@@ -74,7 +74,7 @@ func (m Model) Equal(n Model) bool {
 
 // Sizeof returns the size in bytes of a variable of type t.
 func (m Model) Sizeof(t Type) int64 {
-	switch x := t.(type) {
+	switch x := UnderlyingType(t).(type) {
 	case *ArrayType:
 		if x.Size.Type == nil {
 			panic("TODO")
@@ -165,7 +165,7 @@ func (m Model) Layout(t Type) []FieldProperties {
 							off = roundup(off, int64(a))
 						}
 						var first int
-						for first = i; first >= 0 && r[first].Bits != 0; first-- {
+						for first = i; first >= 0 && r[first].Bits != 0 && r[first].BitType == nil; first-- {
 						}
 						first++
 						if off != z && first > 0 {
@@ -208,7 +208,7 @@ func (m Model) Layout(t Type) []FieldProperties {
 						off = roundup(off, int64(a))
 					}
 					var first int
-					for first = i; first >= 0 && r[first].Bits != 0; first-- {
+					for first = i; first >= 0 && r[first].Bits != 0 && r[first].BitType == nil; first-- {
 					}
 					first++
 					if off != z && first > 0 {
@@ -256,7 +256,7 @@ func (m Model) Layout(t Type) []FieldProperties {
 				off = roundup(off, int64(a))
 			}
 			var first int
-			for first = i; first >= 0 && r[first].Bits != 0; first-- {
+			for first = i; first >= 0 && r[first].Bits != 0 && r[first].BitType == nil; first-- {
 			}
 			first++
 			if off != z && first > 0 {
@@ -329,6 +329,12 @@ func (m Model) Alignof(t Type) int {
 		}
 		return r
 	case *TaggedStructType:
+		u := x.getType()
+		if u == x {
+			panic("TODO")
+		}
+		return m.Alignof(u)
+	case *TaggedUnionType:
 		u := x.getType()
 		if u == x {
 			panic("TODO")

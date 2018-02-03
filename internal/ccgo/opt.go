@@ -342,6 +342,10 @@ func (o *opt) expr(n *ast.Expr) {
 	case *ast.KeyValueExpr:
 		o.expr(&x.Key)
 		o.expr(&x.Value)
+	case *ast.InterfaceType:
+		// nop
+	case nil:
+		// nop
 	default:
 		todo("%v: %T", o.pos(x), x)
 	}

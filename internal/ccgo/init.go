@@ -77,7 +77,7 @@ func (g *gen) initializer(d *c99.Declarator) { // non TLD
 			g.w("\n%s", g.mangleDeclarator(d))
 		}
 		g.w(" = ")
-		g.convert(n.Expr, d.Type)
+		g.literal(d.Type, n)
 		return
 	}
 
@@ -109,9 +109,19 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 		if n.Expr != nil {
 			switch x.Item.Kind() {
 			case c99.Char:
-				g.w("*(*%s)(unsafe.Pointer(")
-				g.value(n.Expr)
-				g.w("))", g.typ(t), g.allocString(int(n.Expr.Operand.Value.(*ir.StringValue).StringID)))
+				g.w("*(*%s)(unsafe.Pointer(", g.typ(t))
+				switch n.Expr.Case {
+				case c99.ExprString:
+					b := make([]byte, x.Size.Value.(*ir.Int64Value).Value)
+					copy(b, dict.S(int(n.Expr.Operand.Value.(*ir.StringValue).StringID)))
+					if len(b) != 0 && b[len(b)-1] == 0 {
+						b = b[:len(b)-1]
+					}
+					g.w("ts+%d", g.allocString(dict.ID(b)))
+				default:
+					todo("", g.position0(n), n.Expr.Case)
+				}
+				g.w("))")
 			default:
 				todo("", g.position0(n), x.Item.Kind())
 			}
@@ -134,7 +144,7 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 		g.w("}")
 	case *c99.PointerType:
 		if n.Expr.Operand.IsZero() || n.Expr.Operand.Address == c99.Null {
-			g.w("nil")
+			g.w("0")
 			return
 		}
 
@@ -143,9 +153,7 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 			return
 		}
 
-		g.w("(*%s)(unsafe.Pointer(", g.ptyp(x.Item, false))
 		g.value(n.Expr)
-		g.w("))")
 	case *c99.StructType:
 		if n.Expr != nil {
 			g.value(n.Expr)
@@ -262,7 +270,10 @@ func (g *gen) renderInitializer(b []byte, t c99.Type, n *c99.Initializer) {
 		switch x {
 		case c99.Float:
 			*(*float32)(unsafe.Pointer(&b[0])) = float32(n.Expr.Operand.Value.(*ir.Float64Value).Value)
-		case c99.Double:
+		case
+			c99.Double,
+			c99.LongDouble:
+
 			*(*float64)(unsafe.Pointer(&b[0])) = n.Expr.Operand.Value.(*ir.Float64Value).Value
 		default:
 			todo("", g.position0(n), x)

@@ -37,7 +37,7 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
 		*c99.ArrayType,
 		*c99.FunctionType:
 
-		g.typ0(&buf, x)
+		g.typ0(&buf, x, ptr2uintptr)
 		return buf.String()
 	case *c99.NamedType:
 		if x.Name == idVaList {
@@ -51,7 +51,7 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
 		g.enqueue(x)
 		return fmt.Sprintf("T%s", dict.S(x.Name))
 	case *c99.PointerType:
-		g.typ0(&buf, t)
+		g.typ0(&buf, t, ptr2uintptr)
 		return buf.String()
 	case *c99.StructType:
 		buf.WriteString(" struct{")
@@ -60,14 +60,14 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
 			if v.Bits != 0 {
 				if layout[i].Bitoff == 0 {
 					fmt.Fprintf(&buf, "F%d ", layout[i].Offset)
-					g.typ0(&buf, layout[i].BitType)
+					g.typ0(&buf, layout[i].BitType, ptr2uintptr)
 					buf.WriteByte(';')
 				}
 				continue
 			}
 
 			fmt.Fprintf(&buf, "%s ", mangleIdent(v.Name, true))
-			g.typ0(&buf, v.Type)
+			g.typ0(&buf, v.Type, ptr2uintptr)
 			buf.WriteByte(';')
 		}
 		buf.WriteByte('}')
@@ -78,6 +78,9 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
 	case *c99.TaggedStructType:
 		g.enqueue(x)
 		return fmt.Sprintf("S%s", dict.S(x.Tag))
+	case *c99.TaggedUnionType:
+		g.enqueue(x)
+		return fmt.Sprintf("U%s", dict.S(x.Tag))
 	case c99.TypeKind:
 		switch x {
 		case
@@ -99,7 +102,10 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
 			return fmt.Sprintf("uint%d", g.model[x].Size*8)
 		case c99.Float:
 			return fmt.Sprintf("float32")
-		case c99.Double:
+		case
+			c99.Double,
+			c99.LongDouble:
+
 			return fmt.Sprintf("float64")
 		default:
 			todo("", x)
@@ -108,7 +114,7 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
 		fmt.Fprintf(&buf, "struct{X [%d]byte; _ [0]struct{", g.model.Sizeof(x))
 		for _, v := range x.Fields {
 			fmt.Fprintf(&buf, "%s ", mangleIdent(v.Name, true))
-			g.typ0(&buf, v.Type)
+			g.typ0(&buf, v.Type, ptr2uintptr)
 			buf.WriteByte(';')
 		}
 		buf.WriteString("}}")
@@ -119,7 +125,7 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
 	panic("unreachable")
 }
 
-func (g *gen) typ0(buf *bytes.Buffer, t c99.Type) {
+func (g *gen) typ0(buf *bytes.Buffer, t c99.Type, ptr2uintptr bool) {
 	for {
 		switch x := t.(type) {
 		case *c99.ArrayType:
@@ -158,14 +164,16 @@ func (g *gen) typ0(buf *bytes.Buffer, t c99.Type) {
 			return
 		case *c99.PointerType:
 			t = x.Item
-			if t.Kind() == c99.Void {
+			if t.Kind() == c99.Function {
+				break
+			}
+
+			if ptr2uintptr || x.Item.Kind() == c99.Void {
 				buf.WriteString(" uintptr")
 				return
 			}
 
-			if t.Kind() != c99.Function {
-				buf.WriteByte('*')
-			}
+			buf.WriteByte('*')
 		case *c99.StructType:
 			buf.WriteString(" struct{")
 			layout := g.model.Layout(x)
@@ -173,14 +181,14 @@ func (g *gen) typ0(buf *bytes.Buffer, t c99.Type) {
 				if v.Bits != 0 {
 					if layout[i].Bitoff == 0 {
 						fmt.Fprintf(buf, "F%d ", layout[i].Offset)
-						g.typ0(buf, layout[i].BitType)
+						g.typ0(buf, layout[i].BitType, ptr2uintptr)
 						buf.WriteByte(';')
 					}
 					continue
 				}
 
 				fmt.Fprintf(buf, "%s ", mangleIdent(v.Name, true))
-				g.typ0(buf, v.Type)
+				g.typ0(buf, v.Type, ptr2uintptr)
 				buf.WriteByte(';')
 			}
 			buf.WriteByte('}')
@@ -215,7 +223,7 @@ func (g *gen) typ0(buf *bytes.Buffer, t c99.Type) {
 			fmt.Fprintf(buf, "struct{X [%d]byte; _ [0]struct{", g.model.Sizeof(x))
 			for _, v := range x.Fields {
 				fmt.Fprintf(buf, "%s ", mangleIdent(v.Name, true))
-				g.typ0(buf, v.Type)
+				g.typ0(buf, v.Type, ptr2uintptr)
 				buf.WriteByte(';')
 			}
 			buf.WriteString("}}")

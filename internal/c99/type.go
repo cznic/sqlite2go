@@ -416,9 +416,7 @@ func (t *ArrayType) IsUnsigned() bool { panic("TODO") }
 func (t *ArrayType) IsVoidPointerType() bool { panic("TODO") }
 
 // IsArithmeticType implements Type.
-func (t *ArrayType) IsArithmeticType() bool {
-	panic("TODO")
-}
+func (t *ArrayType) IsArithmeticType() bool { return false }
 
 // IsCompatible implements Type.
 func (t *ArrayType) IsCompatible(u Type) bool {
@@ -692,10 +690,14 @@ func (t *NamedType) Equal(u Type) bool {
 		return t.Name == x.Name && t.Type.Equal(x.Type)
 	case
 		*FunctionType,
-		*PointerType,
-		*TaggedStructType:
+		*PointerType:
 
 		return false
+	case *StructType:
+		return t.Type.Equal(x)
+	case *TaggedStructType:
+		v := x.getType()
+		return v != x && t.Type.Equal(v)
 	case TypeKind:
 		switch x {
 		case
@@ -784,6 +786,7 @@ func (t *PointerType) Equal(u Type) bool {
 
 	switch x := u.(type) {
 	case
+		*ArrayType,
 		*FunctionType,
 		*TaggedStructType:
 
@@ -1418,6 +1421,12 @@ func UnderlyingType(t Type) Type {
 			}
 
 			t = x.Type
+		case *TaggedUnionType:
+			if x.Type == nil {
+				return x
+			}
+
+			t = x.Type
 		case TypeKind:
 			switch x {
 			case
@@ -1426,6 +1435,7 @@ func UnderlyingType(t Type) Type {
 				Float,
 				Int,
 				Long,
+				LongDouble,
 				LongLong,
 				SChar,
 				Short,

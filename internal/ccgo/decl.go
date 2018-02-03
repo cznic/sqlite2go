@@ -36,6 +36,8 @@ more:
 			g.defineTaggedEnumType(y)
 		case *c99.TaggedStructType:
 			g.defineTaggedStructType(y)
+		case *c99.TaggedUnionType:
+			g.defineTaggedUnionType(y)
 		default:
 			todo("%T", y)
 		}
@@ -93,6 +95,15 @@ func (g *gen) defineTaggedStructType(t *c99.TaggedStructType) {
 
 	g.producedStructTags[t.Tag] = struct{}{}
 	g.w("\ntype S%s %s\n", dict.S(t.Tag), g.typ(t.Type))
+}
+
+func (g *gen) defineTaggedUnionType(t *c99.TaggedUnionType) {
+	if _, ok := g.producedStructTags[t.Tag]; ok {
+		return
+	}
+
+	g.producedStructTags[t.Tag] = struct{}{}
+	g.w("\ntype U%s %s\n", dict.S(t.Tag), g.typ(t.Type))
 }
 
 func (g *gen) tld(n *c99.Declarator) {
@@ -162,7 +173,7 @@ func (g *gen) escapedTLD(n *c99.Declarator) {
 	}
 
 	g.w("\nvar %s = bss + %d // %v \n", g.mangleDeclarator(n), g.allocBSS(n.Type), n.Type)
-	g.w("\n\nfunc init() { *(*%s)(unsafe.Pointer(%s)) = ", g.ptyp(n.Type, false), g.mangleDeclarator(n))
+	g.w("\n\nfunc init() { *(*%s)(unsafe.Pointer(%s)) = ", g.typ(n.Type), g.mangleDeclarator(n))
 	g.literal(n.Type, n.Initializer)
 	g.w("}")
 }
