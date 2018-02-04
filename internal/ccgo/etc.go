@@ -130,3 +130,37 @@ func todo(msg string, args ...interface{}) {
 	}
 	panic(fmt.Errorf("\n\n%v:%d: TODO\n\n%s", f, l, fmt.Sprintf(msg, args...))) //TODOOK
 }
+
+func (g *gen) mask(fp c99.FieldProperties) uint64 {
+	m := fp.Mask()
+	switch g.model.Sizeof(c99.UnderlyingType(fp.PackedType)) {
+	case 1:
+		todo("")
+	case 2:
+		todo("")
+	case 4:
+		return uint64(uint32(m))
+	case 8:
+		todo("")
+	default:
+	}
+	todo("", fp.PackedType)
+	panic("unreachable")
+}
+
+func (g *gen) sgnmask(fp c99.FieldProperties) uint64 {
+	m := ^fp.Mask()
+	switch g.model.Sizeof(c99.UnderlyingType(fp.PackedType)) {
+	case 1:
+		todo("")
+	case 2:
+		todo("")
+	case 4:
+		return uint64(uint32(m))
+	case 8:
+		todo("")
+	default:
+	}
+	todo("", fp.PackedType)
+	panic("unreachable")
+}

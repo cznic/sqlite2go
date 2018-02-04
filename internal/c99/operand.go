@@ -209,7 +209,9 @@ type Operand struct {
 	Address *Address
 	Type    Type
 	ir.Value
-	//TODO lvalue bool
+	Bits       int  // Non zero: bit field width.
+	PackedType Type // Bits != 0: Storage type holding the bit field.
+	Bitoff     int  // Bits != 0: bit field offset
 }
 
 func newIntConst(ctx *context, n Node, v uint64, t ...TypeKind) (r Operand) {

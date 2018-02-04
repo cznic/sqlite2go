@@ -326,7 +326,7 @@ func TestGCC(t *testing.T) {
 		"built-in-setjmp.c": {}, //TODO __builtin_setjmp
 		"pr60003.c":         {}, //TODO __builtin_setjmp
 	})
-	// compiles: 675, builds: 609, runs: 609
+	// compiles: 673, builds: 621, runs: 621
 }
 
 func testFile(t *testing.T, pth string, compiles, builds, runs *int) {

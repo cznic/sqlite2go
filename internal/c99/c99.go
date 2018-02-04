@@ -40,6 +40,86 @@ import (
 	"github.com/cznic/ir"
 )
 
+/* Bit fields
+
+-------------------------------------------------------------------------------
+6.2.6 Representations of types
+6.2.6.1 General
+-------------------------------------------------------------------------------
+
+3.
+Values stored in unsigned bit-fields and objects of type unsigned char shall be
+represented using a pure binary notation. 40)
+
+4.
+Values stored in bit-fields consist of m bits, where m is the size specified
+for the bit-field. The object representation is the set of m bits the bit-field
+comprises in the addressable storage unit holding it.
+
+6.2.7 Compatible type and composite type
+For two structures or unions, corresponding bit-fields shall have the same
+widths.
+
+-------------------------------------------------------------------------------
+6.3.1 Arithmetic operands
+6.3.1.1 Boolean, characters, and integers
+-------------------------------------------------------------------------------
+
+2.
+The following may be used in an expression wherever an int or unsigned int may
+be used:
+
+	— An object or expression with an integer type whose integer conversion
+	rank is less than or equal to the rank of int and unsigned int.
+
+	— A bit-field of type _Bool, int, signed int, or unsigned int.
+
+-------------------------------------------------------------------------------
+6.5.3.2 Address and indirection operators
+-------------------------------------------------------------------------------
+
+1
+The operand of the unary & operator shall be either a function designator, the
+result of a [] or unary * operator, or an lvalue that designates an object that
+is not a bit-field and is not declared with the register storage-class
+specifier.
+
+6.5.3.4 The sizeof operator
+Constraints
+
+1
+The sizeof operator shall not be applied to an expression that has function
+type or an incomplete type, to the parenthesized name of such a type, or to an
+expression that designates a bit-field member.
+
+-------------------------------------------------------------------------------
+6.7.2.1 Structure and union specifiers
+-------------------------------------------------------------------------------
+
+9
+A bit-field is interpreted as a signed or unsigned integer type consisting of
+the specified number of bits. 107) If the value 0 or 1 is stored into a
+nonzero-width bit-field of type _Bool, the value of the bit-field shall compare
+equal to the value stored.
+
+10
+An implementation may allocate any addressable storage unit large enough to
+hold a bit- field. If enough space remains, a bit-field that immediately
+follows another bit-field in a structure shall be packed into adjacent bits of
+the same unit. If insufficient space remains, whether a bit-field that does not
+fit is put into the next unit or overlaps adjacent units is
+implementation-defined. The order of allocation of bit-fields within a unit
+(high-order to low-order or low-order to high-order) is implementation-defined.
+The alignment of the addressable storage unit is unspecified.
+
+11
+A bit-field declaration with no declarator, but only a colon and a width,
+indicates an unnamed bit-field. 108) As a special case, a bit-field structure
+member with a width of 0 indicates that no further bit-field is to be packed
+into the unit in which the previous bit- field, if any, was placed.
+
+*/
+
 var (
 	_ Source = (*FileSource)(nil)
 	_ Source = (*StringSource)(nil)

@@ -18,6 +18,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/cznic/sqlite2go/internal/c99"
 )
@@ -58,7 +59,9 @@ type gen struct {
 	out                 io.Writer
 	out0                bytes.Buffer
 	postDecTypes        map[string]int
+	postDecUBitsTypes   map[string]int
 	postIncTypes        map[string]int
+	postIncUBitsTypes   map[string]int
 	preDecTypes         map[string]int
 	preIncTypes         map[string]int
 	producedDeclarators map[*c99.Declarator]struct{}
@@ -66,6 +69,8 @@ type gen struct {
 	producedNamedTypes  map[int]struct{}
 	producedStructTags  map[int]struct{}
 	queue               list.List
+	rshTypes            map[string]int
+	setBitsTypes        map[string]int
 	strings             map[int]int64
 	subTypes            map[string]int
 	text                []int
@@ -96,13 +101,17 @@ func newGen(out io.Writer, in []*c99.TranslationUnit) *gen {
 		nums:                map[*c99.Declarator]int{},
 		out:                 out,
 		postDecTypes:        map[string]int{},
+		postDecUBitsTypes:   map[string]int{},
 		postIncTypes:        map[string]int{},
+		postIncUBitsTypes:   map[string]int{},
 		preDecTypes:         map[string]int{},
 		preIncTypes:         map[string]int{},
 		producedDeclarators: map[*c99.Declarator]struct{}{},
 		producedEnumTags:    map[int]struct{}{},
 		producedNamedTypes:  map[int]struct{}{},
 		producedStructTags:  map[int]struct{}{},
+		rshTypes:            map[string]int{},
+		setBitsTypes:        map[string]int{},
 		strings:             map[int]int64{},
 		subTypes:            map[string]int{},
 		units:               map[*c99.Declarator]int{},
@@ -267,6 +276,46 @@ func (g *gen) gen(cmd bool) (err error) {
 		g.w("\nfunc postdec%d(n *%[2]s) %[2]s { r := *n; *n--; return r }", g.postDecTypes[k], k)
 	}
 	a = a[:0]
+	for k := range g.postDecUBitsTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		a := strings.Split(k, "|")
+		g.w("\nfunc postdecu%d(n uintptr, m %[2]s, off uint) %[2]s {", g.postDecUBitsTypes[k], a[0])
+		g.w(`
+pf := *(*%[2]s)(unsafe.Pointer(n))
+r := %[1]s(pf)&m>>off
+*(*%[2]s)(unsafe.Pointer(n)) = pf&^%[2]s(m)|%[2]s((r-1)<<off&m)
+return r
+}`, a[0], a[1])
+	}
+	a = a[:0]
+	for k := range g.postIncUBitsTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		a := strings.Split(k, "|")
+		g.w("\nfunc postincu%d(n uintptr, m %[2]s, off uint) %[2]s {", g.postIncUBitsTypes[k], a[0])
+		g.w(`
+pf := *(*%[2]s)(unsafe.Pointer(n))
+r := %[1]s(pf)&m>>off
+*(*%[2]s)(unsafe.Pointer(n)) = pf&^%[2]s(m)|%[2]s((r+1)<<off&m)
+return r
+}`, a[0], a[1])
+	}
+	a = a[:0]
+	for k := range g.setBitsTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		a := strings.Split(k, "|")
+		g.w("\nfunc set%d(n uintptr, m %[2]s, off uint, v %[2]s) {", g.setBitsTypes[k], a[0])
+		g.w("*(*%[2]s)(unsafe.Pointer(n)) = (*(*%[2]s)(unsafe.Pointer(n)))&^%[2]s(m)|%[2]s(v<<off&m)}", a[0], a[1])
+	}
+	a = a[:0]
 	for k := range g.preIncTypes {
 		a = append(a, k)
 	}
@@ -281,6 +330,14 @@ func (g *gen) gen(cmd bool) (err error) {
 	sort.Strings(a)
 	for _, k := range a {
 		g.w("\nfunc xor%d(n *%[2]s, m %[2]s) %[2]s { *n ^= m; return *n }", g.xorTypes[k], k)
+	}
+	a = a[:0]
+	for k := range g.rshTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		g.w("\nfunc rsh%d(n *%[2]s, m int) %[2]s { *n >>= uint(m); return *n }", g.rshTypes[k], k)
 	}
 	a = a[:0]
 	for k := range g.mulTypes {
@@ -437,10 +494,26 @@ func (g gen) escaped(n *c99.Declarator) bool {
 		*c99.TaggedUnionType,
 		*c99.UnionType:
 
-		return n.IsTLD() || n.DeclarationSpecifier.IsStatic()
+		return n.IsTLD() || n.DeclarationSpecifier.IsStatic() || g.hasBitFields(n.Type)
 	default:
 		return false
 	}
+}
+
+func (g *gen) hasBitFields(t c99.Type) bool {
+	switch x := c99.UnderlyingType(t).(type) {
+	case *c99.StructType:
+		for _, v := range x.Fields {
+			if v.Bits != 0 {
+				return true
+			}
+		}
+
+		return false
+	default:
+		todo("%T", x)
+	}
+	panic("unreachable")
 }
 
 func (g *gen) allocString(s int) int64 {
@@ -457,6 +530,16 @@ func (g *gen) allocString(s int) int64 {
 
 func (g *gen) registerType(m map[string]int, t c99.Type) int {
 	s := g.typ(t)
+	if id := m[s]; id != 0 {
+		return id
+	}
+
+	m[s] = len(m) + 1
+	return len(m)
+}
+
+func (g *gen) registerBitType(m map[string]int, field, packed c99.Type) int {
+	s := g.typ(field) + "|" + g.typ(packed)
 	if id := m[s]; id != 0 {
 		return id
 	}

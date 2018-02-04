@@ -60,7 +60,7 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
 			if v.Bits != 0 {
 				if layout[i].Bitoff == 0 {
 					fmt.Fprintf(&buf, "F%d ", layout[i].Offset)
-					g.typ0(&buf, layout[i].BitType, ptr2uintptr)
+					g.typ0(&buf, layout[i].PackedType, ptr2uintptr)
 					buf.WriteByte(';')
 				}
 				continue
@@ -181,7 +181,7 @@ func (g *gen) typ0(buf *bytes.Buffer, t c99.Type, ptr2uintptr bool) {
 				if v.Bits != 0 {
 					if layout[i].Bitoff == 0 {
 						fmt.Fprintf(buf, "F%d ", layout[i].Offset)
-						g.typ0(buf, layout[i].BitType, ptr2uintptr)
+						g.typ0(buf, layout[i].PackedType, ptr2uintptr)
 						buf.WriteByte(';')
 					}
 					continue
@@ -205,6 +205,7 @@ func (g *gen) typ0(buf *bytes.Buffer, t c99.Type, ptr2uintptr bool) {
 				c99.Float,
 				c99.Int,
 				c99.Long,
+				c99.LongDouble,
 				c99.LongLong,
 				c99.SChar,
 				c99.Short,

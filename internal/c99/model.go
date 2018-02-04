@@ -109,6 +109,8 @@ func (m Model) Sizeof(t Type) int64 {
 			}
 		}
 		return roundup(sz, int64(m.Alignof(t)))
+	case nil:
+		panic("internal error")
 	default:
 		panic(x)
 	}
@@ -116,12 +118,20 @@ func (m Model) Sizeof(t Type) int64 {
 
 // FieldProperties describe a struct/union field.
 type FieldProperties struct {
-	Bitoff  int   // Zero based bit number of a bitfield
-	Bits    int   // Width of a bitfield or zero otherwise.
-	Offset  int64 // Byte offset relative to start of the struct/union.
-	Size    int64 // Field size for copying.
-	Padding int   // Adjustment to enforce proper alignment.
-	BitType Type
+	Bitoff     int   // Zero based bit number of a bitfield
+	Bits       int   // Width of a bit field or zero otherwise.
+	Offset     int64 // Byte offset relative to start of the struct/union.
+	Size       int64 // Field size for copying.
+	Padding    int   // Adjustment to enforce proper alignment.
+	PackedType Type  // Bits != 0: Storage type holding the bit field.
+}
+
+func (f *FieldProperties) Mask() uint64 {
+	if f.Bits == 0 {
+		return 1<<64 - 1
+	}
+
+	return (1<<uint(f.Bits) - 1) << uint(f.Bitoff)
 }
 
 // Layout computes the memory layout of t.
@@ -145,38 +155,7 @@ func (m Model) Layout(t Type) []FieldProperties {
 				default:
 					n := bitoff + v.Bits
 					if n > 64 {
-						var t Type
-						switch {
-						case bitoff <= 8:
-							t = UChar
-						case bitoff <= 16:
-							t = UShort
-						case bitoff <= 32:
-							t = UInt
-						case bitoff <= 64:
-							t = ULongLong
-						default:
-							panic("internal error")
-						}
-						sz := m.Sizeof(t)
-						a := m.StructAlignof(t)
-						z := off
-						if a != 0 {
-							off = roundup(off, int64(a))
-						}
-						var first int
-						for first = i; first >= 0 && r[first].Bits != 0 && r[first].BitType == nil; first-- {
-						}
-						first++
-						if off != z && first > 0 {
-							r[first-1].Padding = int(off - z)
-						}
-						for i := range r[first:] {
-							r[i].Offset = off
-							r[i].Size = sz
-							r[i].BitType = t
-						}
-						off += sz
+						off = m.packBits(bitoff, i-1, off, r)
 						r[i] = FieldProperties{Offset: off, Bits: v.Bits}
 						bitoff = v.Bits
 						break
@@ -188,38 +167,8 @@ func (m Model) Layout(t Type) []FieldProperties {
 				}
 			default:
 				if bitoff != 0 {
-					var t Type
-					switch {
-					case bitoff <= 8:
-						t = UChar
-					case bitoff <= 16:
-						t = UShort
-					case bitoff <= 32:
-						t = UInt
-					case bitoff <= 64:
-						t = ULongLong
-					default:
-						panic("internal error")
-					}
-					sz := m.Sizeof(t)
-					a := m.StructAlignof(t)
-					z := off
-					if a != 0 {
-						off = roundup(off, int64(a))
-					}
-					var first int
-					for first = i; first >= 0 && r[first].Bits != 0 && r[first].BitType == nil; first-- {
-					}
-					first++
-					if off != z && first > 0 {
-						r[first-1].Padding = int(off - z)
-					}
-					for i := range r[first:] {
-						r[i].Offset = off
-						r[i].Size = sz
-						r[i].BitType = t
-					}
-					off += sz
+					off = m.packBits(bitoff, i-1, off, r)
+					bitoff = 0
 				}
 				sz := m.Sizeof(v.Type)
 				a := m.StructAlignof(v.Type)
@@ -236,38 +185,12 @@ func (m Model) Layout(t Type) []FieldProperties {
 		}
 		i := len(r) - 1
 		if bitoff != 0 {
-			var t Type
-			switch {
-			case bitoff <= 8:
-				t = UChar
-			case bitoff <= 16:
-				t = UShort
-			case bitoff <= 32:
-				t = UInt
-			case bitoff <= 64:
-				t = ULongLong
-			default:
-				panic("internal error")
+			off = m.packBits(bitoff, i, off, r)
+		}
+		for i, v := range r {
+			if v.Bits != 0 {
+				x.Fields[i].PackedType = v.PackedType
 			}
-			sz := m.Sizeof(t)
-			a := m.StructAlignof(t)
-			z := off
-			if a != 0 {
-				off = roundup(off, int64(a))
-			}
-			var first int
-			for first = i; first >= 0 && r[first].Bits != 0 && r[first].BitType == nil; first-- {
-			}
-			first++
-			if off != z && first > 0 {
-				r[first-1].Padding = int(off - z)
-			}
-			for i := range r[first:] {
-				r[i].Offset = off
-				r[i].Size = sz
-				r[i].BitType = t
-			}
-			off += sz
 		}
 		z := off
 		off = roundup(off, int64(m.Alignof(t)))
@@ -299,15 +222,60 @@ func (m Model) Layout(t Type) []FieldProperties {
 				r[i] = FieldProperties{Offset: off, Size: sz, Bits: v.Bits}
 			}
 		}
+		for i, v := range r {
+			if v.Bits != 0 {
+				if v.PackedType == nil {
+					panic("TODO")
+				}
+				x.Fields[i].PackedType = v.PackedType
+			}
+		}
 		z := off
 		off = roundup(off, int64(m.Alignof(t)))
 		if off != z {
 			r[len(r)-1].Padding = int(off - z)
 		}
 		return r
+	case nil:
+		panic("internal error")
 	default:
 		panic(x)
 	}
+}
+
+func (m *Model) packBits(bitoff, i int, off int64, r []FieldProperties) int64 {
+	var t Type
+	switch {
+	case bitoff <= 8:
+		t = UChar
+	case bitoff <= 16:
+		t = UShort
+	case bitoff <= 32:
+		t = UInt
+	case bitoff <= 64:
+		t = ULongLong
+	default:
+		panic("internal error")
+	}
+	sz := m.Sizeof(t)
+	a := m.StructAlignof(t)
+	z := off
+	if a != 0 {
+		off = roundup(off, int64(a))
+	}
+	var first int
+	for first = i; first >= 0 && r[first].Bits != 0 && r[first].PackedType == nil; first-- {
+	}
+	first++
+	if off != z {
+		r[first-1].Padding = int(off - z)
+	}
+	for j := first; j <= i; j++ {
+		r[j].Offset = off
+		r[j].Size = sz
+		r[j].PackedType = t
+	}
+	return off + sz
 }
 
 // Alignof computes the memory alignment requirements of t. One is returned
@@ -323,7 +291,11 @@ func (m Model) Alignof(t Type) int {
 	case *StructType:
 		r := 1
 		for _, v := range x.Fields {
-			if a := m.Alignof(v.Type); a > r {
+			t := v.Type
+			if v.Bits != 0 {
+				t = v.PackedType
+			}
+			if a := m.Alignof(t); a > r {
 				r = a
 			}
 		}
@@ -345,11 +317,17 @@ func (m Model) Alignof(t Type) int {
 	case *UnionType:
 		r := 1
 		for _, v := range x.Fields {
-			if a := m.Alignof(v.Type); a > r {
+			t := v.Type
+			if v.Bits != 0 {
+				t = v.PackedType
+			}
+			if a := m.Alignof(t); a > r {
 				r = a
 			}
 		}
 		return r
+	case nil:
+		panic("internal error")
 	default:
 		panic(x)
 	}

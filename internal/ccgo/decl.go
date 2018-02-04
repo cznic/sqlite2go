@@ -94,7 +94,12 @@ func (g *gen) defineTaggedStructType(t *c99.TaggedStructType) {
 	}
 
 	g.producedStructTags[t.Tag] = struct{}{}
-	g.w("\ntype S%s %s\n", dict.S(t.Tag), g.typ(t.Type))
+	switch {
+	case t.Type == nil:
+		g.w("\ntype S%s struct{uintptr}\n", dict.S(t.Tag)) //TODO
+	default:
+		g.w("\ntype S%s %s\n", dict.S(t.Tag), g.typ(t.Type))
+	}
 }
 
 func (g *gen) defineTaggedUnionType(t *c99.TaggedUnionType) {

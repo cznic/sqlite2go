@@ -170,7 +170,7 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 					todo("", g.position0(n))
 				}
 				if layout[fld].Bits != 0 {
-					todo("%v: bit field", g.position0(n))
+					todo("bit field %v", g.position0(n))
 				}
 				d := fields[fld]
 				g.w("%s: ", mangleIdent(d.Name, true))
@@ -186,6 +186,17 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 			return
 		}
 		todo("", g.position0(n), x)
+	case *c99.UnionType:
+		if n.Expr != nil {
+			todo("", g.position0(n), x)
+			return
+		}
+
+		g.w("%s{", g.typ(t))
+		if !g.isZeroInitializer(n) {
+			todo("", g.position0(n), x)
+		}
+		g.w("}")
 	default:
 		todo("%v: %T", g.position0(n), x)
 	}
@@ -241,12 +252,24 @@ func (g *gen) renderInitializer(b []byte, t c99.Type, n *c99.Initializer) {
 			if l.Designation != nil {
 				todo("", g.position0(n))
 			}
-			if layout[fld].Bits != 0 {
-				todo("%v: bit field", g.position0(n))
-			}
+			fp := layout[fld]
 			lo := layout[fld].Offset
 			hi := lo + layout[fld].Size
-			g.renderInitializer(b[lo:hi:hi], fields[fld].Type, l.Initializer)
+			switch {
+			case fp.Bits != 0:
+				v := uint64(l.Initializer.Expr.Operand.Value.(*ir.Int64Value).Value)
+				switch sz := g.model.Sizeof(fp.PackedType); sz {
+				case 1:
+					m := fp.Mask()
+					x := uint64(b[lo])
+					x = x&^m | v&m<<uint(fp.Bitoff)
+					b[lo] = byte(x)
+				default:
+					todo("", g.position0(n), sz, v)
+				}
+			default:
+				g.renderInitializer(b[lo:hi:hi], fields[fld].Type, l.Initializer)
+			}
 			fld++
 		}
 	case c99.TypeKind:
@@ -295,7 +318,7 @@ func (g *gen) renderInitializer(b []byte, t c99.Type, n *c99.Initializer) {
 				todo("", g.position0(n))
 			}
 			if layout[fld].Bits != 0 {
-				todo("%v: bit field", g.position0(n))
+				todo("bit field %v", g.position0(n))
 			}
 			lo := layout[fld].Offset
 			hi := lo + layout[fld].Size

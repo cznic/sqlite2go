@@ -386,8 +386,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		default:
 			panic(x)
 		}
-		if n.Expr.Case != ExprIdent && n.Operand.Address != Null {
-			n.Operand.Address = nil
+		if n.Expr.Operand.Value != nil {
+			op := n.Expr.Operand.convertTo(ctx.model, t)
+			n.Operand.Value = op.Value
 		}
 	case ExprDeref: // '*' Expr
 		// [0]6.5.3
@@ -606,10 +607,13 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 					panic(ctx.position(n))
 				}
 				d := d0.(*Declarator)
+				fp := ctx.model.Layout(x)[d.Field]
 				n.Operand = Operand{Type: x.Fields[d.Field].Type}
-				if a := op.Address; a != nil {
-					layout := ctx.model.Layout(x)
-					n.Operand.Address = &Address{Declarator: a.Declarator, Offset: a.Offset + uintptr(layout[d.Field].Offset)}
+				n.Operand.Bits = x.Fields[d.Field].Bits
+				n.Operand.PackedType = fp.PackedType
+				n.Operand.Bitoff = fp.Bitoff
+				if op.Address == Null {
+					n.Operand.Value = &ir.Int64Value{Value: fp.Offset}
 				}
 				break out
 			case *TaggedStructType:
@@ -624,17 +628,18 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 					panic(ctx.position(n))
 				}
 				d := d0.(*Declarator)
+				fp := ctx.model.Layout(x)[d.Field]
 				n.Operand = Operand{Type: x.Fields[d.Field].Type}
-				if a := op.Address; a != nil && a.Declarator.Linkage != LinkageNone {
-					panic("TODO")
+				n.Operand.Bits = x.Fields[d.Field].Bits
+				n.Operand.PackedType = fp.PackedType
+				n.Operand.Bitoff = fp.Bitoff
+				if op.Address == Null {
+					n.Operand.Value = &ir.Int64Value{}
 				}
 				break out
 			default:
 				panic(x)
 			}
-		}
-		if n.Expr.Case != ExprIdent {
-			n.Operand.Address = nil
 		}
 	case ExprDivAssign: // Expr "/=" Expr
 		// [0]6.5.16.2
@@ -927,6 +932,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 				}
 				d := d0.(*Declarator)
 				n.Operand = Operand{Type: x.Fields[d.Field].Type}
+				n.Operand.Bits = x.Fields[d.Field].Bits
+				n.Operand.PackedType = ctx.model.Layout(x)[d.Field].PackedType
+				n.Operand.Bitoff = ctx.model.Layout(x)[d.Field].Bitoff
 				if a := op.Address; a != nil {
 					layout := ctx.model.Layout(x)
 					n.Operand.Address = &Address{Declarator: a.Declarator, Offset: a.Offset + uintptr(layout[d.Field].Offset)}
@@ -955,6 +963,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 				}
 				d := d0.(*Declarator)
 				n.Operand = Operand{Type: x.Fields[d.Field].Type, Address: op.Address}
+				n.Operand.Bits = x.Fields[d.Field].Bits
+				n.Operand.PackedType = ctx.model.Layout(x)[d.Field].PackedType
+				n.Operand.Bitoff = ctx.model.Layout(x)[d.Field].Bitoff
 				if a := op.Address; a != nil {
 					if n.Operand.Type.Kind() == Array {
 						a.Declarator.AddressTaken = true

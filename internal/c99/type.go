@@ -462,7 +462,10 @@ func (t *ArrayType) Equal(u Type) bool {
 		default:
 			panic("TODO")
 		}
-	case *PointerType:
+	case
+		*FunctionType,
+		*PointerType:
+
 		return false
 	case TypeKind:
 		switch x {
@@ -515,9 +518,7 @@ func (t *EnumType) IsUnsigned() bool { return false }
 func (t *EnumType) IsVoidPointerType() bool { panic("TODO") }
 
 // IsArithmeticType implements Type.
-func (t *EnumType) IsArithmeticType() bool {
-	panic("TODO")
-}
+func (t *EnumType) IsArithmeticType() bool { return true }
 
 // IsCompatible implements Type.
 func (t *EnumType) IsCompatible(u Type) bool { panic("TODO") }
@@ -552,9 +553,10 @@ func (t *EnumType) String() string {
 
 // Field represents a struct/union field.
 type Field struct {
-	Bits int
-	Name int
-	Type Type
+	Bits       int
+	Name       int
+	Type       Type
+	PackedType Type // Bits != 0: underlaying struct field type
 }
 
 func (f Field) equal(g Field) bool {
@@ -623,7 +625,10 @@ func (t *FunctionType) Equal(u Type) bool {
 		return false
 	case TypeKind:
 		switch x {
-		case Void:
+		case
+			Int,
+			Void:
+
 			return false
 		default:
 			panic(x)
@@ -890,9 +895,7 @@ func (t *StructType) Field(nm int) *Declarator {
 func (t *StructType) IsVoidPointerType() bool { panic("TODO") }
 
 // IsArithmeticType implements Type.
-func (t *StructType) IsArithmeticType() bool {
-	panic("TODO")
-}
+func (t *StructType) IsArithmeticType() bool { return false }
 
 // IsCompatible implements Type.
 func (t *StructType) IsCompatible(u Type) bool {
