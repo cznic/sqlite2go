@@ -143,20 +143,20 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 		}
 		g.w("}")
 	case *c99.PointerType:
-		if n.Expr.Operand.IsZero() || n.Expr.Operand.Address == c99.Null {
+		if n.Expr.Operand.IsZero() || n.Expr.Operand.Value == c99.Null {
 			g.w("0")
 			return
 		}
 
 		if x.Item.Kind() == c99.Function {
-			g.value(n.Expr)
+			g.value(n.Expr, false)
 			return
 		}
 
-		g.value(n.Expr)
+		g.value(n.Expr, false)
 	case *c99.StructType:
 		if n.Expr != nil {
-			g.value(n.Expr)
+			g.value(n.Expr, false)
 			return
 		}
 
@@ -262,8 +262,23 @@ func (g *gen) renderInitializer(b []byte, t c99.Type, n *c99.Initializer) {
 				case 1:
 					m := fp.Mask()
 					x := uint64(b[lo])
-					x = x&^m | v&m<<uint(fp.Bitoff)
+					x = x&^m | v<<uint(fp.Bitoff)&m
 					b[lo] = byte(x)
+				case 2:
+					m := fp.Mask()
+					x := uint64(*(*uint16)(unsafe.Pointer(&b[lo])))
+					x = x&^m | v<<uint(fp.Bitoff)&m
+					*(*uint16)(unsafe.Pointer(&b[lo])) = uint16(x)
+				case 4:
+					m := fp.Mask()
+					x := uint64(*(*uint32)(unsafe.Pointer(&b[lo])))
+					x = x&^m | v<<uint(fp.Bitoff)&m
+					*(*uint32)(unsafe.Pointer(&b[lo])) = uint32(x)
+				case 8:
+					m := fp.Mask()
+					x := *(*uint64)(unsafe.Pointer(&b[lo]))
+					x = x&^m | v<<uint(fp.Bitoff)&m
+					*(*uint64)(unsafe.Pointer(&b[lo])) = x
 				default:
 					todo("", g.position0(n), sz, v)
 				}
@@ -297,7 +312,12 @@ func (g *gen) renderInitializer(b []byte, t c99.Type, n *c99.Initializer) {
 			c99.Double,
 			c99.LongDouble:
 
-			*(*float64)(unsafe.Pointer(&b[0])) = n.Expr.Operand.Value.(*ir.Float64Value).Value
+			switch x := n.Expr.Operand.Value.(type) {
+			case *ir.Float64Value:
+				*(*float64)(unsafe.Pointer(&b[0])) = x.Value
+			case *ir.Int64Value:
+				*(*float64)(unsafe.Pointer(&b[0])) = float64(x.Value)
+			}
 		default:
 			todo("", g.position0(n), x)
 		}

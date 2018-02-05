@@ -58,12 +58,15 @@ type gen struct {
 	nums                map[*c99.Declarator]int
 	out                 io.Writer
 	out0                bytes.Buffer
+	postDecIBitsTypes   map[string]int
 	postDecTypes        map[string]int
 	postDecUBitsTypes   map[string]int
 	postIncTypes        map[string]int
 	postIncUBitsTypes   map[string]int
 	preDecTypes         map[string]int
+	preDecUBitsTypes    map[string]int
 	preIncTypes         map[string]int
+	preIncUBitsTypes    map[string]int
 	producedDeclarators map[*c99.Declarator]struct{}
 	producedEnumTags    map[int]struct{}
 	producedNamedTypes  map[int]struct{}
@@ -101,11 +104,14 @@ func newGen(out io.Writer, in []*c99.TranslationUnit) *gen {
 		nums:                map[*c99.Declarator]int{},
 		out:                 out,
 		postDecTypes:        map[string]int{},
+		postDecIBitsTypes:   map[string]int{},
 		postDecUBitsTypes:   map[string]int{},
 		postIncTypes:        map[string]int{},
 		postIncUBitsTypes:   map[string]int{},
 		preDecTypes:         map[string]int{},
+		preDecUBitsTypes:    map[string]int{},
 		preIncTypes:         map[string]int{},
+		preIncUBitsTypes:    map[string]int{},
 		producedDeclarators: map[*c99.Declarator]struct{}{},
 		producedEnumTags:    map[int]struct{}{},
 		producedNamedTypes:  map[int]struct{}{},
@@ -291,6 +297,25 @@ return r
 }`, a[0], a[1])
 	}
 	a = a[:0]
+	for k := range g.postDecIBitsTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		a := strings.Split(k, "|")
+		g.w("\nfunc postdeci%d(n uintptr, s, m %[2]s, off uint) %[2]s {", g.postDecIBitsTypes[k], a[0])
+		g.w(`
+pf := *(*%[2]s)(unsafe.Pointer(n))
+r := %[1]s(pf)&m
+if r&s != 0 {
+	r |= ^m
+}
+r >>= off
+*(*%[2]s)(unsafe.Pointer(n)) = pf&^%[2]s(m)|%[2]s((r-1)<<off&m)
+return r
+}`, a[0], a[1])
+	}
+	a = a[:0]
 	for k := range g.postIncUBitsTypes {
 		a = append(a, k)
 	}
@@ -306,14 +331,44 @@ return r
 }`, a[0], a[1])
 	}
 	a = a[:0]
+	for k := range g.preDecUBitsTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		a := strings.Split(k, "|")
+		g.w("\nfunc predecu%d(n uintptr, m %[2]s, off uint) %[2]s {", g.preDecUBitsTypes[k], a[0])
+		g.w(`
+pf := *(*%[2]s)(unsafe.Pointer(n))
+r := %[1]s(pf)&m>>off-1
+*(*%[2]s)(unsafe.Pointer(n)) = pf&^%[2]s(m)|%[2]s(r<<off&m)
+return r
+}`, a[0], a[1])
+	}
+	a = a[:0]
+	for k := range g.preIncUBitsTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		a := strings.Split(k, "|")
+		g.w("\nfunc preincu%d(n uintptr, m %[2]s, off uint) %[2]s {", g.preIncUBitsTypes[k], a[0])
+		g.w(`
+pf := *(*%[2]s)(unsafe.Pointer(n))
+r := %[1]s(pf)&m>>off+1
+*(*%[2]s)(unsafe.Pointer(n)) = pf&^%[2]s(m)|%[2]s(r<<off&m)
+return r
+}`, a[0], a[1])
+	}
+	a = a[:0]
 	for k := range g.setBitsTypes {
 		a = append(a, k)
 	}
 	sort.Strings(a)
 	for _, k := range a {
 		a := strings.Split(k, "|")
-		g.w("\nfunc set%d(n uintptr, m %[2]s, off uint, v %[2]s) {", g.setBitsTypes[k], a[0])
-		g.w("*(*%[2]s)(unsafe.Pointer(n)) = (*(*%[2]s)(unsafe.Pointer(n)))&^%[2]s(m)|%[2]s(v<<off&m)}", a[0], a[1])
+		g.w("\nfunc set%d(n uintptr,m %[3]s, off uint, v %[2]s) {", g.setBitsTypes[k], a[0], a[1])
+		g.w("*(*%[1]s)(unsafe.Pointer(n)) = (*(*%[1]s)(unsafe.Pointer(n)))&^m|%[1]s(v)<<off&m }", a[1])
 	}
 	a = a[:0]
 	for k := range g.preIncTypes {
@@ -503,6 +558,14 @@ func (g gen) escaped(n *c99.Declarator) bool {
 func (g *gen) hasBitFields(t c99.Type) bool {
 	switch x := c99.UnderlyingType(t).(type) {
 	case *c99.StructType:
+		for _, v := range x.Fields {
+			if v.Bits != 0 {
+				return true
+			}
+		}
+
+		return false
+	case *c99.UnionType:
 		for _, v := range x.Fields {
 			if v.Bits != 0 {
 				return true

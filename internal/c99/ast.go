@@ -1412,10 +1412,11 @@ func (n ExprCase) String() string {
 //	|       LONGSTRINGLITERAL                                  // Case ExprLString
 //	|       STRINGLITERAL                                      // Case ExprString
 type Expr struct {
+	CallArgs            []Operand   // Promoted arguments of Call.
+	Declarator          *Declarator // Case Ident.
 	Operand             Operand
-	CallArgs            []Operand // Promoted arguments of Call.
-	Scope               *Scope    // Case Ident.
-	AssignedTo          bool      // Expression appears at the left side of assignment.
+	Scope               *Scope // Case Ident.
+	AssignedTo          bool   // Expression appears at the left side of assignment.
 	ArgumentExprListOpt *ArgumentExprListOpt
 	Case                ExprCase
 	CommaOpt            *CommaOpt

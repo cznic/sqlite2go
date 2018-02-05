@@ -78,7 +78,7 @@ var (
 	nopos xc.Token
 
 	// Null pointer, [0]6.3.2.3-3.
-	Null = &Address{}
+	Null = &ir.AddressValue{}
 
 	idAlloca   = dict.SID("__builtin_alloca")
 	idChar     = dict.SID("char")

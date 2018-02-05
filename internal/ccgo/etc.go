@@ -164,3 +164,24 @@ func (g *gen) sgnmask(fp c99.FieldProperties) uint64 {
 	todo("", fp.PackedType)
 	panic("unreachable")
 }
+
+func packedType(packed, t c99.Type) c99.Type {
+	if t.IsUnsigned() {
+		return packed
+	}
+	switch packed.Kind() {
+	case c99.UChar:
+		return c99.SChar
+	case c99.UShort:
+		return c99.Short
+	case c99.UInt:
+		return c99.Int
+	case c99.ULong:
+		return c99.Long
+	case c99.ULongLong:
+		return c99.LongLong
+	default:
+		todo("", packed.Kind())
+	}
+	panic("unreachable")
+}

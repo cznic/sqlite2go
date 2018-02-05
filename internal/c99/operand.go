@@ -70,16 +70,12 @@ var (
 )
 
 // Address represents the address of a variable.
-type Address struct {
+type Address struct { //TODO-
 	Declarator *Declarator
 	Offset     uintptr
 }
 
 func (a *Address) String() string {
-	if a == Null {
-		return "null"
-	}
-
 	return fmt.Sprintf("(%s+%d, %s)", dict.S(a.Declarator.Name()), a.Offset, a.Declarator.Linkage)
 }
 
@@ -199,15 +195,12 @@ func UsualArithmeticConversions(m Model, a, b Operand) (Operand, Operand) {
 		panic(fmt.Errorf("TODO %v %v", a, b))
 	}
 
-	//dbg("", a.isSigned())
-	//dbg("", b.isSigned())
 	panic(fmt.Errorf("TODO %v %v", a, b))
 }
 
 // Operand represents the type and optionally the value of an expression.
 type Operand struct {
-	Address *Address
-	Type    Type
+	Type Type
 	ir.Value
 	Bits       int  // Non zero: bit field width.
 	PackedType Type // Bits != 0: Storage type holding the bit field.
@@ -231,7 +224,7 @@ func newIntConst(ctx *context, n Node, v uint64, t ...TypeKind) (r Operand) {
 }
 
 func (o Operand) isArithmeticType() bool { return o.Type.IsArithmeticType() }
-func (o Operand) String() string         { return fmt.Sprintf("(%v, %v, %v)", o.Type, o.Value, o.Address) }
+func (o Operand) String() string         { return fmt.Sprintf("(%v, %v)", o.Type, o.Value) }
 func (o Operand) isIntegerType() bool    { return o.Type.IsIntegerType() }
 func (o Operand) isPointerType() bool    { return o.Type.IsPointerType() }
 func (o Operand) isScalarType() bool     { return o.Type.IsScalarType() } // [0]6.2.5-21
@@ -328,7 +321,7 @@ func (o Operand) convertTo(m Model, t Type) (r Operand) {
 				// a null pointer, is guaranteed to compare
 				// unequal to a pointer to any object or
 				// function.
-				return Operand{Type: t, Address: Null}
+				return Operand{Type: t, Value: Null}
 			}
 
 			return Operand{Type: t, Value: o.Value}
@@ -374,7 +367,6 @@ func (o Operand) convertTo(m Model, t Type) (r Operand) {
 }
 
 func (o Operand) cpl(ctx *context) Operand {
-	o.Address = nil
 	if o.isIntegerType() {
 		o = o.integerPromotion(ctx.model)
 	}
@@ -518,6 +510,20 @@ func (o Operand) integerPromotion(m Model) Operand {
 		case *TaggedEnumType:
 			t = x.getType().(*EnumType).Enums[0].Operand.Type
 		case TypeKind:
+			if x.IsIntegerType() && o.Bits != 0 {
+				bits := m[Int].Size * 8
+				switch {
+				case x.IsUnsigned():
+					if o.Bits < bits-1 {
+						return o.convertTo(m, Int)
+					}
+				default:
+					if o.Bits < bits {
+						return o.convertTo(m, Int)
+					}
+				}
+			}
+
 			switch x {
 			case
 				Int,
@@ -554,6 +560,8 @@ func (o Operand) IsNonzero() bool {
 		return x.Value != 0
 	case *ir.StringValue:
 		return true
+	case *ir.AddressValue:
+		return x != Null
 	default:
 		panic(fmt.Errorf("TODO %T", x))
 	}
@@ -570,6 +578,8 @@ func (o Operand) IsZero() bool {
 		return x.Value == 0
 	case *ir.StringValue:
 		return false
+	case *ir.AddressValue:
+		return x == Null
 	default:
 		panic(fmt.Errorf("TODO %T", x))
 	}
@@ -771,6 +781,7 @@ func (o Operand) normalize(m Model) (r Operand) {
 		}
 	case
 		nil,
+		*ir.AddressValue,
 		*ir.Float32Value,
 		*ir.Float64Value,
 		*ir.StringValue:
@@ -846,7 +857,6 @@ func (o Operand) sub(ctx *context, p Operand) (r Operand) {
 }
 
 func (o Operand) unaryMinus(ctx *context) Operand {
-	o.Address = nil
 	if o.isIntegerType() {
 		o = o.integerPromotion(ctx.model)
 	}

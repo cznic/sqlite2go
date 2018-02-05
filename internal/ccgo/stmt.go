@@ -203,7 +203,7 @@ func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int
 			switch ce := v.ConstExpr; {
 			case ce != nil:
 				g.w("\ncase ")
-				g.value(ce.Expr)
+				g.value(ce.Expr, false)
 				g.w(": goto _%d", l)
 			default:
 				deflt = v

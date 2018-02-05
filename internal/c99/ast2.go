@@ -261,7 +261,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		if !n.Operand.isScalarType() {
 			panic(ctx.position(n))
 		}
-		n.Operand.Address = nil
 	case ExprPreDec: // "--" Expr
 		// [0]6.5.3.1
 		//
@@ -272,7 +271,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		if !n.Operand.isScalarType() {
 			panic(ctx.position(n))
 		}
-		n.Operand.Address = nil
 	case ExprSizeofType: // "sizeof" '(' TypeName ')'
 		t := n.TypeName.check(ctx)
 		n.Operand = ctx.sizeof(t)
@@ -329,9 +327,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 	case ExprAddrof: // '&' Expr
 		// [0]6.5.3.2
 		op := n.Expr.eval(ctx, false, fn) // [0]6.3.2.1-3
-		n.Operand = Operand{Type: &PointerType{op.Type}, Address: op.Address}
-		if a := op.Address; a != nil && a.Declarator != nil && n.Expr.Case != ExprPSelect {
-			a.Declarator.AddressTaken = true
+		n.Operand = Operand{Type: &PointerType{op.Type}}
+		if d := n.Expr.Declarator; d != nil && n.Expr.Case != ExprPSelect {
+			d.AddressTaken = true
 		}
 	case ExprPExprList: // '(' ExprList ')'
 		n.Operand = n.ExprList.eval(ctx, arr2ptr, fn)
@@ -413,7 +411,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		if !n.Operand.isArithmeticType() {
 			panic(ctx.position(n))
 		}
-		n.Operand.Address = nil
 	case ExprUnaryMinus: // '-' Expr
 		// [0]6.5.3.3
 		// The operand of the unary + or - operator shall have
@@ -455,12 +452,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 				panic(ctx.position(n))
 			}
 
-			if lhs.Address != nil && lhs.Address.Declarator.Linkage != LinkageNone {
-				if rhs.Value != nil || rhs.Address != nil {
-					panic(ctx.position(n))
-				}
-			}
-
 			n.Operand = Operand{Type: Int}
 		case
 			// one operand is a pointer and the other is a null
@@ -486,7 +477,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		// [0]6.5.16.2
 		n.Expr.eval(ctx, arr2ptr, fn).mod(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
 		n.Operand = n.Expr.Operand
-		n.Operand.Address = nil
 	case ExprLAnd: // Expr "&&" Expr
 		n.Operand = Operand{Type: Int}
 		a := n.Expr.eval(ctx, arr2ptr, fn)
@@ -507,12 +497,10 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 	case ExprAndAssign: // Expr "&=" Expr
 		n.Expr.eval(ctx, arr2ptr, fn).and(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
 		n.Operand = n.Expr.Operand
-		n.Operand.Address = nil
 	case ExprMulAssign: // Expr "*=" Expr
 		// [0]6.5.16.2
 		n.Expr.eval(ctx, arr2ptr, fn).mul(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
 		n.Operand = n.Expr.Operand
-		n.Operand.Address = nil
 	case ExprPostInc: // Expr "++"
 		// [0]6.5.2.4
 		//
@@ -523,7 +511,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		if !n.Operand.isScalarType() {
 			panic(ctx.position(n))
 		}
-		n.Operand.Address = nil
 	case ExprAddAssign: // Expr "+=" Expr
 		// [0]6.5.16.2
 		//
@@ -544,7 +531,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			panic(ctx.position(n))
 		}
 		n.Operand = lhs
-		n.Operand.Address = nil
 	case ExprPostDec: // Expr "--"
 		// [0]6.5.2.4
 		//
@@ -555,7 +541,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		if !n.Operand.isScalarType() {
 			panic(ctx.position(n))
 		}
-		n.Operand.Address = nil
 	case ExprSubAssign: // Expr "-=" Expr
 		// [0]6.5.16.2
 		//
@@ -576,12 +561,11 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			panic(ctx.position(n))
 		}
 		n.Operand = lhs
-		n.Operand.Address = nil
 	case ExprPSelect: // Expr "->" IDENTIFIER
 		n.Expr.AssignedTo = n.AssignedTo
 		op := n.Expr.eval(ctx, arr2ptr, fn)
-		if a := n.Expr.Operand.Address; a != nil && n.AssignedTo {
-			a.Declarator.AssignedTo++
+		if d := n.Expr.Declarator; d != nil && n.AssignedTo {
+			d.AssignedTo++
 		}
 		t := op.Type
 		for done := false; !done; {
@@ -612,7 +596,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 				n.Operand.Bits = x.Fields[d.Field].Bits
 				n.Operand.PackedType = fp.PackedType
 				n.Operand.Bitoff = fp.Bitoff
-				if op.Address == Null {
+				if op.Value == Null {
 					n.Operand.Value = &ir.Int64Value{Value: fp.Offset}
 				}
 				break out
@@ -633,7 +617,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 				n.Operand.Bits = x.Fields[d.Field].Bits
 				n.Operand.PackedType = fp.PackedType
 				n.Operand.Bitoff = fp.Bitoff
-				if op.Address == Null {
+				if op.Value == Null {
 					n.Operand.Value = &ir.Int64Value{}
 				}
 				break out
@@ -645,13 +629,11 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		// [0]6.5.16.2
 		n.Expr.eval(ctx, arr2ptr, fn).div(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
 		n.Operand = n.Expr.Operand
-		n.Operand.Address = nil
 	case ExprLsh: // Expr "<<" Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).lsh(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
 	case ExprLshAssign: // Expr "<<=" Expr
 		n.Expr.eval(ctx, arr2ptr, fn).lsh(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
 		n.Operand = n.Expr.Operand
-		n.Operand.Address = nil
 	case ExprLe: // Expr "<=" Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).le(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
 	case ExprEq: // Expr "==" Expr
@@ -671,19 +653,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 
 			if lhs.Value != nil {
 				panic(ctx.position(n))
-			}
-
-			if lhs.Address != nil && lhs.Address.Declarator.Linkage != 0 {
-				if rhs.Value != nil {
-					panic(ctx.position(n))
-				}
-
-				if rhs.Address != nil {
-					if lhs.Address == rhs.Address || *lhs.Address == *rhs.Address {
-						n.Operand = Operand{Type: Int, Value: &ir.Int64Value{Value: 1}}
-						break
-					}
-				}
 			}
 
 			n.Operand = Operand{Type: Int}
@@ -723,7 +692,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 	case ExprOrAssign: // Expr "|=" Expr
 		n.Expr.eval(ctx, arr2ptr, fn).or(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
 		n.Operand = n.Expr.Operand
-		n.Operand.Address = nil
 	case ExprLOr: // Expr "||" Expr
 		n.Operand = Operand{Type: Int}
 		a := n.Expr.eval(ctx, arr2ptr, fn)
@@ -843,35 +811,10 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			n.Operand = lhs.add(ctx, rhs)
 		case lhs.isPointerType() && rhs.isIntegerType():
 			n.Operand = lhs
-			if a := lhs.Address; a != nil && rhs.Value != nil && isConst(n.Expr2) {
-				b := *a
-				b.Offset += uintptr(ctx.model.Sizeof(pitem(lhs.Type)) * rhs.Value.(*ir.Int64Value).Value)
-				n.Operand.Address = &b
-				break
-			}
-
 			n.Operand.Value = nil
-			n.Operand.Address = nil
-			switch x := n.Expr.Operand.Value.(type) {
-			case nil:
-				// ok
-			case *ir.StringValue:
-				if rhs.Value != nil {
-					x.Offset += uintptr(rhs.Value.(*ir.Int64Value).Value)
-				}
-			default:
-				panic(fmt.Errorf("%v: %T", ctx.position(n), x))
-			}
 		case lhs.isIntegerType() && rhs.isPointerType():
 			n.Operand = rhs
-			if a := rhs.Address; a != nil && lhs.Value != nil {
-				b := *a
-				b.Offset += uintptr(ctx.model.Sizeof(pitem(rhs.Type)) * lhs.Value.(*ir.Int64Value).Value)
-				n.Operand.Address = &b
-				break
-			}
-
-			n.Operand.Address = nil
+			n.Operand.Value = nil
 		default:
 			panic(ctx.position(n))
 		}
@@ -892,31 +835,22 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			// unqualified versions of compatible object types;
 			lhs.isPointerType() && rhs.isPointerType() && lhs.Type.IsCompatible(rhs.Type):
 
-			if lhs.Address != nil && lhs.Address.Declarator.Linkage != LinkageNone && rhs.Address != nil && rhs.Address.Declarator.Linkage != LinkageNone {
-				panic("TODO")
-			}
-
 			n.Operand = Operand{Type: ctx.ptrDiff()}
 		case
 			// the left operand is a pointer to an object type and
 			// the right operand has integer type.
 			lhs.isPointerType() && rhs.isIntegerType():
 
-			if lhs.Address != nil && lhs.Address.Declarator.Linkage != LinkageNone {
-				panic("TODO")
-			}
-
 			n.Operand = lhs
 		default:
 			//dbg("", lhs, rhs)
 			panic(ctx.position(n))
 		}
-		n.Operand.Address = nil
 	case ExprSelect: // Expr '.' IDENTIFIER
 		n.Expr.AssignedTo = n.AssignedTo
 		op := n.Expr.eval(ctx, arr2ptr, fn)
-		if a := n.Expr.Operand.Address; a != nil && n.AssignedTo {
-			a.Declarator.AssignedTo++
+		if d := n.Expr.Declarator; d != nil && n.AssignedTo {
+			d.AssignedTo++
 		}
 		t := op.Type
 	out3:
@@ -931,16 +865,14 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 					panic(ctx.position(n))
 				}
 				d := d0.(*Declarator)
-				n.Operand = Operand{Type: x.Fields[d.Field].Type}
-				n.Operand.Bits = x.Fields[d.Field].Bits
-				n.Operand.PackedType = ctx.model.Layout(x)[d.Field].PackedType
-				n.Operand.Bitoff = ctx.model.Layout(x)[d.Field].Bitoff
-				if a := op.Address; a != nil {
-					layout := ctx.model.Layout(x)
-					n.Operand.Address = &Address{Declarator: a.Declarator, Offset: a.Offset + uintptr(layout[d.Field].Offset)}
-					if n.Operand.Type.Kind() == Array {
-						a.Declarator.AddressTaken = true
-					}
+				f := x.Fields[d.Field]
+				fp := ctx.model.Layout(x)[d.Field]
+				n.Operand = Operand{Type: f.Type}
+				n.Operand.Bits = f.Bits
+				n.Operand.PackedType = fp.PackedType
+				n.Operand.Bitoff = fp.Bitoff
+				if d := n.Expr.Declarator; d != nil && (n.Operand.Type.Kind() == Array || fp.Bits != 0) {
+					d.AddressTaken = true
 				}
 				break out3
 			case *TaggedStructType:
@@ -962,20 +894,23 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 					panic(ctx.position(n))
 				}
 				d := d0.(*Declarator)
-				n.Operand = Operand{Type: x.Fields[d.Field].Type, Address: op.Address}
-				n.Operand.Bits = x.Fields[d.Field].Bits
-				n.Operand.PackedType = ctx.model.Layout(x)[d.Field].PackedType
-				n.Operand.Bitoff = ctx.model.Layout(x)[d.Field].Bitoff
-				if a := op.Address; a != nil {
-					if n.Operand.Type.Kind() == Array {
-						a.Declarator.AddressTaken = true
-					}
+				f := x.Fields[d.Field]
+				fp := ctx.model.Layout(x)[d.Field]
+				n.Operand = Operand{Type: f.Type}
+				n.Operand.Bits = f.Bits
+				n.Operand.PackedType = fp.PackedType
+				n.Operand.Bitoff = fp.Bitoff
+				if d := n.Expr.Declarator; d != nil && (n.Operand.Type.Kind() == Array || fp.Bits != 0) {
+					d.AddressTaken = true
 				}
 				break out3
 			default:
 				//dbg("%v: %T", ctx.position(n), x)
 				panic(x)
 			}
+		}
+		if d := n.Expr.Declarator; d != nil {
+			d.Referenced++
 		}
 	case ExprDiv: // Expr '/' Expr
 		binop(ctx, n, arr2ptr, fn)
@@ -985,14 +920,13 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 	case ExprAssign: // Expr '=' Expr
 		n.Expr.AssignedTo = true
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn)
-		if a := n.Expr.Operand.Address; a != nil {
-			a.Declarator.AssignedTo++
+		if d := n.Expr.Declarator; d != nil {
+			d.AssignedTo++
 			if n.Expr.Case == ExprIdent {
-				n.Operand.Type = a.Declarator.Type
+				n.Operand.Type = d.Type
 			}
 		}
 		n.Operand.Type.assign(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
-		n.Operand.Address = nil
 	case ExprGt: // Expr '>' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).gt(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
 	case ExprCond: // Expr '?' ExprList ':' Expr
@@ -1037,7 +971,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 
 			n.Operand = Operand{Type: b.Type}
 			if cond.IsNonzero() {
-				n.Operand.Address = Null
+				n.Operand.Value = Null
 				done = true
 			}
 		case
@@ -1046,7 +980,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 
 			n.Operand = Operand{Type: a.Type}
 			if cond.IsZero() {
-				n.Operand.Address = Null
+				n.Operand.Value = Null
 				done = true
 			}
 		default:
@@ -1081,11 +1015,8 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		if !index.isIntegerType() {
 			panic("TODO")
 		}
-		if a := op.Address; a != nil && index.Value != nil {
-			n.Operand.Address = &Address{Declarator: a.Declarator, Offset: a.Offset + uintptr(index.Value.(*ir.Int64Value).Value*ctx.model.Sizeof(n.Operand.Type))}
-		}
-		if n.Expr.Case != ExprIdent {
-			n.Operand.Address = nil
+		if d := n.Expr.Declarator; d != nil {
+			d.Referenced++
 		}
 	case ExprXor: // Expr '^' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).xor(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
@@ -1132,6 +1063,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		nm := n.Token.Val
 		switch x := n.Scope.LookupIdent(nm).(type) {
 		case *Declarator:
+			n.Declarator = x
 			if arr2ptr {
 				x.Referenced++
 			}
@@ -1184,7 +1116,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 				//dbg("", ctx.position(n))
 				panic(y)
 			}
-			n.Operand.Address = &Address{Declarator: x}
 		case *EnumerationConstant:
 			n.Operand = x.Operand
 		case nil:

@@ -264,8 +264,9 @@ import (
                         |	ArgumentExprList
 
                         // [0]6.5.16
-			//yy:field	Operand		Operand
 			//yy:field	CallArgs	[]Operand	// Promoted arguments of Call.
+			//yy:field	Declarator	*Declarator	// Case Ident.
+			//yy:field	Operand		Operand
 			//yy:field	Scope		*Scope		// Case Ident.
 			//yy:field	AssignedTo	bool		// Expression appears at the left side of assignment.
 /*yy:case PreInc     */ Expr:

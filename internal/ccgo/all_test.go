@@ -316,6 +316,7 @@ func testDir(t *testing.T, glob string, blacklist map[string]struct{}) {
 
 func TestGCC(t *testing.T) {
 	testDir(t, "../c99/testdata/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/*.c", map[string]struct{}{
+		"20010122-1.c":    {}, // __builtin_return_address
 		"20010904-1.c":    {}, // __attribute__((aligned(32)))
 		"20010904-2.c":    {}, // __attribute__((aligned(32)))
 		"20021127-1.c":    {}, // non standard GCC behavior
@@ -323,10 +324,12 @@ func TestGCC(t *testing.T) {
 		"pr17377.c":       {}, // __builtin_return_address
 		"pr23467.c":       {}, // __attribute__ ((aligned (8)))
 
+		"bitfld-3.c":        {}, //TODO bits, arithmetic precision
 		"built-in-setjmp.c": {}, //TODO __builtin_setjmp
+		"pr38422.c":         {}, //TODO bits
 		"pr60003.c":         {}, //TODO __builtin_setjmp
 	})
-	// compiles: 673, builds: 621, runs: 621
+	// compiles: 676, builds: 645, runs: 645
 }
 
 func testFile(t *testing.T, pth string, compiles, builds, runs *int) {

@@ -854,7 +854,7 @@ func (t *PointerType) assign(ctx *context, op Operand) (r Operand) {
 		// pointer constant;
 		op.isIntegerType() && op.IsZero():
 
-		return Operand{Type: t, Address: Null}
+		return Operand{Type: t, Value: Null}
 	default:
 		panic("TODO")
 	}
