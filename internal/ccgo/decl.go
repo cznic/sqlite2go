@@ -215,9 +215,7 @@ func (g *gen) functionDefinition(n *c99.Declarator) {
 				g.w("a%s %s", dict.S(nm), g.typ(v))
 				escParams = append(escParams, param)
 			default:
-				if x, ok := c99.UnderlyingType(v).(*c99.PointerType); ok && x.Item.Kind() == c99.Function {
-					v = x.Item
-				}
+				isFnPtr(v, &v)
 				g.w("%s %s", mangleIdent(nm, false), g.typ(v))
 				if isVaList(v) {
 					continue
@@ -239,7 +237,7 @@ func (g *gen) functionDefinition(n *c99.Declarator) {
 	}
 	vars := n.FunctionDefinition.LocalVariables()
 	if n.Alloca {
-		vars = append(vars, allocaDeclarator)
+		vars = append(append([]*c99.Declarator(nil), vars...), allocaDeclarator)
 	}
 	g.functionBody(n.FunctionDefinition.FunctionBody, vars, void, escParams)
 	g.w("\n")

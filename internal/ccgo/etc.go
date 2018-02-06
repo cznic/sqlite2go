@@ -113,10 +113,8 @@ func strComment(sv *ir.StringValue) string {
 	s := dict.S(int(sv.StringID))
 	if len(s) > 32 {
 		s = append(append([]byte(nil), s[:32]...), []byte("...")...)
-		if bytes.Contains(s, []byte("*/")) {
-			todo("")
-		}
 	}
+	s = bytes.Replace(s, []byte("*/"), []byte(`*\x2f`), -1)
 	return fmt.Sprintf("/* %q */", s)
 }
 
@@ -129,40 +127,6 @@ func todo(msg string, args ...interface{}) {
 		fmt.Fprintf(os.Stderr, "\n\n%v:%d: TODO\n\n%s", f, l, fmt.Sprintf(msg, args...)) //TODOOK
 	}
 	panic(fmt.Errorf("\n\n%v:%d: TODO\n\n%s", f, l, fmt.Sprintf(msg, args...))) //TODOOK
-}
-
-func (g *gen) mask(fp c99.FieldProperties) uint64 {
-	m := fp.Mask()
-	switch g.model.Sizeof(c99.UnderlyingType(fp.PackedType)) {
-	case 1:
-		todo("")
-	case 2:
-		todo("")
-	case 4:
-		return uint64(uint32(m))
-	case 8:
-		todo("")
-	default:
-	}
-	todo("", fp.PackedType)
-	panic("unreachable")
-}
-
-func (g *gen) sgnmask(fp c99.FieldProperties) uint64 {
-	m := ^fp.Mask()
-	switch g.model.Sizeof(c99.UnderlyingType(fp.PackedType)) {
-	case 1:
-		todo("")
-	case 2:
-		todo("")
-	case 4:
-		return uint64(uint32(m))
-	case 8:
-		todo("")
-	default:
-	}
-	todo("", fp.PackedType)
-	panic("unreachable")
 }
 
 func packedType(packed, t c99.Type) c99.Type {
@@ -184,4 +148,17 @@ func packedType(packed, t c99.Type) c99.Type {
 		todo("", packed.Kind())
 	}
 	panic("unreachable")
+}
+
+func isFnPtr(t c99.Type, out *c99.Type) bool {
+	switch x := c99.UnderlyingType(t).(type) {
+	case *c99.PointerType:
+		if x.Item.Kind() == c99.Function {
+			if out != nil {
+				*out = x.Item
+			}
+			return true
+		}
+	}
+	return false
 }

@@ -148,11 +148,6 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 			return
 		}
 
-		if x.Item.Kind() == c99.Function {
-			g.value(n.Expr, false)
-			return
-		}
-
 		g.value(n.Expr, false)
 	case *c99.StructType:
 		if n.Expr != nil {

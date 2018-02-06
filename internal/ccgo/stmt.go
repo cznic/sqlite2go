@@ -12,6 +12,7 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases ma
 	if vars != nil {
 		g.w(" {")
 	}
+	vars = append([]*c99.Declarator(nil), vars...)
 	w := 0
 	for _, v := range vars {
 		if v != allocaDeclarator {
@@ -349,9 +350,8 @@ func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int
 				if b > 0 {
 					g.w("\n_%d:", b)
 				}
-				g.w("\nif ")
 				g.exprList(n.ExprList, true)
-				g.w("\ngoto _%d }\n", a)
+				g.w("goto _%d\n", a)
 				if c > 0 {
 					g.w("\ngoto _%d\n\n_%d:", c, c)
 				}
@@ -456,7 +456,7 @@ func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int
 				g.exprListOpt(n.ExprListOpt, true)
 				a := g.local()
 				b := -g.local()
-				c := g.local()
+				c := -g.local()
 				g.w("\n_%d:", a)
 				g.exprListOpt(n.ExprListOpt2, true)
 				g.stmt(n.Stmt, cases, &c, &b, deadcode)
@@ -468,7 +468,10 @@ func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int
 				}
 				g.exprListOpt(n.ExprListOpt3, true)
 				g.w("\ngoto _%d\n", a)
-				g.w("\n_%d:", c)
+				if c > 0 {
+					g.w("\n_%d:", c)
+				}
+				return
 			default:
 				todo("", g.position0(n))
 			}

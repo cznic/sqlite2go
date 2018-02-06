@@ -367,7 +367,7 @@ return r
 	sort.Strings(a)
 	for _, k := range a {
 		a := strings.Split(k, "|")
-		g.w("\nfunc set%d(n uintptr,m %[3]s, off uint, v %[2]s) {", g.setBitsTypes[k], a[0], a[1])
+		g.w("\nfunc setb%d(n uintptr,m %[3]s, off uint, v %[2]s) {", g.setBitsTypes[k], a[0], a[1])
 		g.w("*(*%[1]s)(unsafe.Pointer(n)) = (*(*%[1]s)(unsafe.Pointer(n)))&^m|%[1]s(v)<<off&m }", a[1])
 	}
 	a = a[:0]

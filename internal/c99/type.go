@@ -1363,6 +1363,7 @@ func AdjustedParameterType(t Type) Type {
 			u = x.Type
 		case
 			*PointerType,
+			*StructType,
 			*TaggedStructType:
 
 			return t

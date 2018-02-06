@@ -329,7 +329,7 @@ func TestGCC(t *testing.T) {
 		"pr38422.c":         {}, //TODO bits
 		"pr60003.c":         {}, //TODO __builtin_setjmp
 	})
-	// compiles: 676, builds: 645, runs: 645
+	// compiles: 676, builds: 649, runs: 649
 }
 
 func testFile(t *testing.T, pth string, compiles, builds, runs *int) {

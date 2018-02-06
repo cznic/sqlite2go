@@ -331,6 +331,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		if d := n.Expr.Declarator; d != nil && n.Expr.Case != ExprPSelect {
 			d.AddressTaken = true
 		}
+		n.Operand.Value = op.Value
 	case ExprPExprList: // '(' ExprList ')'
 		n.Operand = n.ExprList.eval(ctx, arr2ptr, fn)
 	//TODO case ExprCompLit: // '(' TypeName ')' '{' InitializerList CommaOpt '}'

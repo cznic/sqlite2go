@@ -4,8 +4,6 @@
 
 package ccgo
 
-//TODO https://graphics.stanford.edu/~seander/bithacks.html#VariableSignExtend
-
 import (
 	"math"
 	"strconv"
@@ -82,7 +80,7 @@ func (g *gen) void(n *c99.Expr) {
 	case c99.ExprAssign: // Expr '=' Expr
 		op := n.Expr.Operand
 		if n.Expr.Operand.Bits != 0 {
-			g.w("set%d(", g.registerBitType(g.setBitsTypes, op.Type, op.PackedType))
+			g.w("setb%d(", g.registerBitType(g.setBitsTypes, op.Type, op.PackedType))
 			g.uintptr(n.Expr, true)
 			g.w(", %#x, %d, ", (1<<uint(op.Bits)-1)<<uint(op.Bitoff), n.Expr.Operand.Bitoff)
 			g.convert(n.Expr2, n.Expr.Operand.Type)
@@ -318,6 +316,16 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 
 	defer g.w(")")
 
+	if n.Operand.Value == c99.Null {
+		switch {
+		case isFnPtr(n.Operand.Type, nil):
+			g.w("nil")
+		default:
+			g.w("uintptr(0)")
+		}
+		return
+	}
+
 	if n.Operand.Value != nil && g.voidCanIgnore(n) {
 		if n.Operand.Value == c99.Null {
 			g.w("uintptr(0)")
@@ -325,19 +333,6 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 		}
 
 		g.constant(n)
-		return
-	}
-
-	if n.Operand.Value == c99.Null {
-		switch x := c99.UnderlyingType(n.Operand.Type).(type) {
-		case *c99.PointerType:
-			if x.Item.Kind() == c99.Function {
-				g.w("nil")
-				return
-			}
-		}
-
-		g.w("uintptr(0)")
 		return
 	}
 
@@ -380,7 +375,11 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 			return
 		}
 
-		ft := c99.UnderlyingType(n.Expr.Operand.Type).(*c99.PointerType).Item.(*c99.FunctionType)
+		var ft0 c99.Type
+		if !isFnPtr(n.Expr.Operand.Type, &ft0) {
+			todo("", g.position0(n))
+		}
+		ft := ft0.(*c99.FunctionType)
 		g.convert(n.Expr, ft)
 		g.w("(tls")
 		if o := n.ArgumentExprListOpt; o != nil {
@@ -540,9 +539,10 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 	case c99.ExprDeref: // '*' Expr
 		it := c99.UnderlyingType(n.Expr.Operand.Type).(*c99.PointerType).Item
 		switch it.Kind() {
-		case c99.Function:
-			g.value(n.Expr, false)
-		case c99.Array:
+		case
+			c99.Array,
+			c99.Function:
+
 			g.value(n.Expr, false)
 		default:
 			i := 1
@@ -573,12 +573,7 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 	case c99.ExprCond: // Expr '?' ExprList ':' Expr
 		t := n.Operand.Type
 		t0 := t
-		switch x := c99.UnderlyingType(t).(type) {
-		case *c99.PointerType:
-			if x.Item.Kind() == c99.Function {
-				t = x.Item
-			}
-		}
+		isFnPtr(t, &t)
 		g.w(" func() %s { if ", g.typ(t))
 		g.value(n.Expr, false)
 		g.w(" != 0 { return ")
@@ -590,9 +585,17 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 		t := n.TypeName.Type
 		op := n.Expr.Operand
 		if isVaList(op.Type) {
-			g.w("%sVA%s(&", crt, g.typ(c99.UnderlyingType(t)))
-			g.value(n.Expr, false)
-			g.w(")")
+			switch {
+			case isFnPtr(t, &t):
+				g.w("(*(*%s)(unsafe.Pointer(&struct{ f uintptr }{", g.typ(t))
+				g.w("%sVAuintptr(&", crt)
+				g.value(n.Expr, false)
+				g.w(")})))")
+			default:
+				g.w("%sVA%s(&", crt, g.typ(c99.UnderlyingType(t)))
+				g.value(n.Expr, false)
+				g.w(")")
+			}
 			return
 		}
 
@@ -1109,6 +1112,7 @@ func (g *gen) voidCanIgnore(n *c99.Expr) bool {
 		c99.ExprAddrof,     // '&' Expr
 		c99.ExprCpl,        // '~' Expr
 		c99.ExprNot,        // '!' Expr
+		c99.ExprPSelect,    // Expr "->" IDENTIFIER
 		c99.ExprSelect,     // Expr '.' IDENTIFIER
 		c99.ExprUnaryMinus, // '-' Expr
 		c99.ExprUnaryPlus:  // '+' Expr
@@ -1219,8 +1223,11 @@ func (g *gen) constant(n *c99.Expr) {
 			f = "%#o"
 		}
 
-		if n.Operand.Type.Kind() == c99.Ptr {
+		switch y := c99.UnderlyingType(n.Operand.Type).(type) {
+		case *c99.PointerType:
 			switch {
+			case y.Item.Kind() == c99.Function:
+				g.w("(*(*%s)(unsafe.Pointer(&struct{ f uintptr }{%v})))", g.typ(y.Item), uintptr(x.Value))
 			case n.Operand.Type.String() == vaListType && x.Value == 1:
 				g.w(" %s", ap)
 			default:
@@ -1273,7 +1280,7 @@ func (g *gen) voidArithmeticAsop(n *c99.Expr) {
 	case c99.XORASSIGN:
 		g.w("^")
 	case c99.MODASSIGN:
-		g.w(`%`)
+		g.w("%%")
 	case c99.LSHASSIGN:
 		g.w("<<")
 	default:
@@ -1346,18 +1353,16 @@ func (g *gen) relop(n *c99.Expr) {
 }
 
 func (g *gen) fpValue(n *c99.Expr) {
-	switch x := c99.UnderlyingType(n.Operand.Type).(type) {
-	case *c99.PointerType:
-		if x.Item.Kind() == c99.Function {
-			// (*(*uintptr)(unsafe.Pointer(&struct{ f from }{expr})))
-			g.w("(*(*uintptr)(unsafe.Pointer(&struct{ f %s }{", g.typ(x.Item))
-			g.value(n, false)
-			g.w("})))")
-			return
-		}
+	var ft c99.Type
+	switch {
+	case isFnPtr(n.Operand.Type, &ft):
+		// (*(*uintptr)(unsafe.Pointer(&struct{ f from }{expr})))
+		g.w("(*(*uintptr)(unsafe.Pointer(&struct{ f %s }{", g.typ(ft))
+		g.value(n, false)
+		g.w("})))")
+	default:
+		g.value(n, false)
 	}
-
-	g.value(n, false)
 }
 
 func (g *gen) convert(n *c99.Expr, t c99.Type) {
@@ -1366,25 +1371,23 @@ func (g *gen) convert(n *c99.Expr, t c99.Type) {
 		return
 	}
 
-	switch x := c99.UnderlyingType(n.Operand.Type).(type) {
-	case *c99.PointerType:
-		if x.Item.Kind() == c99.Function {
-			if x.Item.Equal(t) || n.Operand.Type.Equal(t) {
-				g.value(n, false)
-				return
-			}
-
-			if n.Operand.IsZero() && g.voidCanIgnore(n.Expr) {
-				g.w("nil")
-				return
-			}
-
-			// (*(*to)(unsafe.Pointer(&struct{ f from }{expr})))
-			g.w("(*(*%s)(unsafe.Pointer(&struct{ f %s }{", g.ptyp(t, false), g.typ(x.Item))
+	var ft c99.Type
+	if isFnPtr(n.Operand.Type, &ft) {
+		if ft.Equal(t) || n.Operand.Type.Equal(t) {
 			g.value(n, false)
-			g.w("})))")
 			return
 		}
+
+		if n.Operand.IsZero() && g.voidCanIgnore(n.Expr) {
+			g.w("nil")
+			return
+		}
+
+		// (*(*to)(unsafe.Pointer(&struct{ f from }{expr})))
+		g.w("(*(*%s)(unsafe.Pointer(&struct{ f %s }{", g.ptyp(t, false), g.typ(ft))
+		g.value(n, false)
+		g.w("})))")
+		return
 	}
 
 	if t.Kind() == c99.Ptr {

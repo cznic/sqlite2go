@@ -66,7 +66,12 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
 				continue
 			}
 
-			fmt.Fprintf(&buf, "%s ", mangleIdent(v.Name, true))
+			switch {
+			case v.Name == 0:
+				fmt.Fprintf(&buf, "_ ")
+			default:
+				fmt.Fprintf(&buf, "%s ", mangleIdent(v.Name, true))
+			}
 			g.typ0(&buf, v.Type, ptr2uintptr)
 			buf.WriteByte(';')
 		}
@@ -113,7 +118,12 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
 	case *c99.UnionType:
 		fmt.Fprintf(&buf, "struct{X [%d]byte; _ [0]struct{", g.model.Sizeof(x))
 		for _, v := range x.Fields {
-			fmt.Fprintf(&buf, "%s ", mangleIdent(v.Name, true))
+			switch {
+			case v.Name == 0:
+				fmt.Fprintf(&buf, "_ ")
+			default:
+				fmt.Fprintf(&buf, "%s ", mangleIdent(v.Name, true))
+			}
 			g.typ0(&buf, v.Type, ptr2uintptr)
 			buf.WriteByte(';')
 		}
@@ -187,7 +197,12 @@ func (g *gen) typ0(buf *bytes.Buffer, t c99.Type, ptr2uintptr bool) {
 					continue
 				}
 
-				fmt.Fprintf(buf, "%s ", mangleIdent(v.Name, true))
+				switch {
+				case v.Name == 0:
+					fmt.Fprintf(buf, "_ ")
+				default:
+					fmt.Fprintf(buf, "%s ", mangleIdent(v.Name, true))
+				}
 				g.typ0(buf, v.Type, ptr2uintptr)
 				buf.WriteByte(';')
 			}
@@ -223,7 +238,12 @@ func (g *gen) typ0(buf *bytes.Buffer, t c99.Type, ptr2uintptr bool) {
 		case *c99.UnionType:
 			fmt.Fprintf(buf, "struct{X [%d]byte; _ [0]struct{", g.model.Sizeof(x))
 			for _, v := range x.Fields {
-				fmt.Fprintf(buf, "%s ", mangleIdent(v.Name, true))
+				switch {
+				case v.Name == 0:
+					fmt.Fprintf(buf, "_ ")
+				default:
+					fmt.Fprintf(buf, "%s ", mangleIdent(v.Name, true))
+				}
 				g.typ0(buf, v.Type, ptr2uintptr)
 				buf.WriteByte(';')
 			}

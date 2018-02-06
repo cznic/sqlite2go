@@ -363,6 +363,11 @@ func (o Operand) convertTo(m Model, t Type) (r Operand) {
 		return o
 	}
 
+	if o.isPointerType() && t.IsIntegerType() {
+		o.Type = t
+		return o
+	}
+
 	panic(fmt.Errorf("%T(%v) -> %T(%v)", o.Type, o, t, t))
 }
 
