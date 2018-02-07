@@ -22,6 +22,7 @@ import (
 const (
 	ap         = "ap"
 	crt        = "crt."
+	null       = "null"
 	vaListType = "pointer to struct{_ struct{}}" // *__builtin_va_list
 )
 

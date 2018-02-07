@@ -12,6 +12,11 @@ import (
 	"github.com/cznic/sqlite2go/internal/c99"
 )
 
+type tCacheKey struct {
+	c99.Type
+	bool
+}
+
 func isVaList(t c99.Type) bool {
 	x, ok := t.(*c99.NamedType)
 	return ok && x.Name == idVaList
@@ -19,25 +24,39 @@ func isVaList(t c99.Type) bool {
 
 func (g *gen) typ(t c99.Type) string { return g.ptyp(t, true) }
 
-func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
-	switch x := c99.UnderlyingType(t).(type) {
-	case *c99.PointerType:
-		if x.Item.Kind() == c99.Function {
-			return g.typ(x.Item)
-		}
-
-		if ptr2uintptr && !isVaList(t) {
-			return "uintptr"
-		}
+func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) (r string) {
+	k := tCacheKey{t, ptr2uintptr}
+	if s, ok := g.tCache[k]; ok {
+		return s
 	}
 
-	var buf bytes.Buffer
-	switch x := t.(type) {
-	case
-		*c99.ArrayType,
-		*c99.FunctionType:
+	defer func() { g.tCache[k] = r }()
 
-		g.typ0(&buf, x, ptr2uintptr)
+	if ptr2uintptr && t.Kind() == c99.Ptr && !isVaList(t) {
+		return "uintptr"
+	}
+
+	switch x := t.(type) {
+	case *c99.ArrayType:
+		return fmt.Sprintf("[%d]%s", x.Size.Value.(*ir.Int64Value).Value, g.ptyp(x.Item, ptr2uintptr))
+	case *c99.FunctionType:
+		var buf bytes.Buffer
+		fmt.Fprintf(&buf, "func(*%sTLS", crt)
+		switch {
+		case len(x.Params) == 1 && x.Params[0].Kind() == c99.Void:
+			// nop
+		default:
+			for _, v := range x.Params {
+				fmt.Fprintf(&buf, ", %s", g.typ(v))
+			}
+		}
+		if x.Variadic {
+			fmt.Fprintf(&buf, ", ...interface{}")
+		}
+		buf.WriteString(")")
+		if x.Result != nil && x.Result.Kind() != c99.Void {
+			buf.WriteString(" " + g.typ(x.Result))
+		}
 		return buf.String()
 	case *c99.NamedType:
 		if x.Name == idVaList {
@@ -51,17 +70,24 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
 		g.enqueue(x)
 		return fmt.Sprintf("T%s", dict.S(x.Name))
 	case *c99.PointerType:
-		g.typ0(&buf, t, ptr2uintptr)
-		return buf.String()
+		if x.Item.Kind() == c99.Void {
+			return "uintptr"
+		}
+
+		switch {
+		case x.Kind() == c99.Function:
+			todo("")
+		default:
+			return fmt.Sprintf("*%s", g.ptyp(x.Item, ptr2uintptr))
+		}
 	case *c99.StructType:
-		buf.WriteString(" struct{")
+		var buf bytes.Buffer
+		buf.WriteString("struct{")
 		layout := g.model.Layout(x)
 		for i, v := range x.Fields {
 			if v.Bits != 0 {
 				if layout[i].Bitoff == 0 {
-					fmt.Fprintf(&buf, "F%d ", layout[i].Offset)
-					g.typ0(&buf, layout[i].PackedType, ptr2uintptr)
-					buf.WriteByte(';')
+					fmt.Fprintf(&buf, "F%d %s;", layout[i].Offset, g.typ(layout[i].PackedType))
 				}
 				continue
 			}
@@ -72,8 +98,7 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
 			default:
 				fmt.Fprintf(&buf, "%s ", mangleIdent(v.Name, true))
 			}
-			g.typ0(&buf, v.Type, ptr2uintptr)
-			buf.WriteByte(';')
+			fmt.Fprintf(&buf, "%s;", g.ptyp(v.Type, ptr2uintptr))
 		}
 		buf.WriteByte('}')
 		return buf.String()
@@ -116,6 +141,7 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
 			todo("", x)
 		}
 	case *c99.UnionType:
+		var buf bytes.Buffer
 		fmt.Fprintf(&buf, "struct{X [%d]byte; _ [0]struct{", g.model.Sizeof(x))
 		for _, v := range x.Fields {
 			switch {
@@ -124,135 +150,14 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) string {
 			default:
 				fmt.Fprintf(&buf, "%s ", mangleIdent(v.Name, true))
 			}
-			g.typ0(&buf, v.Type, ptr2uintptr)
-			buf.WriteByte(';')
+			fmt.Fprintf(&buf, "%s;", g.ptyp(v.Type, ptr2uintptr))
 		}
 		buf.WriteString("}}")
 		return buf.String()
 	default:
-		todo("%T %v", x, x)
+		todo("%v %T %v", t, x, ptr2uintptr)
 	}
 	panic("unreachable")
-}
-
-func (g *gen) typ0(buf *bytes.Buffer, t c99.Type, ptr2uintptr bool) {
-	for {
-		switch x := t.(type) {
-		case *c99.ArrayType:
-			if x.Size.Type == nil || x.Size.IsZero() {
-				todo("%s", x)
-			}
-			fmt.Fprintf(buf, "[%d]", x.Size.Value.(*ir.Int64Value).Value)
-			t = x.Item
-		case *c99.FunctionType:
-			fmt.Fprintf(buf, " func(*%sTLS", crt)
-			switch {
-			case len(x.Params) == 1 && x.Params[0].Kind() == c99.Void:
-				// nop
-			default:
-				for _, v := range x.Params {
-					buf.WriteString(", ")
-					buf.WriteString(g.typ(v))
-				}
-			}
-			if x.Variadic {
-				fmt.Fprintf(buf, ", ...interface{}")
-			}
-			buf.WriteString(")")
-			if x.Result != nil && x.Result.Kind() != c99.Void {
-				buf.WriteString(" " + g.typ(x.Result))
-			}
-			return
-		case *c99.NamedType:
-			if x.Name == idVaList {
-				buf.WriteString("[]interface{}")
-				return
-			}
-
-			g.enqueue(x)
-			fmt.Fprintf(buf, "T%s", dict.S(x.Name))
-			return
-		case *c99.PointerType:
-			t = x.Item
-			if t.Kind() == c99.Function {
-				break
-			}
-
-			if ptr2uintptr || x.Item.Kind() == c99.Void {
-				buf.WriteString(" uintptr")
-				return
-			}
-
-			buf.WriteByte('*')
-		case *c99.StructType:
-			buf.WriteString(" struct{")
-			layout := g.model.Layout(x)
-			for i, v := range x.Fields {
-				if v.Bits != 0 {
-					if layout[i].Bitoff == 0 {
-						fmt.Fprintf(buf, "F%d ", layout[i].Offset)
-						g.typ0(buf, layout[i].PackedType, ptr2uintptr)
-						buf.WriteByte(';')
-					}
-					continue
-				}
-
-				switch {
-				case v.Name == 0:
-					fmt.Fprintf(buf, "_ ")
-				default:
-					fmt.Fprintf(buf, "%s ", mangleIdent(v.Name, true))
-				}
-				g.typ0(buf, v.Type, ptr2uintptr)
-				buf.WriteByte(';')
-			}
-			buf.WriteByte('}')
-			return
-		case *c99.TaggedStructType:
-			g.enqueue(x)
-			fmt.Fprintf(buf, "S%s", dict.S(x.Tag))
-			return
-		case c99.TypeKind:
-			switch x {
-			case
-				c99.Char,
-				c99.Double,
-				c99.Float,
-				c99.Int,
-				c99.Long,
-				c99.LongDouble,
-				c99.LongLong,
-				c99.SChar,
-				c99.Short,
-				c99.UChar,
-				c99.UInt,
-				c99.ULong,
-				c99.ULongLong,
-				c99.UShort:
-
-				buf.WriteString(g.ptyp(x, false))
-				return
-			default:
-				todo("", x)
-			}
-		case *c99.UnionType:
-			fmt.Fprintf(buf, "struct{X [%d]byte; _ [0]struct{", g.model.Sizeof(x))
-			for _, v := range x.Fields {
-				switch {
-				case v.Name == 0:
-					fmt.Fprintf(buf, "_ ")
-				default:
-					fmt.Fprintf(buf, "%s ", mangleIdent(v.Name, true))
-				}
-				g.typ0(buf, v.Type, ptr2uintptr)
-				buf.WriteByte(';')
-			}
-			buf.WriteString("}}")
-			return
-		default:
-			todo("%T(%v)", x, x)
-		}
-	}
 }
 
 func prefer(t c99.Type) bool {

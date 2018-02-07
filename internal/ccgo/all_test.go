@@ -329,7 +329,7 @@ func TestGCC(t *testing.T) {
 		"pr38422.c":         {}, //TODO bits
 		"pr60003.c":         {}, //TODO __builtin_setjmp
 	})
-	// compiles: 676, builds: 649, runs: 649
+	// compiles: 668, builds: 650, runs: 650
 }
 
 func testFile(t *testing.T, pth string, compiles, builds, runs *int) {
@@ -352,9 +352,9 @@ func testFile(t *testing.T, pth string, compiles, builds, runs *int) {
 
 	main, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, mainSource)
 	if err != nil {
-		if testing.Verbose() {
-			t.Logf("      cc: %s: %s", pth, compact(err.Error(), 10))
-		}
+		// if testing.Verbose() {
+		// 	t.Logf("      cc: %s: %s", pth, compact(err.Error(), 10))
+		// }
 		return
 	}
 
@@ -384,9 +384,9 @@ func testFile(t *testing.T, pth string, compiles, builds, runs *int) {
 	}
 
 	*runs++
-	if testing.Verbose() {
-		t.Logf("    PASS: %s", pth)
-	}
+	// if testing.Verbose() {
+	// 	t.Logf("    PASS: %s", pth)
+	// }
 }
 
 func TestSQLiteShell(t *testing.T) {

@@ -76,7 +76,7 @@ func (m Model) Equal(n Model) bool {
 func (m Model) Sizeof(t Type) int64 {
 	switch x := UnderlyingType(t).(type) {
 	case *ArrayType:
-		if x.Size.Type == nil {
+		if x.Size.Type == nil || x.Size.Value == nil {
 			panic("TODO")
 		}
 		return m.Sizeof(x.Item) * x.Size.Value.(*ir.Int64Value).Value

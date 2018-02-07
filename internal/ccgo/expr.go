@@ -114,6 +114,7 @@ func (g *gen) void(n *c99.Expr) {
 			}
 		case c99.TypeKind:
 			if n.Expr.Operand.Bits != 0 {
+				//TODO ../c99/testdata/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/pr55750.c:14:3
 				todo("", g.position0(n))
 			}
 			if x.IsArithmeticType() {
@@ -317,21 +318,11 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 	defer g.w(")")
 
 	if n.Operand.Value == c99.Null {
-		switch {
-		case isFnPtr(n.Operand.Type, nil):
-			g.w("nil")
-		default:
-			g.w("uintptr(0)")
-		}
+		g.w("%s", null)
 		return
 	}
 
 	if n.Operand.Value != nil && g.voidCanIgnore(n) {
-		if n.Operand.Value == c99.Null {
-			g.w("uintptr(0)")
-			return
-		}
-
 		g.constant(n)
 		return
 	}
@@ -341,6 +332,8 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 		d := g.normalizeDeclarator(n.Declarator)
 		g.enqueue(d)
 		switch {
+		case d.Type.Kind() == c99.Function:
+			g.w("fp%d(%s)", g.registerType(g.fpTypes, d.Type), g.mangleDeclarator(d))
 		case g.escaped(d) && c99.UnderlyingType(d.Type).Kind() != c99.Array:
 			g.w(" *(*%s)(unsafe.Pointer(%s))", g.typ(d.Type), g.mangleDeclarator(d))
 		default:
@@ -375,6 +368,15 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 			return
 		}
 
+		if n.Expr.Case == c99.ExprIdent && n.Expr.Declarator == nil {
+			switch x := n.Expr.Scope.LookupIdent(n.Expr.Token.Val).(type) {
+			case *c99.Declarator:
+				n.Expr.Declarator = x
+				n.Expr.Operand.Type = &c99.PointerType{Item: x.Type}
+			default:
+				todo("%v: %T", g.position0(n), x)
+			}
+		}
 		var ft0 c99.Type
 		if !isFnPtr(n.Expr.Operand.Type, &ft0) {
 			todo("", g.position0(n))
@@ -388,7 +390,12 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 				switch {
 				case i < len(ft.Params) || ft.Variadic:
 					g.w(", ")
-					g.convert(l.Expr, n.CallArgs[i].Type)
+					if t := n.CallArgs[i].Type; t != nil {
+						g.convert(l.Expr, t)
+						break
+					}
+
+					g.value(l.Expr, false)
 				default:
 					if !g.voidCanIgnore(l.Expr) {
 						todo("", g.position0(l.Expr))
@@ -573,7 +580,6 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 	case c99.ExprCond: // Expr '?' ExprList ':' Expr
 		t := n.Operand.Type
 		t0 := t
-		isFnPtr(t, &t)
 		g.w(" func() %s { if ", g.typ(t))
 		g.value(n.Expr, false)
 		g.w(" != 0 { return ")
@@ -585,17 +591,9 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 		t := n.TypeName.Type
 		op := n.Expr.Operand
 		if isVaList(op.Type) {
-			switch {
-			case isFnPtr(t, &t):
-				g.w("(*(*%s)(unsafe.Pointer(&struct{ f uintptr }{", g.typ(t))
-				g.w("%sVAuintptr(&", crt)
-				g.value(n.Expr, false)
-				g.w(")})))")
-			default:
-				g.w("%sVA%s(&", crt, g.typ(c99.UnderlyingType(t)))
-				g.value(n.Expr, false)
-				g.w(")")
-			}
+			g.w("%sVA%s(&", crt, g.typ(c99.UnderlyingType(t)))
+			g.value(n.Expr, false)
+			g.w(")")
 			return
 		}
 
@@ -949,7 +947,7 @@ func (g *gen) uintptr(n *c99.Expr, ignoreBits bool) {
 	defer g.w(")")
 
 	if n.Operand.Value == c99.Null {
-		g.w("uintptr(0)")
+		g.w("%s", null)
 		return
 	}
 
@@ -959,6 +957,8 @@ func (g *gen) uintptr(n *c99.Expr, ignoreBits bool) {
 		g.enqueue(d)
 		arr := c99.UnderlyingType(d.Type).Kind() == c99.Array
 		switch {
+		case d.Type.Kind() == c99.Function:
+			g.w("fp%d(%s)", g.registerType(g.fpTypes, d.Type), g.mangleDeclarator(d))
 		case arr:
 			g.w("%s", g.mangleDeclarator(d))
 		case g.escaped(d):
@@ -1225,13 +1225,18 @@ func (g *gen) constant(n *c99.Expr) {
 
 		switch y := c99.UnderlyingType(n.Operand.Type).(type) {
 		case *c99.PointerType:
+			if n.Operand.IsZero() {
+				g.w("%s", null)
+				return
+			}
+
 			switch {
 			case y.Item.Kind() == c99.Function:
-				g.w("(*(*%s)(unsafe.Pointer(&struct{ f uintptr }{%v})))", g.typ(y.Item), uintptr(x.Value))
+				g.w("uintptr(%v)", uintptr(x.Value))
 			case n.Operand.Type.String() == vaListType && x.Value == 1:
 				g.w(" %s", ap)
 			default:
-				g.w(f, uint64(x.Value))
+				g.w("uintptr("+f+")", uintptr(x.Value))
 			}
 			return
 		}
@@ -1283,6 +1288,7 @@ func (g *gen) voidArithmeticAsop(n *c99.Expr) {
 		g.w("%%")
 	case c99.LSHASSIGN:
 		g.w("<<")
+		op.Type = c99.UInt
 	default:
 		todo("", g.position0(n), c99.TokSrc(n.Token))
 	}
@@ -1340,9 +1346,9 @@ func (g *gen) relop(n *c99.Expr) {
 	}
 	switch {
 	case n.Expr.Operand.Type.Kind() == c99.Ptr || n.Expr2.Operand.Type.Kind() == c99.Ptr:
-		g.fpValue(n.Expr)
+		g.value(n.Expr, false)
 		g.w(" %s ", c99.TokSrc(n.Token))
-		g.fpValue(n.Expr2)
+		g.value(n.Expr2, false)
 		g.w(")")
 	default:
 		g.convert(n.Expr, l)
@@ -1352,46 +1358,62 @@ func (g *gen) relop(n *c99.Expr) {
 	}
 }
 
-func (g *gen) fpValue(n *c99.Expr) {
-	var ft c99.Type
-	switch {
-	case isFnPtr(n.Operand.Type, &ft):
-		// (*(*uintptr)(unsafe.Pointer(&struct{ f from }{expr})))
-		g.w("(*(*uintptr)(unsafe.Pointer(&struct{ f %s }{", g.typ(ft))
-		g.value(n, false)
-		g.w("})))")
-	default:
-		g.value(n, false)
-	}
-}
-
 func (g *gen) convert(n *c99.Expr, t c99.Type) {
 	if n.Case == c99.ExprPExprList && isSingleExpression(n.ExprList) {
 		g.convert(n.ExprList.Expr, t)
 		return
 	}
 
-	var ft c99.Type
-	if isFnPtr(n.Operand.Type, &ft) {
-		if ft.Equal(t) || n.Operand.Type.Equal(t) {
+	if t.Kind() == c99.Function {
+		ft := c99.UnderlyingType(t)
+		switch n.Case {
+		case c99.ExprIdent: // IDENTIFIER
+			d := g.normalizeDeclarator(n.Declarator)
+			g.enqueue(d)
+			dt := c99.UnderlyingType(d.Type)
+			if dt.Equal(ft) {
+				g.w("%s", g.mangleDeclarator(d))
+				return
+			}
+
+			if c99.UnderlyingType(n.Operand.Type).Equal(&c99.PointerType{ft}) {
+				switch {
+				case d.Type.Kind() == c99.Ptr:
+					g.w("fn%d(%s)", g.registerType(g.fnTypes, ft), g.mangleDeclarator(n.Declarator))
+				default:
+					g.w("%s", g.mangleDeclarator(n.Declarator))
+				}
+				return
+			}
+
+			todo("", g.position0(n))
+		case c99.ExprCast: // '(' TypeName ')' Expr
+			if d := g.normalizeDeclarator(n.Expr.Declarator); d != nil {
+				g.enqueue(d)
+				if d.Type.Equal(t) {
+					g.w("%s", g.mangleDeclarator(d))
+					return
+				}
+
+				g.w("fn%d(fp%d(%s))", g.registerType(g.fnTypes, t), g.registerType(g.fpTypes, d.Type), g.mangleDeclarator(d))
+				return
+			}
+
+			g.w("fn%d(", g.registerType(g.fnTypes, ft))
 			g.value(n, false)
-			return
+			g.w(")")
+		default:
+			g.w("fn%d(", g.registerType(g.fnTypes, t))
+			g.value(n, false)
+			g.w(")")
 		}
-
-		if n.Operand.IsZero() && g.voidCanIgnore(n.Expr) {
-			g.w("nil")
-			return
-		}
-
-		// (*(*to)(unsafe.Pointer(&struct{ f from }{expr})))
-		g.w("(*(*%s)(unsafe.Pointer(&struct{ f %s }{", g.ptyp(t, false), g.typ(ft))
-		g.value(n, false)
-		g.w("})))")
 		return
 	}
 
 	if t.Kind() == c99.Ptr {
 		switch {
+		case n.Operand.Value == c99.Null || n.Operand.IsZero():
+			g.w("null")
 		case n.Operand.Type.IsIntegerType():
 			g.w(" uintptr(")
 			g.value(n, false)

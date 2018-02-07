@@ -727,6 +727,10 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 				panic(ctx.position(n))
 			}
 
+			if n.Expr.Case == ExprIdent && n.Expr.Token.Val == idAsm {
+				panic(ctx.position(n).String())
+			}
+
 			n.Operand = Operand{Type: Int}
 			break
 		}
@@ -2102,6 +2106,7 @@ func (n *DirectDeclarator) check(ctx *context, t Type, sc []int, fn *Declarator)
 		var sz Operand
 		if o := n.ExprOpt; o != nil {
 			sz = o.Expr.Operand
+			//o.Expr.dumpValues("· ") //TODO-
 		}
 		t := &ArrayType{
 			Item:           t,

@@ -81,6 +81,7 @@ var (
 	Null = &ir.AddressValue{}
 
 	idAlloca   = dict.SID("__builtin_alloca")
+	idAsm      = dict.SID("asm")
 	idChar     = dict.SID("char")
 	idConst    = dict.SID("const")
 	idDefine   = dict.SID("define")

@@ -45,6 +45,8 @@ type gen struct {
 	ds                  []byte
 	errs                scanner.ErrorList
 	externs             map[int]*c99.Declarator
+	fnTypes             map[string]int
+	fpTypes             map[string]int
 	fset                *token.FileSet
 	in                  []*c99.TranslationUnit
 	internalNames       map[int]struct{}          //TODO-?
@@ -76,6 +78,7 @@ type gen struct {
 	setBitsTypes        map[string]int
 	strings             map[int]int64
 	subTypes            map[string]int
+	tCache              map[tCacheKey]string
 	text                []int
 	ts                  int64
 	units               map[*c99.Declarator]int
@@ -96,6 +99,8 @@ func newGen(out io.Writer, in []*c99.TranslationUnit) *gen {
 		assignTypes:         map[string]int{},
 		divTypes:            map[string]int{},
 		externs:             map[int]*c99.Declarator{},
+		fnTypes:             map[string]int{},
+		fpTypes:             map[string]int{},
 		in:                  in,
 		internalNames:       map[int]struct{}{},
 		internals:           make([]map[int]*c99.Declarator, len(in)),
@@ -103,8 +108,8 @@ func newGen(out io.Writer, in []*c99.TranslationUnit) *gen {
 		mulTypes:            map[string]int{},
 		nums:                map[*c99.Declarator]int{},
 		out:                 out,
-		postDecTypes:        map[string]int{},
 		postDecIBitsTypes:   map[string]int{},
+		postDecTypes:        map[string]int{},
 		postDecUBitsTypes:   map[string]int{},
 		postIncTypes:        map[string]int{},
 		postIncUBitsTypes:   map[string]int{},
@@ -120,6 +125,7 @@ func newGen(out io.Writer, in []*c99.TranslationUnit) *gen {
 		setBitsTypes:        map[string]int{},
 		strings:             map[int]int64{},
 		subTypes:            map[string]int{},
+		tCache:              map[tCacheKey]string{},
 		units:               map[*c99.Declarator]int{},
 		xorTypes:            map[string]int{},
 	}
@@ -177,6 +183,8 @@ func (g *gen) gen(cmd bool) (err error) {
 		return err
 	}
 
+	g.w("\nvar _ unsafe.Pointer\n")
+	g.w("\nconst %s = uintptr(0)\n", null)
 	switch {
 	case cmd:
 		sym, ok := g.externs[idStart]
@@ -185,7 +193,6 @@ func (g *gen) gen(cmd bool) (err error) {
 			break
 		}
 
-		g.w("\nvar _ unsafe.Pointer\n")
 		g.w("\nfunc main() { X_start(%sNewTLS(), 0, 0) } //TODO real args\n", crt)
 		g.define(sym)
 	default:
@@ -433,6 +440,22 @@ return r
 	sort.Strings(a)
 	for _, k := range a {
 		g.w("\nfunc add%d(n *%[2]s, m %[2]s) %[2]s { *n += m; return *n }", g.addTypes[k], k)
+	}
+	a = a[:0]
+	for k := range g.fpTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		g.w("\n\nfunc fp%d(f %[2]s) uintptr { return *(*uintptr)(unsafe.Pointer(&f)) }", g.fpTypes[k], k)
+	}
+	a = a[:0]
+	for k := range g.fnTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		g.w("\n\nfunc fn%d(f uintptr) %[2]s { return *(*%[2]s)(unsafe.Pointer(&f)) }", g.fnTypes[k], k)
 	}
 	return newOpt().do(g.out, &g.out0, testFn, g.needBool2int)
 }

@@ -103,3 +103,33 @@ func isConst(n *Expr) bool {
 		return false
 	}
 }
+
+func (n *Expr) dumpValues(s string) {
+	fmt.Printf("%s%v %v\n", s, n.Case, n.Operand.Value)
+	switch n.Case {
+	case ExprPExprList:
+		for l := n.ExprList; l != nil; l = l.ExprList {
+			l.Expr.dumpValues(s + "· ")
+		}
+	case
+		ExprAdd,
+		ExprMod,
+		ExprSub:
+
+		n.Expr.dumpValues(s + "· ")
+		n.Expr2.dumpValues(s + "· ")
+	case
+		ExprInt,
+		ExprSizeofType:
+
+		// nop
+	case
+		ExprAddrof,
+		ExprCast,
+		ExprPSelect:
+
+		n.Expr.dumpValues(s + "· ")
+	default:
+		panic(n.Case.String())
+	}
+}

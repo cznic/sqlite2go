@@ -215,7 +215,6 @@ func (g *gen) functionDefinition(n *c99.Declarator) {
 				g.w("a%s %s", dict.S(nm), g.typ(v))
 				escParams = append(escParams, param)
 			default:
-				isFnPtr(v, &v)
 				g.w("%s %s", mangleIdent(nm, false), g.typ(v))
 				if isVaList(v) {
 					continue
