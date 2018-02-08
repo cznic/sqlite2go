@@ -201,7 +201,7 @@ const %s = uintptr(0)
 		g.w(`
 
 func main() {
-	argv := crt.MustCalloc(len(os.Args) * int(unsafe.Sizeof(uintptr(0))))
+	argv := crt.MustCalloc((len(os.Args)+1) * int(unsafe.Sizeof(uintptr(0))))
 	p := argv
 	for _, v := range os.Args {
 		*(*uintptr)(unsafe.Pointer(p)) = %[1]sCString(v)
