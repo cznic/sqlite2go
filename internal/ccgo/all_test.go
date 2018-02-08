@@ -74,6 +74,7 @@ const (
 #define __arch__ %s
 #define __os__ %s
 #include <builtin.h>
+#define SQLITE_DEBUG 1
 `
 	injectGCC = `
 #define _CCGO 1
@@ -195,6 +196,7 @@ func build(t *testing.T, dir string, in []*c99.TranslationUnit) error {
 	w.WriteString(`package main
 	
 import (
+	"os"
 	"unsafe"
 
 	"github.com/cznic/crt"
@@ -321,6 +323,7 @@ func TestGCC(t *testing.T) {
 		"20010904-2.c":    {}, // __attribute__((aligned(32)))
 		"20021127-1.c":    {}, // non standard GCC behavior
 		"frame-address.c": {}, // __builtin_frame_address
+		"medce-1.c":       {}, // references undefined function
 		"pr17377.c":       {}, // __builtin_return_address
 		"pr23467.c":       {}, // __attribute__ ((aligned (8)))
 
@@ -329,7 +332,7 @@ func TestGCC(t *testing.T) {
 		"pr38422.c":         {}, //TODO bits
 		"pr60003.c":         {}, //TODO __builtin_setjmp
 	})
-	// compiles: 668, builds: 650, runs: 650
+	// compiles: 667, builds: 649, runs: 649
 }
 
 func testFile(t *testing.T, pth string, compiles, builds, runs *int) {

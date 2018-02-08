@@ -39,7 +39,7 @@ more:
 		case *c99.TaggedUnionType:
 			g.defineTaggedUnionType(y)
 		default:
-			todo("%T", y)
+			todo("%T %v", y, y)
 		}
 	}
 }
@@ -50,7 +50,7 @@ func (g *gen) defineNamedType(t *c99.NamedType) {
 	}
 
 	g.producedNamedTypes[t.Name] = struct{}{}
-	g.w("\ntype T%s = %s\n", dict.S(t.Name), g.typ(t.Type))
+	g.w("\ntype %s = %s\n", g.typ(t), g.typ(t.Type))
 }
 
 func (g *gen) defineTaggedEnumType(t *c99.TaggedEnumType) {
@@ -93,12 +93,15 @@ func (g *gen) defineTaggedStructType(t *c99.TaggedStructType) {
 		return
 	}
 
-	g.producedStructTags[t.Tag] = struct{}{}
 	switch {
 	case t.Type == nil:
-		g.w("\ntype S%s struct{uintptr}\n", dict.S(t.Tag)) //TODO
+		g.opaqueStructTags[t.Tag] = struct{}{}
 	default:
+		g.producedStructTags[t.Tag] = struct{}{}
 		g.w("\ntype S%s %s\n", dict.S(t.Tag), g.typ(t.Type))
+		g.w("\n\nfunc init() {")
+		g.w("\nif n := unsafe.Sizeof(S%s{}); n != %d { panic(n) }", dict.S(t.Tag), g.model.Sizeof(t))
+		g.w("\n}\n")
 	}
 }
 
@@ -221,7 +224,7 @@ func (g *gen) functionDefinition(n *c99.Declarator) {
 				}
 
 				if v.Kind() == c99.Ptr {
-					g.w(" /* %s */", g.ptyp(v, false))
+					g.w(" /* %s */", g.ptyp(v, false, 1))
 				}
 			}
 		}
@@ -287,26 +290,26 @@ func (g *gen) normalizeDeclarator(n *c99.Declarator) *c99.Declarator {
 	return n
 }
 
-func (g *gen) declaration(n *c99.Declaration) {
+func (g *gen) declaration(n *c99.Declaration, deadCode *bool) {
 	// DeclarationSpecifiers InitDeclaratorListOpt ';'
-	g.initDeclaratorListOpt(n.InitDeclaratorListOpt)
+	g.initDeclaratorListOpt(n.InitDeclaratorListOpt, deadCode)
 }
 
-func (g *gen) initDeclaratorListOpt(n *c99.InitDeclaratorListOpt) {
+func (g *gen) initDeclaratorListOpt(n *c99.InitDeclaratorListOpt, deadCode *bool) {
 	if n == nil {
 		return
 	}
 
-	g.initDeclaratorList(n.InitDeclaratorList)
+	g.initDeclaratorList(n.InitDeclaratorList, deadCode)
 }
 
-func (g *gen) initDeclaratorList(n *c99.InitDeclaratorList) {
+func (g *gen) initDeclaratorList(n *c99.InitDeclaratorList, deadCode *bool) {
 	for ; n != nil; n = n.InitDeclaratorList {
-		g.initDeclarator(n.InitDeclarator)
+		g.initDeclarator(n.InitDeclarator, deadCode)
 	}
 }
 
-func (g *gen) initDeclarator(n *c99.InitDeclarator) {
+func (g *gen) initDeclarator(n *c99.InitDeclarator, deadCode *bool) {
 	d := n.Declarator
 	if d.DeclarationSpecifier.IsStatic() {
 		return

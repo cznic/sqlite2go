@@ -129,6 +129,7 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 		}
 
 		g.w("%s{", g.typ(t))
+		g.initializerListNL(n.InitializerList)
 		if !g.isZeroInitializer(n) {
 			index := 0
 			for l := n.InitializerList; l != nil; l = l.InitializerList {
@@ -138,6 +139,7 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 				g.w("%d: ", index)
 				g.literal(x.Item, l.Initializer)
 				g.w(", ")
+				g.initializerListNL(n.InitializerList)
 				index++
 			}
 		}
@@ -156,6 +158,7 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 		}
 
 		g.w("%s{", g.typ(t))
+		g.initializerListNL(n.InitializerList)
 		if !g.isZeroInitializer(n) {
 			layout := g.model.Layout(t)
 			fld := 0
@@ -171,6 +174,7 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 				g.w("%s: ", mangleIdent(d.Name, true))
 				g.literal(d.Type, l.Initializer)
 				g.w(", ")
+				g.initializerListNL(n.InitializerList)
 				fld++
 			}
 		}
@@ -194,6 +198,12 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 		g.w("}")
 	default:
 		todo("%v: %T", g.position0(n), x)
+	}
+}
+
+func (g *gen) initializerListNL(n *c99.InitializerList) {
+	if n.Len > 1 {
+		g.w("\n")
 	}
 }
 

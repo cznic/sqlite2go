@@ -70,6 +70,12 @@ func (g *gen) void(n *c99.Expr) {
 		return
 	}
 
+	if n.Case == c99.ExprCast && n.Expr.Case == c99.ExprIdent && !isVaList(n.Expr.Operand.Type) {
+		g.w("_ = %s", g.mangleDeclarator(n.Expr.Declarator))
+		g.enqueue(n.Expr.Declarator)
+		return
+	}
+
 	if g.voidCanIgnore(n) {
 		return
 	}
@@ -206,7 +212,22 @@ func (g *gen) void(n *c99.Expr) {
 	case c99.ExprCond: // Expr '?' ExprList ':' Expr
 		switch {
 		case n.Expr.Operand.IsZero():
-			todo("", g.position0(n))
+			switch {
+			case g.voidCanIgnoreExprList(n.ExprList):
+				switch {
+				case g.voidCanIgnore(n.Expr2):
+					todo("", g.position0(n))
+				default:
+					g.void(n.Expr2)
+				}
+			default:
+				switch {
+				case g.voidCanIgnore(n.Expr2):
+					todo("", g.position0(n))
+				default:
+					todo("", g.position0(n))
+				}
+			}
 		case n.Expr.Operand.IsNonzero():
 			todo("", g.position0(n))
 		default:
@@ -758,8 +779,9 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 		g.w("- ")
 		g.convert(n.Expr, n.Operand.Type)
 	case c99.ExprCpl: // '~' Expr
-		g.w("^ ")
-		g.value(n.Expr, false)
+		g.w("^(")
+		g.convert(n.Expr, n.Operand.Type)
+		g.w(")")
 	case c99.ExprAddAssign: // Expr "+=" Expr
 		switch x := c99.UnderlyingType(n.Expr.Operand.Type).(type) {
 		case *c99.PointerType:
@@ -1147,6 +1169,14 @@ func (g *gen) constant(n *c99.Expr) {
 
 	switch x := n.Operand.Value.(type) {
 	case *ir.Float32Value:
+		switch {
+		case math.IsInf(float64(x.Value), 1):
+			g.w("math.Inf(1)")
+			return
+		case math.IsInf(float64(x.Value), -1):
+			g.w("math.Inf(-1)")
+			return
+		}
 		switch u := c99.UnderlyingType(n.Operand.Type).(type) {
 		case c99.TypeKind:
 			switch u {
@@ -1160,6 +1190,14 @@ func (g *gen) constant(n *c99.Expr) {
 			todo("%v: %T", g.position0(n), u)
 		}
 	case *ir.Float64Value:
+		switch {
+		case math.IsInf(x.Value, 1):
+			g.w("math.Inf(1)")
+			return
+		case math.IsInf(x.Value, -1):
+			g.w("math.Inf(-1)")
+			return
+		}
 		switch u := c99.UnderlyingType(n.Operand.Type).(type) {
 		case c99.TypeKind:
 			switch u {

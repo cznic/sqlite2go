@@ -341,7 +341,15 @@ func (o *opt) expr(n *ast.Expr) {
 		}
 	case *ast.KeyValueExpr:
 		o.expr(&x.Key)
+		switch x2 := x.Key.(type) {
+		case *ast.ParenExpr:
+			x.Key = x2.X
+		}
 		o.expr(&x.Value)
+		switch x2 := x.Value.(type) {
+		case *ast.ParenExpr:
+			x.Value = x2.X
+		}
 	case *ast.InterfaceType:
 		// nop
 	case nil:

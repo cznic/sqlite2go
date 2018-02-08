@@ -427,7 +427,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		// The operand of the unary + or - operator shall have
 		// arithmetic type; of the ~ operator, integer type; of the !
 		// operator, scalar type.
-		op := n.Expr.eval(ctx, arr2ptr, fn)
+		op := n.Expr.eval(ctx, arr2ptr, fn).integerPromotion(ctx.model)
 		if !op.Type.IsIntegerType() {
 			panic(ctx.position(n))
 		}
@@ -1835,6 +1835,7 @@ func (n *InitializerList) check(ctx *context, t Type, fn *Declarator) Operand {
 					maxIndex = index
 				}
 				index++
+				n0.Len++
 			}
 			if x.Size.Type == nil {
 				x.Size = newIntConst(ctx, n0, uint64(maxIndex+1), UInt, ULong, ULongLong)
@@ -1856,6 +1857,7 @@ func (n *InitializerList) check(ctx *context, t Type, fn *Declarator) Operand {
 				default:
 					panic(fmt.Errorf("%v: TODO", ctx.position(n.Initializer)))
 				}
+				n0.Len++
 			}
 			return Operand{Type: t, Value: r}
 		case *TaggedStructType:
@@ -1880,6 +1882,7 @@ func (n *InitializerList) check(ctx *context, t Type, fn *Declarator) Operand {
 				default:
 					panic(fmt.Errorf("%v: TODO", ctx.position(n.Initializer)))
 				}
+				n0.Len++
 			}
 			return Operand{Type: t, Value: r}
 		default:

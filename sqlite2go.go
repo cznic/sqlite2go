@@ -178,14 +178,26 @@ func main() {
 			exit(1, "%s", errString(err))
 		}
 
-		err = ccgo.Command(w, []*c99.TranslationUnit{crt0, shell, sqlite})
+		w.WriteString(`package main
+
+import (
+	"math"
+	"os"
+	"unsafe"
+
+	"github.com/cznic/crt"
+)
+
+`)
+		if err := ccgo.Command(w, []*c99.TranslationUnit{crt0, shell, sqlite}); err != nil {
+			exit(1, "%v", err)
+		}
 	default:
-		err = ccgo.Package(w, []*c99.TranslationUnit{sqlite})
+		if err := ccgo.Package(w, []*c99.TranslationUnit{sqlite}); err != nil {
+			exit(1, "%v", err)
+		}
+		exit(1, "not yet implemented")
 	}
-	if err != nil {
-		exit(1, "%v", err)
-	}
-	panic("TODO")
 }
 
 func findRepo() string {

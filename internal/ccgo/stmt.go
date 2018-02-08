@@ -59,7 +59,7 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases ma
 		}
 		for _, v := range escParams {
 			free = append(free, v)
-			g.w("\n\t%s = %sMustMalloc(%d) // *%s", g.mangleDeclarator(v), crt, g.model.Sizeof(v.Type), g.ptyp(v.Type, false))
+			g.w("\n\t%s = %sMustMalloc(%d) // *%s", g.mangleDeclarator(v), crt, g.model.Sizeof(v.Type), g.ptyp(v.Type, false, 1))
 		}
 		for _, v := range vars {
 			switch {
@@ -69,11 +69,11 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases ma
 				alloca = true
 			case g.escaped(v):
 				free = append(free, v)
-				g.w("\n\t%s = %sMustMalloc(%d) // *%s", g.mangleDeclarator(v), crt, g.model.Sizeof(v.Type), g.ptyp(v.Type, false))
+				g.w("\n\t%s = %sMustMalloc(%d) // *%s", g.mangleDeclarator(v), crt, g.model.Sizeof(v.Type), g.ptyp(v.Type, false, 1))
 			default:
 				switch {
 				case v.Type.Kind() == c99.Ptr:
-					g.w("\n\t%s %s\t// %s", g.mangleDeclarator(v), g.ptyp(v.Type, true), g.ptyp(v.Type, false))
+					g.w("\n\t%s %s\t// %s", g.mangleDeclarator(v), g.typ(v.Type), g.ptyp(v.Type, false, 1))
 				default:
 					g.w("\n\t%s %s", g.mangleDeclarator(v), g.typ(v.Type))
 				}
@@ -128,7 +128,7 @@ func (g *gen) blockItemList(n *c99.BlockItemList, cases map[*c99.LabeledStmt]int
 func (g *gen) blockItem(n *c99.BlockItem, cases map[*c99.LabeledStmt]int, brk, cont *int, deadcode *bool) {
 	switch n.Case {
 	case c99.BlockItemDecl: // Declaration
-		g.declaration(n.Declaration)
+		g.declaration(n.Declaration, deadcode)
 	case c99.BlockItemStmt: // Stmt
 		g.stmt(n.Stmt, cases, brk, cont, deadcode)
 	default:
@@ -139,10 +139,6 @@ func (g *gen) blockItem(n *c99.BlockItem, cases map[*c99.LabeledStmt]int, brk, c
 func (g *gen) stmt(n *c99.Stmt, cases map[*c99.LabeledStmt]int, brk, cont *int, deadcode *bool) {
 	switch n.Case {
 	case c99.StmtExpr: // ExprStmt
-		if *deadcode {
-			break
-		}
-
 		g.exprStmt(n.ExprStmt)
 	case c99.StmtJump: // JumpStmt
 		g.jumpStmt(n.JumpStmt, brk, cont, deadcode)
@@ -204,7 +200,7 @@ func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int
 			switch ce := v.ConstExpr; {
 			case ce != nil:
 				g.w("\ncase ")
-				g.value(ce.Expr, false)
+				g.convert(ce.Expr, n.SwitchOp.Type)
 				g.w(": goto _%d", l)
 			default:
 				deflt = v

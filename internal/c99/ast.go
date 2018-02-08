@@ -2092,7 +2092,8 @@ func (n *Initializer) Pos() token.Pos {
 //	|       InitializerList ',' Initializer              // Case 3
 //	|       InitializerList ',' Designation Initializer  // Case 4
 type InitializerList struct {
-	Operand         Operand
+	Operand         Operand //TODO-
+	Len             int
 	Case            int
 	Designation     *Designation
 	Initializer     *Initializer

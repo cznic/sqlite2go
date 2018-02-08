@@ -22,9 +22,9 @@ func isVaList(t c99.Type) bool {
 	return ok && x.Name == idVaList
 }
 
-func (g *gen) typ(t c99.Type) string { return g.ptyp(t, true) }
+func (g *gen) typ(t c99.Type) string { return g.ptyp(t, true, 0) }
 
-func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) (r string) {
+func (g *gen) ptyp(t c99.Type, ptr2uintptr bool, lvl int) (r string) {
 	k := tCacheKey{t, ptr2uintptr}
 	if s, ok := g.tCache[k]; ok {
 		return s
@@ -33,12 +33,14 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) (r string) {
 	defer func() { g.tCache[k] = r }()
 
 	if ptr2uintptr && t.Kind() == c99.Ptr && !isVaList(t) {
-		return "uintptr"
+		if _, ok := t.(*c99.NamedType); !ok {
+			return "uintptr"
+		}
 	}
 
 	switch x := t.(type) {
 	case *c99.ArrayType:
-		return fmt.Sprintf("[%d]%s", x.Size.Value.(*ir.Int64Value).Value, g.ptyp(x.Item, ptr2uintptr))
+		return fmt.Sprintf("[%d]%s", x.Size.Value.(*ir.Int64Value).Value, g.ptyp(x.Item, ptr2uintptr, lvl))
 	case *c99.FunctionType:
 		var buf bytes.Buffer
 		fmt.Fprintf(&buf, "func(*%sTLS", crt)
@@ -68,6 +70,10 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) (r string) {
 		}
 
 		g.enqueue(x)
+		switch y := x.Type.(type) {
+		case *c99.TaggedStructType:
+			g.enqueue(y)
+		}
 		return fmt.Sprintf("T%s", dict.S(x.Name))
 	case *c99.PointerType:
 		if x.Item.Kind() == c99.Void {
@@ -78,7 +84,7 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) (r string) {
 		case x.Kind() == c99.Function:
 			todo("")
 		default:
-			return fmt.Sprintf("*%s", g.ptyp(x.Item, ptr2uintptr))
+			return fmt.Sprintf("*%s", g.ptyp(x.Item, ptr2uintptr, lvl+1))
 		}
 	case *c99.StructType:
 		var buf bytes.Buffer
@@ -88,6 +94,9 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) (r string) {
 			if v.Bits != 0 {
 				if layout[i].Bitoff == 0 {
 					fmt.Fprintf(&buf, "F%d %s;", layout[i].Offset, g.typ(layout[i].PackedType))
+					if lvl == 0 {
+						fmt.Fprintf(&buf, "\n")
+					}
 				}
 				continue
 			}
@@ -98,7 +107,10 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) (r string) {
 			default:
 				fmt.Fprintf(&buf, "%s ", mangleIdent(v.Name, true))
 			}
-			fmt.Fprintf(&buf, "%s;", g.ptyp(v.Type, ptr2uintptr))
+			fmt.Fprintf(&buf, "%s;", g.ptyp(v.Type, ptr2uintptr, lvl+1))
+			if lvl == 0 && ptr2uintptr && v.Type.Kind() == c99.Ptr {
+				fmt.Fprintf(&buf, "// %s\n", g.ptyp(v.Type, false, lvl+1))
+			}
 		}
 		buf.WriteByte('}')
 		return buf.String()
@@ -141,19 +153,14 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool) (r string) {
 			todo("", x)
 		}
 	case *c99.UnionType:
-		var buf bytes.Buffer
-		fmt.Fprintf(&buf, "struct{X [%d]byte; _ [0]struct{", g.model.Sizeof(x))
-		for _, v := range x.Fields {
-			switch {
-			case v.Name == 0:
-				fmt.Fprintf(&buf, "_ ")
-			default:
-				fmt.Fprintf(&buf, "%s ", mangleIdent(v.Name, true))
-			}
-			fmt.Fprintf(&buf, "%s;", g.ptyp(v.Type, ptr2uintptr))
+		al := int64(g.model.Alignof(x))
+		sz := g.model.Sizeof(x)
+		switch {
+		case al == sz:
+			return fmt.Sprintf("struct{X int%d}", 8*sz)
+		default:
+			return fmt.Sprintf("struct{X int%d; _ [%d]byte}", 8*al, sz-al)
 		}
-		buf.WriteString("}}")
-		return buf.String()
 	default:
 		todo("%v %T %v", t, x, ptr2uintptr)
 	}

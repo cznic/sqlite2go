@@ -673,7 +673,8 @@ import (
 /*yy:case Expr       */ |	Expr
 
                         // [0]6.7.8
-			//yy:field	Operand	Operand
+			//yy:field	Operand	Operand	//TODO-
+			//yy:field	Len	int
                         InitializerList:
                         	/* empty */ {}
                         |	Initializer

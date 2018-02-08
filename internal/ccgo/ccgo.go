@@ -26,7 +26,7 @@ import (
 // Command outputs a Go program generated from in to w.
 //
 // No package or import clause is generated.
-func Command(w io.Writer, in []*c99.TranslationUnit) error {
+func Command(w io.Writer, in []*c99.TranslationUnit) (err error) {
 	return newGen(w, in).gen(true)
 }
 
@@ -58,6 +58,7 @@ type gen struct {
 	nextLabel           int
 	num                 int
 	nums                map[*c99.Declarator]int
+	opaqueStructTags    map[int]struct{}
 	out                 io.Writer
 	out0                bytes.Buffer
 	postDecIBitsTypes   map[string]int
@@ -107,6 +108,7 @@ func newGen(out io.Writer, in []*c99.TranslationUnit) *gen {
 		modTypes:            map[string]int{},
 		mulTypes:            map[string]int{},
 		nums:                map[*c99.Declarator]int{},
+		opaqueStructTags:    map[int]struct{}{},
 		out:                 out,
 		postDecIBitsTypes:   map[string]int{},
 		postDecTypes:        map[string]int{},
@@ -183,8 +185,11 @@ func (g *gen) gen(cmd bool) (err error) {
 		return err
 	}
 
-	g.w("\nvar _ unsafe.Pointer\n")
-	g.w("\nconst %s = uintptr(0)\n", null)
+	g.w(`
+var _ unsafe.Pointer
+
+const %s = uintptr(0)
+`, null)
 	switch {
 	case cmd:
 		sym, ok := g.externs[idStart]
@@ -193,7 +198,18 @@ func (g *gen) gen(cmd bool) (err error) {
 			break
 		}
 
-		g.w("\nfunc main() { X_start(%sNewTLS(), 0, 0) } //TODO real args\n", crt)
+		g.w(`
+
+func main() {
+	argv := crt.MustCalloc(len(os.Args) * int(unsafe.Sizeof(uintptr(0))))
+	p := argv
+	for _, v := range os.Args {
+		*(*uintptr)(unsafe.Pointer(p)) = %[1]sCString(v)
+		p += unsafe.Sizeof(uintptr(0))
+	}
+	X_start(%[1]sNewTLS(), int32(len(os.Args)), argv)
+}
+`, crt)
 		g.define(sym)
 	default:
 		var a []string
@@ -210,12 +226,252 @@ func (g *gen) gen(cmd bool) (err error) {
 		return fmt.Errorf("%s", errString(err))
 	}
 
+	if g.needNZ64 {
+		g.w("\n\nfunc init() { nz64 = -nz64 }")
+	}
+	if g.needNZ32 {
+		g.w("\n\nfunc init() { nz32 = -nz32 }")
+	}
+
+	var a []string
+	for k := range g.opaqueStructTags {
+		a = append(a, string(dict.S(k)))
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		tag := dict.SID(k)
+		if _, ok := g.producedStructTags[tag]; !ok {
+			g.w("\ntype S%s struct{ uintptr }\n", k)
+		}
+	}
+
+	if g.needPostInc {
+		g.w("\n\nfunc postinc(p *uintptr, n uintptr) uintptr { r := *p; *p += n; return r }")
+	}
+	if g.needPostDec {
+		g.w("\n\nfunc postdec(p *uintptr, n uintptr) uintptr { r := *p; *p -= n; return r }")
+	}
+	if g.needPreInc {
+		g.w("\n\nfunc preinc(p *uintptr, n uintptr) uintptr { *p += n; return *p }")
+	}
+	if g.needPreDec {
+		g.w("\n\nfunc predec(p *uintptr, n uintptr) uintptr { *p -= n; return *p }")
+	}
+	if g.needAlloca {
+		g.w("\n\nfunc alloca(p *[]uintptr, n int) uintptr { r := %sMustMalloc(n); *p = append(*p, r); return r }", crt)
+	}
+
+	a = a[:0]
+	for k := range g.assignTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		g.w("\n\nfunc set%d(l *%[2]s, r %[2]s) %[2]s { *l = r; return r }", g.assignTypes[k], k)
+	}
+	a = a[:0]
+	for k := range g.postIncTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		g.w("\n\nfunc postinc%d(n *%[2]s) %[2]s { r := *n; *n++; return r }", g.postIncTypes[k], k)
+	}
+	a = a[:0]
+	for k := range g.preDecTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		g.w("\n\nfunc predec%d(n *%[2]s) %[2]s { *n--; return *n }", g.preDecTypes[k], k)
+	}
+	a = a[:0]
+	for k := range g.postDecTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		g.w("\n\nfunc postdec%d(n *%[2]s) %[2]s { r := *n; *n--; return r }", g.postDecTypes[k], k)
+	}
+	a = a[:0]
+	for k := range g.postDecUBitsTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		a := strings.Split(k, "|")
+		g.w("\n\nfunc postdecu%d(n uintptr, m %[2]s, off uint) %[2]s {", g.postDecUBitsTypes[k], a[0])
+		g.w(`
+pf := *(*%[2]s)(unsafe.Pointer(n))
+r := %[1]s(pf)&m>>off
+*(*%[2]s)(unsafe.Pointer(n)) = pf&^%[2]s(m)|%[2]s((r-1)<<off&m)
+return r
+}`, a[0], a[1])
+	}
+	a = a[:0]
+	for k := range g.postDecIBitsTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		a := strings.Split(k, "|")
+		g.w("\n\nfunc postdeci%d(n uintptr, s, m %[2]s, off uint) %[2]s {", g.postDecIBitsTypes[k], a[0])
+		g.w(`
+pf := *(*%[2]s)(unsafe.Pointer(n))
+r := %[1]s(pf)&m
+if r&s != 0 {
+	r |= ^m
+}
+r >>= off
+*(*%[2]s)(unsafe.Pointer(n)) = pf&^%[2]s(m)|%[2]s((r-1)<<off&m)
+return r
+}`, a[0], a[1])
+	}
+	a = a[:0]
+	for k := range g.postIncUBitsTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		a := strings.Split(k, "|")
+		g.w("\n\nfunc postincu%d(n uintptr, m %[2]s, off uint) %[2]s {", g.postIncUBitsTypes[k], a[0])
+		g.w(`
+pf := *(*%[2]s)(unsafe.Pointer(n))
+r := %[1]s(pf)&m>>off
+*(*%[2]s)(unsafe.Pointer(n)) = pf&^%[2]s(m)|%[2]s((r+1)<<off&m)
+return r
+}`, a[0], a[1])
+	}
+	a = a[:0]
+	for k := range g.preDecUBitsTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		a := strings.Split(k, "|")
+		g.w("\n\nfunc predecu%d(n uintptr, m %[2]s, off uint) %[2]s {", g.preDecUBitsTypes[k], a[0])
+		g.w(`
+pf := *(*%[2]s)(unsafe.Pointer(n))
+r := %[1]s(pf)&m>>off-1
+*(*%[2]s)(unsafe.Pointer(n)) = pf&^%[2]s(m)|%[2]s(r<<off&m)
+return r
+}`, a[0], a[1])
+	}
+	a = a[:0]
+	for k := range g.preIncUBitsTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		a := strings.Split(k, "|")
+		g.w("\n\nfunc preincu%d(n uintptr, m %[2]s, off uint) %[2]s {", g.preIncUBitsTypes[k], a[0])
+		g.w(`
+pf := *(*%[2]s)(unsafe.Pointer(n))
+r := %[1]s(pf)&m>>off+1
+*(*%[2]s)(unsafe.Pointer(n)) = pf&^%[2]s(m)|%[2]s(r<<off&m)
+return r
+}`, a[0], a[1])
+	}
+	a = a[:0]
+	for k := range g.setBitsTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		a := strings.Split(k, "|")
+		g.w("\n\nfunc setb%d(n uintptr,m %[3]s, off uint, v %[2]s) {", g.setBitsTypes[k], a[0], a[1])
+		g.w("*(*%[1]s)(unsafe.Pointer(n)) = (*(*%[1]s)(unsafe.Pointer(n)))&^m|%[1]s(v)<<off&m }", a[1])
+	}
+	a = a[:0]
+	for k := range g.preIncTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		g.w("\n\nfunc preinc%d(n *%[2]s) %[2]s { *n++; return *n }", g.preIncTypes[k], k)
+	}
+	a = a[:0]
+	for k := range g.xorTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		g.w("\n\nfunc xor%d(n *%[2]s, m %[2]s) %[2]s { *n ^= m; return *n }", g.xorTypes[k], k)
+	}
+	a = a[:0]
+	for k := range g.rshTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		g.w("\n\nfunc rsh%d(n *%[2]s, m int) %[2]s { *n >>= uint(m); return *n }", g.rshTypes[k], k)
+	}
+	a = a[:0]
+	for k := range g.mulTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		g.w("\n\nfunc mul%d(n *%[2]s, m %[2]s) %[2]s { *n *= m; return *n }", g.mulTypes[k], k)
+	}
+	a = a[:0]
+	for k := range g.modTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		g.w("\n\nfunc mod%d(n *%[2]s, m %[2]s) %[2]s { *n %%= m; return *n }", g.modTypes[k], k)
+	}
+	a = a[:0]
+	for k := range g.divTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		g.w("\n\nfunc div%d(n *%[2]s, m %[2]s) %[2]s { *n /= m; return *n }", g.divTypes[k], k)
+	}
+	a = a[:0]
+	for k := range g.subTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		g.w("\n\nfunc sub%d(n *%[2]s, m %[2]s) %[2]s { *n -= m; return *n }", g.subTypes[k], k)
+	}
+	a = a[:0]
+	for k := range g.addTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		g.w("\n\nfunc add%d(n *%[2]s, m %[2]s) %[2]s { *n += m; return *n }", g.addTypes[k], k)
+	}
+	a = a[:0]
+	for k := range g.fpTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		g.w("\n\nfunc fp%d(f %[2]s) uintptr { return *(*uintptr)(unsafe.Pointer(&f)) }", g.fpTypes[k], k)
+	}
+	a = a[:0]
+	for k := range g.fnTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		g.w("\n\nfunc fn%d(f uintptr) %[2]s { return *(*%[2]s)(unsafe.Pointer(&f)) }", g.fnTypes[k], k)
+	}
+
 	g.w("\n\nvar (\n")
 	if g.bss != 0 {
 		g.w("bss = %sBSS(&bssInit[0])\n", crt)
 		g.w("bssInit [%d]byte\n", g.bss)
 	}
-	if len(g.ds) != 0 {
+	if n := len(g.ds); n != 0 {
+		if n < 16 {
+			g.ds = append(g.ds, make([]byte, 16-n)...)
+		}
 		g.w("ds = %sDS(dsInit)\n", crt)
 		g.w("dsInit = []byte{")
 		for _, v := range g.ds {
@@ -235,228 +491,6 @@ func (g *gen) gen(cmd bool) (err error) {
 		g.w("%s\\x00", s[1:len(s)-1])
 	}
 	g.w("\")\n)\n")
-	if g.needNZ64 {
-		g.w("\nfunc init() { nz64 = -nz64 }")
-	}
-	if g.needNZ32 {
-		g.w("\nfunc init() { nz32 = -nz32 }")
-	}
-	if g.needPostInc {
-		g.w("\nfunc postinc(p *uintptr, n uintptr) uintptr { r := *p; *p += n; return r }")
-	}
-	if g.needPostDec {
-		g.w("\nfunc postdec(p *uintptr, n uintptr) uintptr { r := *p; *p -= n; return r }")
-	}
-	if g.needPreInc {
-		g.w("\nfunc preinc(p *uintptr, n uintptr) uintptr { *p += n; return *p }")
-	}
-	if g.needPreDec {
-		g.w("\nfunc predec(p *uintptr, n uintptr) uintptr { *p -= n; return *p }")
-	}
-	if g.needAlloca {
-		g.w("\nfunc alloca(p *[]uintptr, n int) uintptr { r := %sMustMalloc(n); *p = append(*p, r); return r }", crt)
-	}
-	var a []string
-	for k := range g.assignTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\nfunc set%d(l *%[2]s, r %[2]s) %[2]s { *l = r; return r }", g.assignTypes[k], k)
-	}
-	a = a[:0]
-	for k := range g.postIncTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\nfunc postinc%d(n *%[2]s) %[2]s { r := *n; *n++; return r }", g.postIncTypes[k], k)
-	}
-	a = a[:0]
-	for k := range g.preDecTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\nfunc predec%d(n *%[2]s) %[2]s { *n--; return *n }", g.preDecTypes[k], k)
-	}
-	a = a[:0]
-	for k := range g.postDecTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\nfunc postdec%d(n *%[2]s) %[2]s { r := *n; *n--; return r }", g.postDecTypes[k], k)
-	}
-	a = a[:0]
-	for k := range g.postDecUBitsTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		a := strings.Split(k, "|")
-		g.w("\nfunc postdecu%d(n uintptr, m %[2]s, off uint) %[2]s {", g.postDecUBitsTypes[k], a[0])
-		g.w(`
-pf := *(*%[2]s)(unsafe.Pointer(n))
-r := %[1]s(pf)&m>>off
-*(*%[2]s)(unsafe.Pointer(n)) = pf&^%[2]s(m)|%[2]s((r-1)<<off&m)
-return r
-}`, a[0], a[1])
-	}
-	a = a[:0]
-	for k := range g.postDecIBitsTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		a := strings.Split(k, "|")
-		g.w("\nfunc postdeci%d(n uintptr, s, m %[2]s, off uint) %[2]s {", g.postDecIBitsTypes[k], a[0])
-		g.w(`
-pf := *(*%[2]s)(unsafe.Pointer(n))
-r := %[1]s(pf)&m
-if r&s != 0 {
-	r |= ^m
-}
-r >>= off
-*(*%[2]s)(unsafe.Pointer(n)) = pf&^%[2]s(m)|%[2]s((r-1)<<off&m)
-return r
-}`, a[0], a[1])
-	}
-	a = a[:0]
-	for k := range g.postIncUBitsTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		a := strings.Split(k, "|")
-		g.w("\nfunc postincu%d(n uintptr, m %[2]s, off uint) %[2]s {", g.postIncUBitsTypes[k], a[0])
-		g.w(`
-pf := *(*%[2]s)(unsafe.Pointer(n))
-r := %[1]s(pf)&m>>off
-*(*%[2]s)(unsafe.Pointer(n)) = pf&^%[2]s(m)|%[2]s((r+1)<<off&m)
-return r
-}`, a[0], a[1])
-	}
-	a = a[:0]
-	for k := range g.preDecUBitsTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		a := strings.Split(k, "|")
-		g.w("\nfunc predecu%d(n uintptr, m %[2]s, off uint) %[2]s {", g.preDecUBitsTypes[k], a[0])
-		g.w(`
-pf := *(*%[2]s)(unsafe.Pointer(n))
-r := %[1]s(pf)&m>>off-1
-*(*%[2]s)(unsafe.Pointer(n)) = pf&^%[2]s(m)|%[2]s(r<<off&m)
-return r
-}`, a[0], a[1])
-	}
-	a = a[:0]
-	for k := range g.preIncUBitsTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		a := strings.Split(k, "|")
-		g.w("\nfunc preincu%d(n uintptr, m %[2]s, off uint) %[2]s {", g.preIncUBitsTypes[k], a[0])
-		g.w(`
-pf := *(*%[2]s)(unsafe.Pointer(n))
-r := %[1]s(pf)&m>>off+1
-*(*%[2]s)(unsafe.Pointer(n)) = pf&^%[2]s(m)|%[2]s(r<<off&m)
-return r
-}`, a[0], a[1])
-	}
-	a = a[:0]
-	for k := range g.setBitsTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		a := strings.Split(k, "|")
-		g.w("\nfunc setb%d(n uintptr,m %[3]s, off uint, v %[2]s) {", g.setBitsTypes[k], a[0], a[1])
-		g.w("*(*%[1]s)(unsafe.Pointer(n)) = (*(*%[1]s)(unsafe.Pointer(n)))&^m|%[1]s(v)<<off&m }", a[1])
-	}
-	a = a[:0]
-	for k := range g.preIncTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\nfunc preinc%d(n *%[2]s) %[2]s { *n++; return *n }", g.preIncTypes[k], k)
-	}
-	a = a[:0]
-	for k := range g.xorTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\nfunc xor%d(n *%[2]s, m %[2]s) %[2]s { *n ^= m; return *n }", g.xorTypes[k], k)
-	}
-	a = a[:0]
-	for k := range g.rshTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\nfunc rsh%d(n *%[2]s, m int) %[2]s { *n >>= uint(m); return *n }", g.rshTypes[k], k)
-	}
-	a = a[:0]
-	for k := range g.mulTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\nfunc mul%d(n *%[2]s, m %[2]s) %[2]s { *n *= m; return *n }", g.mulTypes[k], k)
-	}
-	a = a[:0]
-	for k := range g.modTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\nfunc mod%d(n *%[2]s, m %[2]s) %[2]s { *n %%= m; return *n }", g.modTypes[k], k)
-	}
-	a = a[:0]
-	for k := range g.divTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\nfunc div%d(n *%[2]s, m %[2]s) %[2]s { *n /= m; return *n }", g.divTypes[k], k)
-	}
-	a = a[:0]
-	for k := range g.subTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\nfunc sub%d(n *%[2]s, m %[2]s) %[2]s { *n -= m; return *n }", g.subTypes[k], k)
-	}
-	a = a[:0]
-	for k := range g.addTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\nfunc add%d(n *%[2]s, m %[2]s) %[2]s { *n += m; return *n }", g.addTypes[k], k)
-	}
-	a = a[:0]
-	for k := range g.fpTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\n\nfunc fp%d(f %[2]s) uintptr { return *(*uintptr)(unsafe.Pointer(&f)) }", g.fpTypes[k], k)
-	}
-	a = a[:0]
-	for k := range g.fnTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\n\nfunc fn%d(f uintptr) %[2]s { return *(*%[2]s)(unsafe.Pointer(&f)) }", g.fnTypes[k], k)
-	}
 	return newOpt().do(g.out, &g.out0, testFn, g.needBool2int)
 }
 
