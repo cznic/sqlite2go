@@ -218,26 +218,6 @@ func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int
 			*deadcode = false
 		}
 	case c99.SelectionStmtIf: // "if" '(' ExprList ')' Stmt
-		switch op := n.ExprList.Operand; {
-		case op.IsZero():
-			for l := n.ExprList; l != nil; l = l.ExprList {
-				g.void(l.Expr)
-			}
-			a := g.local()
-			g.w("\ngoto _%d\n", a)
-			t := true
-			g.stmt(n.Stmt, cases, brk, cont, &t)
-			g.w("\n_%d:", a)
-			*deadcode = false
-			return
-		case op.IsNonzero():
-			for l := n.ExprList; l != nil; l = l.ExprList {
-				g.void(l.Expr)
-			}
-			g.stmt(n.Stmt, cases, brk, cont, deadcode)
-			return
-		}
-
 		// if exprList == 0 { goto A }
 		// stmt
 		// A:
@@ -249,43 +229,6 @@ func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int
 		g.w("\n_%d:", a)
 		*deadcode = false
 	case c99.SelectionStmtIfElse: // "if" '(' ExprList ')' Stmt "else" Stmt
-		switch op := n.ExprList.Operand; {
-		case op.IsZero():
-			// goto A
-			// stmt
-			// goto B
-			// A:
-			// stmt2
-			// B:
-			a := g.local()
-			b := g.local()
-			g.exprList(n.ExprList, true)
-			g.w("\ngoto _%d\n\n", a)
-			t := true
-			g.stmt(n.Stmt, cases, brk, cont, &t)
-			g.w("\ngoto _%d\n", b)
-			g.w("\n_%d:", a)
-			g.stmt(n.Stmt2, cases, brk, cont, deadcode)
-			g.w("\n_%d:", b)
-			*deadcode = false
-			return
-		case op.IsNonzero():
-			// exprList
-			// stmt
-			// goto A
-			// stmt2
-			// A:
-			a := g.local()
-			g.exprList(n.ExprList, true)
-			g.stmt(n.Stmt, cases, brk, cont, deadcode)
-			g.w("\ngoto _%d\n", a)
-			t := true
-			g.stmt(n.Stmt2, cases, brk, cont, &t)
-			g.w("\n_%d:", a)
-			*deadcode = false
-			return
-		}
-
 		// if exprList == 0 { goto A }
 		// stmt
 		// goto B
@@ -312,51 +255,6 @@ func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int
 func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int, brk, cont *int, deadcode *bool) {
 	switch n.Case {
 	case c99.IterationStmtDo: // "do" Stmt "while" '(' ExprList ')' ';'
-		if op := n.ExprList.Operand; op.Value != nil {
-			switch {
-			case op.IsZero():
-				// stmt
-				// B: <- continue
-				// exprList
-				// goto C
-				// C: <- break
-				b := -g.local()
-				c := -g.local()
-				g.stmt(n.Stmt, cases, &c, &b, deadcode)
-				if b > 0 {
-					g.w("\n_%d:", b)
-				}
-				g.exprList(n.ExprList, true)
-				if c > 0 {
-					g.w("\ngoto _%d\n\n_%d:", c, c)
-				}
-				return
-			case op.IsNonzero():
-				// A:
-				// stmt
-				// B: <- continue
-				// exprList
-				// goto A
-				// C: <- break
-				a := g.local()
-				b := -g.local()
-				c := -g.local()
-				g.w("\n_%d:", a)
-				g.stmt(n.Stmt, cases, &c, &b, deadcode)
-				if b > 0 {
-					g.w("\n_%d:", b)
-				}
-				g.exprList(n.ExprList, true)
-				g.w("goto _%d\n", a)
-				if c > 0 {
-					g.w("\ngoto _%d\n\n_%d:", c, c)
-				}
-				return
-			default:
-				todo("", g.position0(n))
-			}
-		}
-
 		// A:
 		// stmt
 		// B: <- continue
@@ -378,101 +276,6 @@ func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int
 			g.w("\ngoto _%d\n\n_%d:", c, c)
 		}
 	case c99.IterationStmtFor: // "for" '(' ExprListOpt ';' ExprListOpt ';' ExprListOpt ')' Stmt
-		if n.ExprListOpt2 == nil {
-			// ExprListOpt
-			// A:
-			// Stmt
-			// B: <- continue
-			// ExprListOpt3
-			// goto A
-			// C: <- break
-			g.w("\n")
-			g.exprListOpt(n.ExprListOpt, true)
-			a := g.local()
-			b := -g.local()
-			c := -g.local()
-			g.w("\n_%d:", a)
-			g.stmt(n.Stmt, cases, &c, &b, deadcode)
-			if n.ExprListOpt3 != nil {
-				g.w("\n")
-			}
-			if b > 0 {
-				g.w("\n_%d:", b)
-			}
-			g.exprListOpt(n.ExprListOpt3, true)
-			g.w("\ngoto _%d\n", a)
-			if c > 0 {
-				g.w("\n_%d:", c)
-			}
-			return
-		}
-
-		if op := n.ExprListOpt2.ExprList.Operand; op.Value != nil {
-			switch {
-			case op.IsZero():
-				// ExprListOpt
-				// A:
-				// ExprListOpt2
-				// Stmt
-				// B: <- continue
-				// ExprListOpt3
-				// goto A
-				// C: <- break
-				g.w("\n")
-				g.exprListOpt(n.ExprListOpt, true)
-				a := g.local()
-				b := -g.local()
-				c := -g.local()
-				g.w("\n_%d:", a)
-				g.w("if ")
-				g.exprListOpt(n.ExprListOpt2, true)
-				g.stmt(n.Stmt, cases, &c, &b, deadcode)
-				if n.ExprListOpt3 != nil {
-					g.w("\n")
-				}
-				if b > 0 {
-					g.w("\n_%d:", b)
-				}
-				g.exprListOpt(n.ExprListOpt3, true)
-				g.w("\ngoto _%d\n", a)
-				if c > 0 {
-					g.w("\n_%d:", c)
-				}
-				return
-			case op.IsNonzero():
-				// ExprListOpt
-				// A:
-				// ExprListOpt2
-				// Stmt
-				// B: <- continue
-				// ExprListOpt3
-				// goto A
-				// C: <- break
-				g.w("\n")
-				g.exprListOpt(n.ExprListOpt, true)
-				a := g.local()
-				b := -g.local()
-				c := -g.local()
-				g.w("\n_%d:", a)
-				g.exprListOpt(n.ExprListOpt2, true)
-				g.stmt(n.Stmt, cases, &c, &b, deadcode)
-				if n.ExprListOpt3 != nil {
-					g.w("\n")
-				}
-				if b > 0 {
-					g.w("\n_%d:", b)
-				}
-				g.exprListOpt(n.ExprListOpt3, true)
-				g.w("\ngoto _%d\n", a)
-				if c > 0 {
-					g.w("\n_%d:", c)
-				}
-				return
-			default:
-				todo("", g.position0(n))
-			}
-		}
-
 		// ExprListOpt
 		// A:
 		// if ExprListOpt2 == 0 { goto C }
@@ -485,11 +288,14 @@ func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int
 		g.exprListOpt(n.ExprListOpt, true)
 		a := g.local()
 		b := -g.local()
-		c := g.local()
+		c := -g.local()
 		g.w("\n_%d:", a)
-		g.w("if ")
-		g.exprListOpt(n.ExprListOpt2, false)
-		g.w(" == 0 { goto _%d }\n", c)
+		if n.ExprListOpt2 != nil {
+			g.w("if ")
+			g.exprList(n.ExprListOpt2.ExprList, false)
+			c = -c
+			g.w(" == 0 { goto _%d }\n", c)
+		}
 		g.stmt(n.Stmt, cases, &c, &b, deadcode)
 		if n.ExprListOpt3 != nil {
 			g.w("\n")
@@ -499,26 +305,10 @@ func (g *gen) iterationStmt(n *c99.IterationStmt, cases map[*c99.LabeledStmt]int
 		}
 		g.exprListOpt(n.ExprListOpt3, true)
 		g.w("\ngoto _%d\n", a)
-		g.w("\n_%d:", c)
+		if c > 0 {
+			g.w("\n_%d:", c)
+		}
 	case c99.IterationStmtWhile: // "while" '(' ExprList ')' Stmt
-		if n.ExprList.Operand.IsZero() {
-			todo("", g.position0(n))
-			return
-		}
-
-		if n.ExprList.Operand.IsNonzero() {
-			a := g.local()
-			g.w("\n_%d:", a)
-			b := -g.local()
-			g.exprList(n.ExprList, true)
-			g.stmt(n.Stmt, cases, &b, &a, deadcode)
-			g.w("\ngoto _%d\n", a)
-			if b > 0 {
-				g.w("\n_%d:", b)
-			}
-			return
-		}
-
 		// A:
 		// if exprList == 0 { goto B }
 		// stmt

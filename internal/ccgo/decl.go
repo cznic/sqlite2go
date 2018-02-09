@@ -115,13 +115,13 @@ func (g *gen) defineTaggedUnionType(t *c99.TaggedUnionType) {
 }
 
 func (g *gen) tld(n *c99.Declarator) {
-	g.w("\n\n// %s is defined at %v", g.mangleDeclarator(n), g.position(n))
 	t := c99.UnderlyingType(n.Type)
 	if t.Kind() == c99.Function {
 		g.functionDefinition(n)
 		return
 	}
 
+	g.w("\n\n// %s is defined at %v", g.mangleDeclarator(n), g.position(n))
 	if g.isZeroInitializer(n.Initializer) {
 		if isVaList(n.Type) {
 			g.w("\nvar %s []interface{}", g.mangleDeclarator(n))
@@ -187,7 +187,12 @@ func (g *gen) escapedTLD(n *c99.Declarator) {
 }
 
 func (g *gen) functionDefinition(n *c99.Declarator) {
+	if n.FunctionDefinition == nil {
+		return
+	}
+
 	g.nextLabel = 1
+	g.w("\n\n// %s is defined at %v", g.mangleDeclarator(n), g.position(n))
 	g.w("\nfunc %s(tls *%sTLS", g.mangleDeclarator(n), crt)
 	names := n.ParameterNames()
 	t := n.Type.(*c99.FunctionType)
@@ -283,8 +288,12 @@ func (g *gen) normalizeDeclarator(n *c99.Declarator) *c99.Declarator {
 	switch n.Linkage {
 	case c99.LinkageExternal:
 		if d, ok := g.externs[n.Name()]; ok {
-			return d
+			n = d
 		}
+	}
+
+	if n.Definition != nil {
+		return n.Definition
 	}
 
 	return n

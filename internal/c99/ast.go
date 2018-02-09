@@ -591,6 +591,7 @@ type Declarator struct {
 	Bits                 int                   // StructDeclarator: bit width when a bit field.
 	DeclarationSpecifier *DeclarationSpecifier // Nil for embedded declarators.
 	Field                int                   // Declaration order# if struct field declarator.
+	Definition           *Declarator           // Declaration -> definition.
 	FunctionDefinition   *FunctionDefinition   // When the declarator defines a function.
 	Initializer          *Initializer          // Only when part of an InitDeclarator.
 	Linkage              Linkage               // Linkage of the declared name, [0]6.2.2.

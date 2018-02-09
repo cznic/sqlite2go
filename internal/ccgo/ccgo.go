@@ -517,6 +517,7 @@ func (g *gen) collectSymbols() error {
 		for nm, n := range t.FileScope.Idents {
 			switch x := n.(type) {
 			case *c99.Declarator:
+				g.units[x] = unit
 				if x.Type.Kind() == c99.Function && x.FunctionDefinition == nil {
 					continue
 				}
@@ -555,7 +556,6 @@ func (g *gen) collectSymbols() error {
 					}
 
 					g.externs[nm] = x
-					g.units[x] = unit
 				case c99.LinkageInternal:
 					if _, ok := internal[nm]; ok {
 						todo("")
@@ -567,7 +567,6 @@ func (g *gen) collectSymbols() error {
 						g.nums[x] = g.num
 					}
 					g.internalNames[nm] = struct{}{}
-					g.units[x] = unit
 				case c99.LinkageNone:
 					if x.DeclarationSpecifier.IsTypedef() {
 						// nop ATM

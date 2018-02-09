@@ -102,7 +102,7 @@ func (t TypeKind) assign(ctx *context, op Operand) Operand {
 		t.IsArithmeticType() && op.Type.IsArithmeticType():
 		return op.convertTo(ctx.model, t)
 	default:
-		panic(fmt.Sprint(t, op))
+		panic(fmt.Sprintf("%v <- %v", t, op))
 	}
 }
 
@@ -756,7 +756,7 @@ type PointerType struct {
 func (t *PointerType) IsUnsigned() bool { panic("TODO") }
 
 // IsVoidPointerType implements Type.
-func (t *PointerType) IsVoidPointerType() bool { panic("TODO") }
+func (t *PointerType) IsVoidPointerType() bool { return UnderlyingType(t.Item) == Void }
 
 // IsArithmeticType implements Type.
 func (t *PointerType) IsArithmeticType() bool { return false }
@@ -856,7 +856,7 @@ func (t *PointerType) assign(ctx *context, op Operand) (r Operand) {
 
 		return Operand{Type: t, Value: Null}
 	default:
-		panic("TODO")
+		panic(fmt.Errorf("%v <- %v", t, op))
 	}
 }
 

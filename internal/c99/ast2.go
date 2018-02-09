@@ -1996,15 +1996,8 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 			case LinkageExternal:
 				if !ex.Type.IsCompatible(n.Type) {
 					if !(n.Name() == idMain && n.scope.Parent == nil && n.Type.Kind() == Function) {
-						// fmt.Println("", ctx.position(ex), ex.Type)
-						// fmt.Println("", ctx.position(n), n.Type)
 						panic(ctx.position(n))
 					}
-				}
-
-				if isFunction && n.isFnDefinition() {
-					ex.FunctionDefinition = n.FunctionDefinition
-					n.scope.Idents[nm] = n
 				}
 			default:
 				panic(n.Linkage)
@@ -2013,15 +2006,7 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 			switch n.Linkage {
 			case LinkageInternal:
 				if !ex.Type.IsCompatible(n.Type) {
-					// dbg("", ctx.position(ex), ex.Type)
-					// dbg("", ctx.position(n), n.Type)
 					panic(ctx.position(n))
-				}
-
-				if isFunction && n.isFnDefinition() {
-					ex.FunctionDefinition = n.FunctionDefinition
-					ex.DirectDeclarator = n.DirectDeclarator
-					n.scope.Idents[nm] = n
 				}
 			default:
 				panic(n.Linkage)
@@ -2029,14 +2014,39 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 		default:
 			panic(ex.Linkage)
 		}
+
+		if isFunction {
+			switch {
+			case n.FunctionDefinition != nil:
+				if ex.FunctionDefinition != nil {
+					panic(ctx.position(n))
+				}
+
+				ex.Definition = n
+				n.scope.Idents[nm] = n
+			case ex.FunctionDefinition != nil:
+				n.Definition = ex
+			}
+			break
+		}
+
+		switch {
+		case n.Initializer != nil:
+			if ex.Initializer != nil {
+				panic(ctx.position(n))
+			}
+
+			ex.Definition = n
+			n.scope.Idents[nm] = n
+		case ex.Initializer != nil:
+			n.Definition = ex
+		}
 	default:
 		panic(ctx.position(n))
 	}
 
 	return n.Type
 }
-
-func (n *Declarator) isFnDefinition() bool { return n.FunctionDefinition != nil }
 
 func (n *PointerOpt) check(ctx *context, t Type, tq *[]*TypeQualifier) Type {
 	if n == nil {

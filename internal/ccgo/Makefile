@@ -35,7 +35,8 @@ editor:
 	gofmt -l -s -w *.go
 	go test -i
 	go test -edit 2>&1 | tee log
-	go build
+	# go build
+	go install github.com/cznic/sqlite2go
 
 internalError:
 	egrep -ho '"internal error.*"' *.go | sort | cat -n

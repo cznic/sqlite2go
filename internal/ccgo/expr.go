@@ -211,7 +211,7 @@ func (g *gen) void(n *c99.Expr) {
 		g.void(n.Expr)
 	case c99.ExprCond: // Expr '?' ExprList ':' Expr
 		switch {
-		case n.Expr.Operand.IsZero():
+		case n.Expr.Operand.IsZero() && g.voidCanIgnore(n.Expr):
 			switch {
 			case g.voidCanIgnoreExprList(n.ExprList):
 				switch {
@@ -228,7 +228,7 @@ func (g *gen) void(n *c99.Expr) {
 					todo("", g.position0(n))
 				}
 			}
-		case n.Expr.Operand.IsNonzero():
+		case n.Expr.Operand.IsNonzero() && g.voidCanIgnore(n.Expr):
 			todo("", g.position0(n))
 		default:
 			switch {
@@ -601,13 +601,22 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 	case c99.ExprCond: // Expr '?' ExprList ':' Expr
 		t := n.Operand.Type
 		t0 := t
-		g.w(" func() %s { if ", g.typ(t))
-		g.value(n.Expr, false)
-		g.w(" != 0 { return ")
-		g.exprList2(n.ExprList, t0)
-		g.w(" }\n\nreturn ")
-		g.convert(n.Expr2, t0)
-		g.w(" }()")
+		switch {
+		case !g.voidCanIgnore(n.Expr):
+			fallthrough
+		default:
+			g.w(" func() %s { if ", g.typ(t))
+			g.value(n.Expr, false)
+			g.w(" != 0 { return ")
+			g.exprList2(n.ExprList, t0)
+			g.w(" }\n\nreturn ")
+			g.convert(n.Expr2, t0)
+			g.w(" }()")
+		case n.Expr.Operand.IsZero():
+			g.value(n.Expr2, false)
+		case n.Expr.Operand.IsNonzero():
+			g.exprList(n.ExprList, false)
+		}
 	case c99.ExprCast: // '(' TypeName ')' Expr
 		t := n.TypeName.Type
 		op := n.Expr.Operand
@@ -1092,19 +1101,13 @@ func (g *gen) voidCanIgnore(n *c99.Expr) bool {
 	case c99.ExprCast: // '(' TypeName ')' Expr
 		return !isVaList(n.Expr.Operand.Type) && g.voidCanIgnore(n.Expr)
 	case c99.ExprCond: // Expr '?' ExprList ':' Expr
+		if !g.voidCanIgnore(n.Expr) {
+			return false
+		}
+
 		switch {
 		case n.Expr.Operand.IsNonzero():
-			if isSingleExpression(n.ExprList) {
-				return g.voidCanIgnore(n.ExprList.Expr)
-			}
-
-			for l := n.ExprList; l != nil; l = l.ExprList {
-				if !g.voidCanIgnore(l.Expr) {
-					return false
-				}
-			}
-
-			return true
+			return g.voidCanIgnoreExprList(n.ExprList)
 		case n.Expr.Operand.IsZero():
 			return g.voidCanIgnore(n.Expr2)
 		}
@@ -1119,9 +1122,10 @@ func (g *gen) voidCanIgnore(n *c99.Expr) bool {
 		c99.ExprLe,  // Expr "<=" Expr
 		c99.ExprLsh, // Expr "<<" Expr
 		c99.ExprLt,  // Expr '<' Expr
+		c99.ExprMod, // Expr '%' Expr
 		c99.ExprMul, // Expr '*' Expr
-		c99.ExprOr,  // Expr '|' Expr
 		c99.ExprNe,  // Expr "!=" Expr
+		c99.ExprOr,  // Expr '|' Expr
 		c99.ExprRsh, // Expr ">>" Expr
 		c99.ExprSub: // Expr '-' Expr
 

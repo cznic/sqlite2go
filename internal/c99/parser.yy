@@ -520,6 +520,7 @@ import (
 			//yy:field	Bits			int			// StructDeclarator: bit width when a bit field.
 			//yy:field	DeclarationSpecifier	*DeclarationSpecifier	// Nil for embedded declarators.
 			//yy:field	Field			int			// Declaration order# if struct field declarator.
+			//yy:field	Definition		*Declarator		// Declaration -> definition.
 			//yy:field	FunctionDefinition	*FunctionDefinition	// When the declarator defines a function.
 			//yy:field	Initializer		*Initializer		// Only when part of an InitDeclarator.
 			//yy:field	Linkage			Linkage			// Linkage of the declared name, [0]6.2.2.
