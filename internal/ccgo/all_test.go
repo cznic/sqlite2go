@@ -331,8 +331,11 @@ func TestGCC(t *testing.T) {
 		"built-in-setjmp.c": {}, //TODO __builtin_setjmp
 		"pr38422.c":         {}, //TODO bits
 		"pr60003.c":         {}, //TODO __builtin_setjmp
+		"20000112-1.c":      {}, //TODO K&R style fn
+		"20000113-1.c":      {}, //TODO bit field initializer
+		"20000223-1.c":      {}, //TODO __alignof__
 	})
-	// compiles: 667, builds: 649, runs: 649
+	// compiles: 853, builds: 831, runs: 823
 }
 
 func testFile(t *testing.T, pth string, compiles, builds, runs *int) {
@@ -355,9 +358,9 @@ func testFile(t *testing.T, pth string, compiles, builds, runs *int) {
 
 	main, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, mainSource)
 	if err != nil {
-		// if testing.Verbose() {
-		// 	t.Logf("      cc: %s: %s", pth, compact(err.Error(), 10))
-		// }
+		if testing.Verbose() {
+			t.Logf("      cc: %s: %s", pth, compact(err.Error(), 10))
+		}
 		return
 	}
 

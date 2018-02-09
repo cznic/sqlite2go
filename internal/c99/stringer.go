@@ -2,7 +2,7 @@
 
 package c99
 
-import "fmt"
+import "strconv"
 
 const _cond_name = "condZerocondIfOffcondIfOncondIfSkipmaxCond"
 
@@ -10,7 +10,7 @@ var _cond_index = [...]uint8{0, 8, 17, 25, 35, 42}
 
 func (i cond) String() string {
 	if i < 0 || i >= cond(len(_cond_index)-1) {
-		return fmt.Sprintf("cond(%d)", i)
+		return "cond(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
 	return _cond_name[_cond_index[i]:_cond_index[i+1]]
 }
@@ -21,7 +21,7 @@ var _Linkage_index = [...]uint8{0, 11, 26, 41}
 
 func (i Linkage) String() string {
 	if i < 0 || i >= Linkage(len(_Linkage_index)-1) {
-		return fmt.Sprintf("Linkage(%d)", i)
+		return "Linkage(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
 	return _Linkage_name[_Linkage_index[i]:_Linkage_index[i+1]]
 }
@@ -32,7 +32,7 @@ var _StorageDuration_index = [...]uint8{0, 24, 45}
 
 func (i StorageDuration) String() string {
 	if i < 0 || i >= StorageDuration(len(_StorageDuration_index)-1) {
-		return fmt.Sprintf("StorageDuration(%d)", i)
+		return "StorageDuration(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
 	return _StorageDuration_name[_StorageDuration_index[i]:_StorageDuration_index[i+1]]
 }

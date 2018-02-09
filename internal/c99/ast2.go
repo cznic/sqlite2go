@@ -1411,15 +1411,14 @@ func (n *FunctionDefinition) check(ctx *context) {
 	ds := &DeclarationSpecifier{}
 	switch n.Case {
 	case FunctionDefinitionSpec: // DeclarationSpecifiers Declarator DeclarationListOpt FunctionBody
-		// ok
-	case FunctionDefinitionInt:
+		n.DeclarationSpecifiers.check(ctx, ds)
+		if len(ds.TypeSpecifiers) == 0 { // [0]6.7.2-2
+			panic("TODO")
+		}
+	case FunctionDefinitionInt: // DeclarationSpecifiers Declarator DeclarationListOpt FunctionBody
 		ds.typeSpecifiers = []TypeSpecifierCase{TypeSpecifierInt}
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
-	}
-	n.DeclarationSpecifiers.check(ctx, ds)
-	if len(ds.TypeSpecifiers) == 0 { // [0]6.7.2-2
-		panic("TODO")
 	}
 	n.Declarator.check(ctx, ds, ds.typ(), false, nil, nil)
 	if n.Declarator.Type.Kind() != Function {
@@ -1805,7 +1804,7 @@ func (n *Initializer) check(ctx *context, t Type, fn *Declarator) (r Operand) {
 			return op
 		}
 
-		panic(fmt.Errorf("%v: TODO", ctx.position(n)))
+		panic(fmt.Errorf("%v: TODO %v %v", ctx.position(n), t, op))
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	}

@@ -335,14 +335,42 @@ func (g *gen) local() int {
 func (g *gen) jumpStmt(n *c99.JumpStmt, brk, cont *int, deadcode *bool) {
 	switch n.Case {
 	case c99.JumpStmtReturn: // "return" ExprListOpt ';'
-		g.w("\nreturn ")
-		if o := n.ExprListOpt; o != nil {
+		switch o := n.ExprListOpt; {
+		case o != nil:
 			switch rt := n.ReturnOperand.Type; {
 			case rt == nil:
-				g.exprList(o.ExprList, false)
+				switch {
+				case isSingleExpression(o.ExprList) && o.ExprList.Expr.Case == c99.ExprCond:
+					todo("", g.position0(n))
+				default:
+					g.w("\nreturn ")
+					g.exprList(o.ExprList, false)
+				}
 			default:
-				g.exprList2(o.ExprList, rt)
+				switch {
+				case isSingleExpression(o.ExprList) && o.ExprList.Expr.Case == c99.ExprCond:
+					n := o.ExprList.Expr // Expr '?' ExprList ':' Expr
+					switch {
+					case n.Expr.Operand.IsZero() && g.voidCanIgnore(n.Expr):
+						todo("", g.position0(n))
+					case n.Expr.Operand.IsNonzero() && g.voidCanIgnore(n.Expr):
+						todo("", g.position0(n))
+					default:
+						g.w("\nif ")
+						g.value(n.Expr, false)
+						g.w(" != 0 { return ")
+						g.exprList2(n.ExprList, rt)
+						g.w("}\n\nreturn ")
+						g.convert(n.Expr2, rt)
+						g.w("\n")
+					}
+				default:
+					g.w("\nreturn ")
+					g.exprList2(o.ExprList, rt)
+				}
 			}
+		default:
+			g.w("\nreturn ")
 		}
 		g.w("\n")
 		*deadcode = true
