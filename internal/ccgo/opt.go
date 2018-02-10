@@ -83,6 +83,7 @@ func bool2int(b bool) int32 {
 	b := bytes.Replace(o.out0.Bytes(), []byte("\n\n}"), []byte("\n}"), -1)
 	b = bytes.Replace(b, []byte("\n\t;\n"), []byte("\n"), -1)
 	b = bytes.Replace(b, []byte("{\n\n"), []byte("{\n"), -1)
+	b = bytes.Replace(b, []byte(":\n\n"), []byte(":\n"), -1)
 	if traceOpt {
 		os.Stderr.Write(b)
 	}

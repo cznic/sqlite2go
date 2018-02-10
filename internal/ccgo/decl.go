@@ -134,11 +134,11 @@ func (g *gen) tld(n *c99.Declarator) {
 		}
 
 		switch x := t.(type) {
-		case
-			*c99.PointerType,
-			*c99.StructType:
+		case *c99.StructType:
 
 			g.w("\nvar %s = bss + %d\n", g.mangleDeclarator(n), g.allocBSS(n.Type))
+		case *c99.PointerType:
+			g.w("\nvar %s uintptr\n", g.mangleDeclarator(n))
 		case c99.TypeKind:
 			if x.IsArithmeticType() {
 				g.w("\nvar %s %s\n", g.mangleDeclarator(n), g.typ(n.Type))
