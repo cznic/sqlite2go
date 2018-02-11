@@ -108,25 +108,11 @@ func (t TypeKind) assign(ctx *context, op Operand) Operand {
 
 // IsPointerType implements Type.
 func (t TypeKind) IsPointerType() bool {
-	switch t {
-	case
-		Char,
-		Double,
-		Float,
-		Int,
-		LongDouble,
-		LongLong,
-		Short,
-		UChar,
-		UInt,
-		ULong,
-		ULongLong,
-		UShort:
-
+	if t.IsArithmeticType() {
 		return false
-	default:
-		panic(t)
 	}
+
+	panic(t)
 }
 
 // IsIntegerType implements Type.
@@ -259,10 +245,14 @@ func (t TypeKind) Equal(u Type) bool {
 		switch t {
 		case
 			Char,
+			Double,
 			Int,
 			Long,
+			LongLong,
 			Short,
+			UInt,
 			ULong,
+			ULongLong,
 			UShort,
 			Void:
 
@@ -273,6 +263,7 @@ func (t TypeKind) Equal(u Type) bool {
 	case *StructType:
 		switch t {
 		case
+			Char,
 			Int,
 			Void:
 
@@ -300,6 +291,13 @@ func (t TypeKind) Equal(u Type) bool {
 			UInt,
 			Void:
 
+			return false
+		default:
+			panic(t)
+		}
+	case *TaggedUnionType:
+		switch t {
+		case Void:
 			return false
 		default:
 			panic(t)
@@ -620,7 +618,8 @@ func (t *FunctionType) Equal(u Type) bool {
 		return true
 	case
 		*NamedType,
-		*PointerType:
+		*PointerType,
+		*StructType:
 
 		return false
 	case TypeKind:
@@ -697,7 +696,7 @@ func (t *NamedType) Equal(u Type) bool {
 		*FunctionType,
 		*PointerType:
 
-		return false
+		return x.Equal(t.Type)
 	case *StructType:
 		return t.Type.Equal(x)
 	case *TaggedStructType:
@@ -708,6 +707,7 @@ func (t *NamedType) Equal(u Type) bool {
 		case
 			Char,
 			Double,
+			Float,
 			Int,
 			Long,
 			LongDouble,
@@ -721,7 +721,7 @@ func (t *NamedType) Equal(u Type) bool {
 			UShort,
 			Void:
 
-			return false
+			return x.Equal(t.Type)
 		default:
 			panic(x)
 		}
@@ -833,6 +833,8 @@ func (t *PointerType) assign(ctx *context, op Operand) (r Operand) {
 	// [0]6.5.16.1
 	switch {
 	// One of the following shall hold:
+	case ctx.tweaks.EnablePointerCompatibility && op.Type.IsPointerType():
+		return op.convertTo(ctx.model, t)
 	case
 		// both operands are pointers to qualified or unqualified
 		// versions of compatible types, and the type pointed to by the
@@ -1229,11 +1231,24 @@ func (t *TaggedUnionType) IsVoidPointerType() bool { panic("TODO") }
 func (t *TaggedUnionType) IsArithmeticType() bool { panic("TODO") }
 
 // IsCompatible implements Type.
-func (t *TaggedUnionType) IsCompatible(u Type) bool { panic("TODO") }
+func (t *TaggedUnionType) IsCompatible(u Type) bool { return t.Equal(u) }
 
 // Equal implements Type.
 func (t *TaggedUnionType) Equal(u Type) bool {
-	panic("TODO")
+	if t == u {
+		return true
+	}
+
+	if x, ok := u.(*TaggedUnionType); ok && t.Tag == x.Tag {
+		return true
+	}
+
+	switch x := t.getType().(type) {
+	case *UnionType:
+		return x.Equal(u)
+	default:
+		panic(fmt.Errorf("%T", x))
+	}
 }
 
 func (t *TaggedUnionType) getType() Type {
@@ -1255,7 +1270,26 @@ func (t *TaggedUnionType) Kind() TypeKind { return Union }
 
 // assign implements Type.
 func (t *TaggedUnionType) assign(ctx *context, op Operand) Operand {
-	panic("TODO")
+	switch x := op.Type.(type) {
+	case *TaggedUnionType:
+		t2 := t.getType()
+		u2 := x.getType()
+		if t2 != t && u2 != x {
+			// [0]6.5.16.1
+			//
+			// the left operand has a qualified or unqualified
+			// version of a structure or union type compatible with
+			// the type of the right;
+			if t2.Equal(u2) {
+				return op
+			}
+
+			panic("TODO")
+		}
+		panic("TODO")
+	default:
+		panic(fmt.Errorf("%T", x))
+	}
 }
 
 // IsPointerType implements Type.
@@ -1364,7 +1398,9 @@ func AdjustedParameterType(t Type) Type {
 		case
 			*PointerType,
 			*StructType,
-			*TaggedStructType:
+			*TaggedStructType,
+			*TaggedUnionType,
+			*UnionType:
 
 			return t
 		case TypeKind:
@@ -1389,7 +1425,7 @@ func AdjustedParameterType(t Type) Type {
 				panic(x)
 			}
 		default:
-			panic(x)
+			panic(fmt.Errorf("%T", x))
 		}
 	}
 }

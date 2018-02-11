@@ -219,6 +219,11 @@ func newIntConst(ctx *context, n Node, v uint64, t ...TypeKind) (r Operand) {
 		}
 	}
 
+	last := t[len(t)-1]
+	if ctx.model[last].Size*8 == b {
+		return Operand{Type: last, Value: &ir.Int64Value{Value: int64(v)}}.normalize(ctx.model)
+	}
+
 	ctx.err(n, "invalid integer constant")
 	return Operand{Type: Int}.normalize(ctx.model)
 }
@@ -338,14 +343,12 @@ func (o Operand) convertTo(m Model, t Type) (r Operand) {
 	}
 
 	if o.Type.Kind() == Double {
+		if t.IsIntegerType() {
+			return Operand{Type: t, Value: &ir.Int64Value{Value: int64(o.Value.(*ir.Float64Value).Value)}}.normalize(m)
+		}
 		switch x := t.(type) {
 		case TypeKind:
 			switch x {
-			case
-				Char,
-				Int:
-
-				return Operand{Type: t, Value: &ir.Int64Value{Value: int64(o.Value.(*ir.Float64Value).Value)}}.normalize(m)
 			case Float:
 				return Operand{Type: t, Value: &ir.Float32Value{Value: float32(o.Value.(*ir.Float64Value).Value)}}
 			case LongDouble:
@@ -387,11 +390,13 @@ func (o Operand) cpl(ctx *context) Operand {
 	}
 }
 
-func (o Operand) div(ctx *context, p Operand) (r Operand) {
+func (o Operand) div(ctx *context, n Node, p Operand) (r Operand) {
 	o, p = UsualArithmeticConversions(ctx.model, o, p)
 	if p.IsZero() {
-		panic("TODO")
+		ctx.err(n, "division by zero")
+		return
 	}
+
 	if o.Value == nil || p.Value == nil {
 		return Operand{Type: o.Type}
 	}
@@ -531,6 +536,7 @@ func (o Operand) integerPromotion(m Model) Operand {
 
 			switch x {
 			case
+				Double,
 				Int,
 				Long,
 				LongLong,
@@ -681,16 +687,20 @@ func (o Operand) lt(ctx *context, p Operand) (r Operand) {
 	return r
 }
 
-func (o Operand) mod(ctx *context, p Operand) (r Operand) {
+func (o Operand) mod(ctx *context, n Node, p Operand) (r Operand) {
 	o, p = UsualArithmeticConversions(ctx.model, o, p)
 	if p.IsZero() {
-		panic("TODO")
+		ctx.err(n, "division by zero")
+		return
 	}
+
 	if o.Value == nil || p.Value == nil {
 		return Operand{Type: o.Type}
 	}
 
 	switch x := o.Value.(type) {
+	case *ir.Int64Value:
+		return Operand{Type: o.Type, Value: &ir.Int64Value{Value: x.Value % p.Value.(*ir.Int64Value).Value}}.normalize(ctx.model)
 	default:
 		panic(fmt.Errorf("TODO %T", x))
 	}
@@ -890,8 +900,8 @@ func (o Operand) xor(ctx *context, p Operand) (r Operand) {
 	}
 
 	switch x := o.Value.(type) {
-	//case *ir.Int64Value:
-	//	return Operand{Type: o.Type, Value: &ir.Int64Value{Value: x.Value ^ p.Value.(*ir.Int64Value).Value}}.normalize(ctx.model)
+	case *ir.Int64Value:
+		return Operand{Type: o.Type, Value: &ir.Int64Value{Value: x.Value ^ p.Value.(*ir.Int64Value).Value}}.normalize(ctx.model)
 	default:
 		panic(fmt.Errorf("TODO %T", x))
 	}

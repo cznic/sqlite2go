@@ -118,10 +118,15 @@ func (d *DeclarationSpecifier) typ() Type {
 			return Short
 		case TypeSpecifierStruct:
 			t := d.TypeSpecifiers[0].StructOrUnionSpecifier.typ
-			if x, ok := t.(*TaggedStructType); ok {
+			switch x := t.(type) {
+			case *TaggedStructType:
+				x.getType()
+			case *TaggedUnionType:
 				x.getType()
 			}
 			return t
+		case TypeSpecifierSigned:
+			return Int
 		case TypeSpecifierUnsigned:
 			return UInt
 		case TypeSpecifierVoid:
@@ -293,6 +298,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			case
 				Char,
 				Double,
+				Float,
 				Int,
 				Long,
 				LongLong,
@@ -408,10 +414,11 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		// The operand of the unary + or - operator shall have
 		// arithmetic type; of the ~ operator, integer type; of the !
 		// operator, scalar type.
-		n.Operand = n.Expr.eval(ctx, arr2ptr, fn)
-		if !n.Operand.isArithmeticType() {
+		op := n.Expr.eval(ctx, arr2ptr, fn)
+		if !op.isArithmeticType() {
 			panic(ctx.position(n))
 		}
+		n.Operand = op.integerPromotion(ctx.model)
 	case ExprUnaryMinus: // '-' Expr
 		// [0]6.5.3.3
 		// The operand of the unary + or - operator shall have
@@ -449,26 +456,11 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			// both operands are pointers to qualified or unqualified versions of compatible types
 			lhs.isPointerType() && rhs.isPointerType() && lhs.Type.IsCompatible(rhs.Type):
 
-			if lhs.Value != nil {
-				panic(ctx.position(n))
-			}
-
 			n.Operand = Operand{Type: Int}
 		case
 			// one operand is a pointer and the other is a null
 			// pointer constant.
 			lhs.isPointerType() && rhs.isIntegerType() && rhs.IsZero():
-
-			if lhs.Value != nil {
-				if lhs.IsZero() {
-					panic(fmt.Errorf("%v: %v %v", ctx.position(n), lhs, rhs))
-				}
-
-				if lhs.IsNonzero() {
-					n.Operand = Operand{Type: Int, Value: &ir.Int64Value{Value: 1}}
-					break
-				}
-			}
 
 			n.Operand = Operand{Type: Int}
 		default:
@@ -476,7 +468,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		}
 	case ExprModAssign: // Expr "%=" Expr
 		// [0]6.5.16.2
-		n.Expr.eval(ctx, arr2ptr, fn).mod(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
+		n.Expr.eval(ctx, arr2ptr, fn).mod(ctx, n, n.Expr2.eval(ctx, arr2ptr, fn))
 		n.Operand = n.Expr.Operand
 	case ExprLAnd: // Expr "&&" Expr
 		n.Operand = Operand{Type: Int}
@@ -628,7 +620,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		}
 	case ExprDivAssign: // Expr "/=" Expr
 		// [0]6.5.16.2
-		n.Expr.eval(ctx, arr2ptr, fn).div(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
+		n.Expr.eval(ctx, arr2ptr, fn).div(ctx, n, n.Expr2.eval(ctx, arr2ptr, fn))
 		n.Operand = n.Expr.Operand
 	case ExprLsh: // Expr "<<" Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).lsh(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
@@ -652,29 +644,17 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			// both operands are pointers to qualified or unqualified versions of compatible types
 			lhs.isPointerType() && rhs.isPointerType() && lhs.Type.IsCompatible(rhs.Type):
 
-			if lhs.Value != nil {
-				panic(ctx.position(n))
-			}
-
 			n.Operand = Operand{Type: Int}
 		case
 			// one operand is a pointer and the other is a null
 			// pointer constant.
 			lhs.isPointerType() && rhs.isIntegerType() && rhs.IsZero():
 
-			if lhs.Value != nil {
-				panic(ctx.position(n))
-			}
-
 			n.Operand = Operand{Type: Int}
 		case
 			// one operand is a pointer and the other is a null
 			// pointer constant.
 			lhs.isIntegerType() && lhs.IsZero() && rhs.isPointerType():
-
-			if rhs.Value != nil {
-				panic(ctx.position(n))
-			}
 
 			n.Operand = Operand{Type: Int}
 		default:
@@ -712,7 +692,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		}
 	case ExprMod: // Expr '%' Expr
 		binop(ctx, n, arr2ptr, fn)
-		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).mod(ctx, n.Expr2.eval(ctx, arr2ptr, fn)) // [0]6.5.5
+		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).mod(ctx, n, n.Expr2.eval(ctx, arr2ptr, fn)) // [0]6.5.5
 	case ExprAnd: // Expr '&' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).and(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
 	case ExprCall: // Expr '(' ArgumentExprListOpt ')'
@@ -919,7 +899,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		}
 	case ExprDiv: // Expr '/' Expr
 		binop(ctx, n, arr2ptr, fn)
-		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).div(ctx, n.Expr2.eval(ctx, arr2ptr, fn)) // [0]6.5.5
+		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).div(ctx, n, n.Expr2.eval(ctx, arr2ptr, fn)) // [0]6.5.5
 	case ExprLt: // Expr '<' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).lt(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
 	case ExprAssign: // Expr '=' Expr
@@ -1036,6 +1016,10 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			nm2 := dict.SID("__builtin_" + string(dict.S(nm)))
 			if n.Scope.LookupIdent(nm2) != nil {
 				nm = nm2
+			} else {
+				if !ctx.tweaks.EnableImplicitDeclarations {
+					panic(fmt.Errorf("%v", ctx.position(n)))
+				}
 			}
 		}
 		switch x := n.Scope.LookupIdent(nm).(type) {
@@ -1107,6 +1091,12 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			panic(fmt.Errorf("%v: %T", ctx.position(n), x))
 		}
 	case ExprInt: // INTCONST
+		defer func() { //TODO-
+			if n.Operand.Type == nil || n.Operand.Value == nil {
+				fmt.Printf("TODO1114 %v: %q %v\n", ctx.position(n), n.Token.S(), n.Operand)         //TODO-
+				panic(fmt.Sprintf("TODO1114 %v: %q %v\n", ctx.position(n), n.Token.S(), n.Operand)) //TODO-
+			}
+		}() //TODO-
 		s0 := string(dict.S(n.Token.Val))
 		s := s0
 		if strings.Contains(s, "p") {
@@ -1228,7 +1218,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 				return n.Operand
 			}
 
-			panic(fmt.Errorf("%T", x))
+			panic(fmt.Errorf("%v: %T", ctx.position(n), x))
 		default:
 			//dbg("", ctx.position(n))
 			panic(fmt.Errorf("%T", x))
@@ -1896,6 +1886,11 @@ func (n *InitializerList) check(ctx *context, t Type, fn *Declarator) Operand {
 			}
 			return Operand{Type: t, Value: r}
 		case *TaggedStructType:
+			t = x.getType()
+			if t == x {
+				panic("TODO")
+			}
+		case *TaggedUnionType:
 			t = x.getType()
 			if t == x {
 				panic("TODO")

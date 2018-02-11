@@ -270,48 +270,10 @@ func (g *gen) void(n *c99.Expr) {
 		g.w("_ = ")
 		g.value(n, false)
 	case
-		c99.ExprAnd, // Expr '&' Expr
-		c99.ExprLe:  // Expr "<=" Expr
-
-		if g.voidCanIgnore(n.Expr) {
-			g.void(n.Expr2)
-			return
-		}
-
-		if g.voidCanIgnore(n.Expr2) {
-			g.void(n.Expr)
-			return
-		}
-
-		g.w("_ = ")
-		g.value(n, false)
-	case c99.ExprLAnd: // Expr "&&" Expr
-		if g.voidCanIgnore(n.Expr) {
-			if !n.Expr.Operand.IsZero() {
-				g.void(n.Expr2)
-			}
-			return
-		}
-
-		if g.voidCanIgnore(n.Expr2) {
-			g.void(n.Expr)
-			return
-		}
-
-		g.w("_ = ")
-		g.value(n, false)
-	case c99.ExprLOr: // Expr "||" Expr
-		if g.voidCanIgnore(n.Expr) {
-			if !n.Expr.Operand.IsNonzero() {
-				g.void(n.Expr2)
-			}
-			return
-		}
-
-		if g.voidCanIgnore(n.Expr2) {
-			g.void(n.Expr)
-			return
-		}
+		c99.ExprAnd,  // Expr '&' Expr
+		c99.ExprLAnd, // Expr "&&" Expr
+		c99.ExprLOr,  // Expr "||" Expr
+		c99.ExprLe:   // Expr "<=" Expr
 
 		g.w("_ = ")
 		g.value(n, false)
@@ -351,6 +313,9 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 	switch n.Case {
 	case c99.ExprIdent: // IDENTIFIER
 		d := g.normalizeDeclarator(n.Declarator)
+		if d == nil { //TODO-
+			todo("", g.position0(n), n.Declarator == nil) //TODO-
+		} //TODO-
 		g.enqueue(d)
 		switch {
 		case d.Type.Kind() == c99.Function:
@@ -429,6 +394,9 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 	case c99.ExprAddrof: // '&' Expr
 		g.uintptr(n.Expr, false)
 	case c99.ExprSelect: // Expr '.' IDENTIFIER
+		if n.Expr.Operand.Type == nil { //TODO-
+			todo("", g.position0(n))
+		}
 		switch x := c99.UnderlyingType(n.Expr.Operand.Type).(type) {
 		case *c99.StructType:
 			d := x.Field(n.Token2.Val)
@@ -933,6 +901,8 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 		default:
 			todo("%v: %T", g.position0(n), x)
 		}
+	case c99.ExprUnaryPlus: // '+' Expr
+		g.convert(n.Expr, n.Operand.Type)
 	default:
 		todo("", g.position0(n), n.Case, n.Operand) // value
 	}
@@ -1127,7 +1097,8 @@ func (g *gen) voidCanIgnore(n *c99.Expr) bool {
 		c99.ExprNe,  // Expr "!=" Expr
 		c99.ExprOr,  // Expr '|' Expr
 		c99.ExprRsh, // Expr ">>" Expr
-		c99.ExprSub: // Expr '-' Expr
+		c99.ExprSub, // Expr '-' Expr
+		c99.ExprXor: // Expr '^' Expr
 
 		return g.voidCanIgnore(n.Expr) && g.voidCanIgnore(n.Expr2)
 	case c99.ExprLAnd: // Expr "&&" Expr
@@ -1205,10 +1176,18 @@ func (g *gen) constant(n *c99.Expr) {
 		switch u := c99.UnderlyingType(n.Operand.Type).(type) {
 		case c99.TypeKind:
 			switch u {
+			case c99.Char, c99.SChar:
+				g.w(" %v", int8(x.Value))
+			case c99.Int:
+				g.w(" %v", int32(x.Value))
+			case c99.Short:
+				g.w(" %v", int16(x.Value))
+			case c99.UInt:
+				g.w(" %v", uint32(x.Value))
+			case c99.UShort:
+				g.w(" %v", uint16(x.Value))
 			case
-				c99.Char,
 				c99.Double,
-				c99.Int,
 				c99.LongDouble:
 
 				switch {
@@ -1481,7 +1460,7 @@ func (g *gen) convert(n *c99.Expr, t c99.Type) {
 	if c99.UnderlyingType(t).IsArithmeticType() {
 		g.w(" %s(", g.typ(t))
 		switch {
-		case n.Operand.Value != nil:
+		case n.Operand.Value != nil && g.voidCanIgnore(n):
 			n.Operand.Type = t
 			g.constant(n)
 		default:

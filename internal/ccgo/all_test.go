@@ -6,9 +6,9 @@ package ccgo
 
 //	TCC	cc 51 ccgo 51 build 51 run 51 ok 51
 //	Other	cc 6 ccgo 6 build 6 run 6 ok 6
-//	GCC	cc 897 ccgo 885 build 868 run 868 ok 868
+//	GCC	cc 917 ccgo 903 build 888 run 888 ok 888
 //	Shell	cc 1 ccgo 1 build 1 run 1 ok 1
-//	CSmith	cc 19 ccgo 18 build 18 run 18 ok 18 csmith 153 in 1m3.474997056s
+//	CSmith	cc 107 ccgo 107 build 107 run 107 ok 107 (100.00%) csmith 107 (1m0.749035546s)
 
 import (
 	"bufio"
@@ -84,6 +84,8 @@ const (
 %s
 
 `
+
+	testTimeout = 10 * time.Second
 )
 
 var (
@@ -142,6 +144,7 @@ func test(t *testing.T, clean bool, cc, ccgo, build, run *int, def, imp, inc2, d
 		EnableEmptyStructs:          true,
 		EnableImplicitBuiltins:      true,
 		EnableOmitFuncDeclSpec:      true,
+		EnablePointerCompatibility:  true, // CSmith transparent_crc_bytes
 		EnableReturnExprInVoidFunc:  true,
 		IgnorePragmas:               true,
 	}
@@ -225,7 +228,7 @@ import (
 		t.Fatal(err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 
 	defer cancel()
 
@@ -382,6 +385,7 @@ func TestGCC(t *testing.T) {
 		"pr23467.c":       {}, // __attribute__ ((aligned (8)))
 		"pushpop_macro.c": {}, // #pragma push_macro("_")
 
+		"bitfld-1.c": {}, //TODO bits, arithmetic precision
 		"bitfld-3.c": {}, //TODO bits, arithmetic precision
 	}
 
@@ -561,55 +565,55 @@ out:
 		}
 
 		if err := exec.Command(csmith, "-o", mainC,
-			"--no-argc",   // --argc | --no-argc: genereate main function with/without argv and argc being passed (enabled by default).
-			"--no-arrays", // --arrays | --no-arrays: enable | disable arrays (enabled by default).
-			// --bitfields | --no-bitfields: enable | disable full-bitfields structs (disabled by default).
+			"--no-argc",      // --argc | --no-argc: genereate main function with/without argv and argc being passed (enabled by default).
+			"--arrays",       // --arrays | --no-arrays: enable | disable arrays (enabled by default).
+			"--no-bitfields", //TODO --bitfields | --no-bitfields: enable | disable full-bitfields structs (disabled by default).
 			// --builtin-function-prob <num>: set the probability of choosing a builtin function (default is 20).
 			// --builtins | --no-builtins: enable | disable to generate builtin functions (disabled by default).
 			// --checksum | --no-checksum: enable | disable checksum calculation (enabled by default).
-			"--no-comma-operators",     // --comma-operators | --no-comma-operators: enable | disable comma operators (enabled by default).
-			"--no-compound-assignment", // --compound-assignment | --no-compound-assignment: enable | disable compound assignments (enabled by default).
+			"--no-comma-operators",     //TODO --comma-operators | --no-comma-operators: enable | disable comma operators (enabled by default).
+			"--no-compound-assignment", //TODO --compound-assignment | --no-compound-assignment: enable | disable compound assignments (enabled by default).
 			// --concise: generated programs with minimal comments (disabled by default).
 			"--no-const-pointers",   // --const-pointers | --no-const-pointers: enable | disable const pointers (enabled by default).
 			"--no-consts",           // --consts | --no-consts: enable | disable const qualifier (enabled by default).
-			"--no-divs",             // --divs | --no-divs: enable | disable divisions (enabled by default).
-			"--no-embedded-assigns", // --embedded-assigns | --no-embedded-assigns: enable | disable embedded assignments as sub-expressions (enabled by default).
+			"--divs",                // --divs | --no-divs: enable | disable divisions (enabled by default).
+			"--no-embedded-assigns", //TODO --embedded-assigns | --no-embedded-assigns: enable | disable embedded assignments as sub-expressions (enabled by default).
 			// --enable-builtin-kinds k1,k2 | --disable-builtin-kinds k1,k2: enable | disable certain kinds of builtin functions.
-			// --float | --no-float: enable | disable float (disabled by default).
+			"--no-float", //TODO --float | --no-float: enable | disable float (disabled by default).
 			// --help or -h: print this information.
 			// --inline-function | --no-inline-function: enable | disable inline attributes on generated functions.
 			// --inline-function-prob <num>: set the probability of each function being marked as inline (default is 50).
-			"--no-int8",  // --int8 | --no-int8: enable | disable int8_t (enabled by default).
-			"--no-jumps", // --jumps | --no-jumps: enable | disable jumps (enabled by default).
+			"--int8",  // --int8 | --no-int8: enable | disable int8_t (enabled by default).
+			"--jumps", // --jumps | --no-jumps: enable | disable jumps (enabled by default).
 			// --lang-cpp : generate C++ code (C by default).
-			"--no-longlong", // --longlong| --no-longlong: enable | disable long long (enabled by default).
+			"--longlong", // --longlong| --no-longlong: enable | disable long long (enabled by default).
 			// --main | --nomain: enable | disable to generate main function (enabled by default).
-			"--no-math64", // --math64 | --no-math64: enable | disable 64-bit math ops (enabled by default).
+			"--no-math64", //TODO --math64 | --no-math64: enable | disable 64-bit math ops (enabled by default).
 			// --max-array-dim <num>: limit array dimensions to <num>. (default 3)
 			// --max-array-len-per-dim <num>: limit array length per dimension to <num> (default 10).
-			// --max-block-depth <num>: limit depth of nested blocks to <num> (default 5).
+			"--max-block-depth", "1", //TODO --max-block-depth <num>: limit depth of nested blocks to <num> (default 5).
 			// --max-block-size <size>: limit the number of non-return statements in a block to <size> (default 4).
-			// --max-expr-complexity <num>: limit expression complexities to <num> (default 10).
+			"--max-expr-complexity", "1", //TODO --max-expr-complexity <num>: limit expression complexities to <num> (default 10).
 			// --max-funcs <num>: limit the number of functions (besides main) to <num>  (default 10).
-			// --max-pointer-depth <depth>: limit the indirect depth of pointers to <depth> (default 2).
+			"--max-pointer-depth", "3", //TODO --max-pointer-depth <depth>: limit the indirect depth of pointers to <depth> (default 2).
 			// --max-struct-fields <num>: limit the number of struct fields to <num> (default 10).
 			// --max-union-fields <num>: limit the number of union fields to <num> (default 5).
-			"--no-muls", // --muls | --no-muls: enable | disable multiplications (enabled by default).
+			"--muls", // --muls | --no-muls: enable | disable multiplications (enabled by default).
 			// --output <filename> or -o <filename>: specify the output file name.
-			// --packed-struct | --no-packed-struct: enable | disable packed structs by adding #pragma pack(1) before struct definition (disabled by default).
+			"--no-packed-struct", // --packed-struct | --no-packed-struct: enable | disable packed structs by adding #pragma pack(1) before struct definition (disabled by default).
 			// --paranoid | --no-paranoid: enable | disable pointer-related assertions (disabled by default).
-			"--no-pointers",           // --pointers | --no-pointers: enable | disable pointers (enabled by default).
-			"--no-post-decr-operator", // --post-decr-operator | --no-post-decr-operator: enable | disable post -- operator (enabled by default).
-			"--no-post-incr-operator", // --post-incr-operator | --no-post-incr-operator: enable | disable post ++ operator (enabled by default).
-			"--no-pre-decr-operator",  // --pre-decr-operator | --no-pre-decr-operator: enable | disable pre -- operator (enabled by default).
-			"--no-pre-incr-operator",  // --pre-incr-operator | --no-pre-incr-operator: enable | disable pre ++ operator (enabled by default).
+			"--pointers",           // --pointers | --no-pointers: enable | disable pointers (enabled by default).
+			"--post-decr-operator", // --post-decr-operator | --no-post-decr-operator: enable | disable post -- operator (enabled by default).
+			"--post-incr-operator", // --post-incr-operator | --no-post-incr-operator: enable | disable post ++ operator (enabled by default).
+			"--pre-decr-operator",  // --pre-decr-operator | --no-pre-decr-operator: enable | disable pre -- operator (enabled by default).
+			"--pre-incr-operator",  // --pre-incr-operator | --no-pre-incr-operator: enable | disable pre ++ operator (enabled by default).
 			// --quiet: generate programs with less comments (disabled by default).
 			"--no-safe-math", // --safe-math | --no-safe-math: Emit safe math wrapper functions (enabled by default).
 			// --seed <seed> or -s <seed>: use <seed> instead of a random seed generated by Csmith.
-			// --structs | --no-structs: enable | disable to generate structs (enable by default).
-			"--no-uint8",               // --uint8 | --no-uint8: enable | disable uint8_t (enabled by default).
-			"--no-unary-plus-operator", // --unary-plus-operator | --no-unary-plus-operator: enable | disable + operator (enabled by default).
-			// --unions | --no-unions: enable | disable to generate unions (enable by default).
+			"--structs",             // --structs | --no-structs: enable | disable to generate structs (enable by default).
+			"--uint8",               // --uint8 | --no-uint8: enable | disable uint8_t (enabled by default).
+			"--unary-plus-operator", // --unary-plus-operator | --no-unary-plus-operator: enable | disable + operator (enabled by default).
+			"--unions",              // --unions | --no-unions: enable | disable to generate unions (enable by default).
 			// --version or -v: print the version of Csmith.
 			"--no-volatile-pointers", // --volatile-pointers | --no-volatile-pointers: enable | disable volatile pointers (enabled by default).
 			"--no-volatiles",         // --volatiles | --no-volatiles: enable | disable volatiles (enabled by default).
@@ -622,10 +626,9 @@ out:
 			t.Fatal(err)
 		}
 
-		cs++
 		var gccOut []byte
 		func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), testTimeout/2)
 
 			defer cancel()
 
@@ -636,10 +639,13 @@ out:
 			continue
 		}
 
+		cs++
 		build0 := build
+		os.Remove("main.go")
 		ccgoOut, err := test(t, false, &cc, &ccgo, &build, &run, "", "", inc, dir, []string{mainC})
 		if err != nil {
-			t.Fatal(err)
+			t.Log(err)
+			csmithFatal(t, mainC, gccOut, ccgoOut, cc, ccgo, build, run, ok, cs)
 		}
 
 		if build == build0 {
@@ -649,31 +655,40 @@ out:
 		if bytes.Equal(gccOut, ccgoOut) {
 			ok++
 			if *oEdit {
-				fmt.Printf("cc %v ccgo %v build %v run %v ok %v csmith %v in %v\n", cc, ccgo, build, run, ok, cs, time.Since(t0))
+				fmt.Printf("cc %v ccgo %v build %v run %v ok %v (%.2f%%) csmith %v (%v)\n", cc, ccgo, build, run, ok, 100*float64(ok)/float64(cs), cs, time.Since(t0))
 			}
 			continue
 		}
 
-		b, err := ioutil.ReadFile(mainC)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		t.Fatalf(`
-%s
-
-/* 
-
- GCC output: %s
-CCGO output: %s
-cc %v ccgo %v build %v run %v ok %v csmith %v (%v)
-
-*/
-`, b, gccOut, ccgoOut, cc, ccgo, build, run, ok, cs, *oCSmith)
+		csmithFatal(t, mainC, gccOut, ccgoOut, cc, ccgo, build, run, ok, cs)
 	}
 	d := time.Since(t0)
-	t.Logf("cc %v ccgo %v build %v run %v ok %v csmith %v in %v", cc, ccgo, build, run, ok, cs, d)
+	t.Logf("cc %v ccgo %v build %v run %v ok %v (%.2f%%) csmith %v (%v)", cc, ccgo, build, run, ok, 100*float64(ok)/float64(cs), cs, d)
 	if *oEdit {
-		fmt.Printf("CSmith\tcc %v ccgo %v build %v run %v ok %v csmith %v in %v\n", cc, ccgo, build, run, ok, cs, d)
+		fmt.Printf("CSmith\tcc %v ccgo %v build %v run %v ok %v (%.2f%%) csmith %v (%v)\n", cc, ccgo, build, run, ok, 100*float64(ok)/float64(cs), cs, d)
 	}
+}
+
+func csmithFatal(t *testing.T, mainC string, gccOut, ccgoOut []byte, cc, ccgo, build, run, ok, cs int) {
+	b, err := ioutil.ReadFile(mainC)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	b2, err := ioutil.ReadFile("main.go")
+	if err != nil {
+		b2 = nil
+	}
+
+	t.Fatalf(`
+==== CSmith code ==============================================================
+%s
+==== Go code (if any ) ========================================================
+%s
+===============================================================================
+ GCC output: %s
+CCGO output: %s
+cc %v ccgo %v build %v run %v ok %v (%.2f%%) csmith %v (%v)
+`,
+		b, b2, gccOut, ccgoOut, cc, ccgo, build, run, ok, 100*float64(ok)/float64(cs), cs, *oCSmith)
 }

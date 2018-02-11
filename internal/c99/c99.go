@@ -141,6 +141,7 @@ type Tweaks struct {
 	EnableImplicitBuiltins      bool // Undefined printf becomes __builtin_printf.
 	EnableImplicitDeclarations  bool // eg. using exit(1) w/o #include <stdlib.h>
 	EnableOmitFuncDeclSpec      bool // foo() { ... } == int foo() { ... }
+	EnablePointerCompatibility  bool // All pointers are assignment compatible.
 	EnableReturnExprInVoidFunc  bool // void f() { return 1; }
 	EnableTrigraphs             bool
 	IgnorePragmas               bool // #pragma
