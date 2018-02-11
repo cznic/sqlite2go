@@ -4,6 +4,12 @@
 
 package ccgo
 
+//	TCC	cc 51 ccgo 51 build 51 run 51 ok 51
+//	Other	cc 6 ccgo 6 build 6 run 6 ok 6
+//	GCC	cc 897 ccgo 885 build 868 run 868 ok 868
+//	Shell	cc 1 ccgo 1 build 1 run 1 ok 1
+//	CSmith	cc 19 ccgo 18 build 18 run 18 ok 18 csmith 153 in 1m3.474997056s
+
 import (
 	"bufio"
 	"bytes"
@@ -74,23 +80,20 @@ const (
 #define __arch__ %s
 #define __os__ %s
 #include <builtin.h>
-#define SQLITE_DEBUG 1
-`
-	injectGCC = `
-#define _CCGO 1
-#define __arch__ %s
-#define __os__ %s
-#include <builtin.h>
-#include <stdlib.h>
 
-#define SIGNAL_SUPPRESS // gcc.c-torture/execute/20101011-1.c
-#define llabs(x) __builtin_llabs(x)
+%s
+
 `
 )
 
 var (
-	oRE   = flag.String("re", "", "")
-	oEdit = flag.Bool("edit", false, "")
+	oBuild  = flag.Bool("build", false, "full build errors")
+	oCC     = flag.Bool("cc", false, "full cc errors")
+	oCCGO   = flag.Bool("ccgo", false, "full ccgo errors")
+	oCSmith = flag.Duration("csmith", time.Minute, "") // Use something like -timeout 25h -csmith 24h for real testing.
+	oEdit   = flag.Bool("edit", false, "")
+	oRE     = flag.String("re", "", "")
+	re      *regexp.Regexp
 )
 
 func TestOpt(t *testing.T) {
@@ -111,60 +114,6 @@ func TestOpt(t *testing.T) {
 	}
 }
 
-func testTCC(t *testing.T, pth string) {
-	testFn = pth
-	fset := token.NewFileSet()
-	predefSource := c99.NewStringSource("<predefine>", fmt.Sprintf(inject, runtime.GOARCH, runtime.GOOS))
-	crt0Source := c99.NewFileSource(filepath.Join(ccir.LibcIncludePath, "crt0.c"))
-	mainSource := c99.NewFileSource(pth)
-	inc := []string{"@", ccir.LibcIncludePath}
-	sysInc := []string{ccir.LibcIncludePath}
-	tweaks := &c99.Tweaks{
-		EnableBinaryLiterals:       true,
-		EnableEmptyStructs:         true,
-		EnableImplicitDeclarations: true,
-		EnableReturnExprInVoidFunc: true,
-	}
-	crt0, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, crt0Source)
-	if err != nil {
-		t.Fatal(errString(err))
-	}
-
-	main, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, mainSource)
-	if err != nil {
-		t.Fatal(errString(err))
-	}
-
-	dir, err := ioutil.TempDir("", "test-ccgo-")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	defer func() {
-		if err := os.RemoveAll(dir); err != nil {
-			t.Fatal(err)
-		}
-	}()
-
-	t.Log(pth)
-	mustBuild(t, dir, []*c99.TranslationUnit{crt0, main})
-	out := mustRun(t, dir)
-	fn := pth[:len(pth)-len(filepath.Ext(pth))] + ".expect"
-	s, err := ioutil.ReadFile(fn)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return
-		}
-	}
-
-	out = trim(out)
-	s = trim(s)
-	if !bytes.Equal(out, s) {
-		t.Logf("\ngot\n%s\nexp\n%s", hex.Dump(out), hex.Dump(s))
-		t.Fatalf("\ngot\n%s\nexp\n%s", out, s)
-	}
-}
-
 func trim(b []byte) []byte {
 	a := bytes.Split(b, []byte{'\n'})
 	for i, v := range a {
@@ -173,46 +122,94 @@ func trim(b []byte) []byte {
 	return bytes.Join(a, []byte{'\n'})
 }
 
-func build(t *testing.T, dir string, in []*c99.TranslationUnit) error {
+func test(t *testing.T, clean bool, cc, ccgo, build, run *int, def, imp, inc2, dir string, pth []string, args ...string) ([]byte, error) {
+	if clean {
+		m, err := filepath.Glob(filepath.Join(dir, "*.*"))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for _, v := range m {
+			if err := os.Remove(v); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	fset := token.NewFileSet()
+	tweaks := &c99.Tweaks{
+		EnableAnonymousStructFields: true,
+		EnableEmptyStructs:          true,
+		EnableImplicitBuiltins:      true,
+		EnableOmitFuncDeclSpec:      true,
+		EnableReturnExprInVoidFunc:  true,
+		IgnorePragmas:               true,
+	}
+	inc := []string{"@", ccir.LibcIncludePath, inc2}
+	sysInc := []string{ccir.LibcIncludePath}
+
+	predefSource := c99.NewStringSource("<predefine>", fmt.Sprintf(inject, runtime.GOARCH, runtime.GOOS, def))
+	crt0, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, c99.NewFileSource(filepath.Join(ccir.LibcIncludePath, "crt0.c")))
+	if err != nil {
+		return nil, err
+	}
+
+	tus := []*c99.TranslationUnit{crt0}
+	for _, v := range pth {
+		tu, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, c99.NewFileSource(v))
+		if err != nil {
+			if !*oCC {
+				err = nil
+			}
+			return nil, err
+		}
+
+		tus = append(tus, tu)
+	}
+
+	*cc++
 	f, err := os.Create(filepath.Join(dir, "main.go"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	defer func() {
-		if err := f.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
-
 	w := bufio.NewWriter(f)
-
-	defer func() {
-		if err := w.Flush(); err != nil {
-			t.Fatal(err)
-		}
-	}()
-
 	w.WriteString(`package main
 	
 import (
 	"os"
 	"unsafe"
-
 	"github.com/cznic/crt"
 )
-
 `)
-	return Command(w, in)
-}
+	w.WriteString(imp)
+	if err := Command(w, tus); err != nil {
+		if !*oCCGO {
+			err = nil
+		}
+		return nil, err
+	}
 
-func mustBuild(t *testing.T, dir string, in []*c99.TranslationUnit) {
-	if err := build(t, dir, in); err != nil {
+	if err := w.Flush(); err != nil {
 		t.Fatal(err)
 	}
-}
 
-func run(t *testing.T, dir string) ([]byte, error) {
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	*ccgo++
+
+	if out, err := exec.Command("go", "build", "-o", filepath.Join(dir, "main"), f.Name()).CombinedOutput(); err != nil {
+		if !*oBuild {
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf("%v: %s", err, out)
+	}
+
+	*build++
+
 	cwd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -228,143 +225,30 @@ func run(t *testing.T, dir string) ([]byte, error) {
 		t.Fatal(err)
 	}
 
-	if out, err := exec.Command("go", "build", "-o", "main").CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("%v: %s", err, out)
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 
 	defer cancel()
 
-	return exec.CommandContext(ctx, "./main").CombinedOutput()
-}
-
-func mustRun(t *testing.T, dir string) []byte {
-	out, err := run(t, dir)
-	if err != nil {
-		t.Fatal(err)
+	out, err := exec.CommandContext(ctx, filepath.Join(dir, "main"), args...).CombinedOutput()
+	if err == nil {
+		*run++
 	}
-
-	return out
+	return out, err
 }
 
 func TestTCC(t *testing.T) {
 	blacklist := map[string]struct{}{
-		"31_args.c":             {}, // Needs fake argv
+		"13_integer_literals.c": {}, // 9:12: ExprInt strconv.ParseUint: parsing "0b010101010101": invalid syntax
+		"31_args.c":             {},
 		"34_array_assignment.c": {}, // gcc: main.c:16:6: error: incompatible types when assigning to type ‘int[4]’ from type ‘int *’
-		"46_grep.c":             {}, // gcc: 46_grep.c:489:12: error: ‘documentation’ undeclared (first use in this function)
+		"46_grep.c":             {}, // incompatible forward declaration type
 	}
-	var re *regexp.Regexp
+
 	if s := *oRE; s != "" {
 		re = regexp.MustCompile(s)
 	}
-	m, err := filepath.Glob("../c99/testdata/tcc-0.9.26/tests/tests2/*.c")
-	if err != nil {
-		t.Fatal(err)
-	}
 
-	for _, pth := range m {
-		if re != nil && !re.MatchString(filepath.Base(pth)) {
-			continue
-		}
-
-		if _, ok := blacklist[filepath.Base(pth)]; ok {
-			continue
-		}
-
-		testTCC(t, pth)
-	}
-}
-
-func TestOther(t *testing.T) {
-	testDir(t, "../c99/testdata/bug/*.c", nil)
-}
-
-func testDir(t *testing.T, glob string, blacklist map[string]struct{}) {
-	var re *regexp.Regexp
-	if s := *oRE; s != "" {
-		re = regexp.MustCompile(s)
-	}
-	m, err := filepath.Glob(filepath.FromSlash(glob))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var compiles, builds, runs int
-	for _, pth := range m {
-		if re != nil && !re.MatchString(filepath.Base(pth)) {
-			continue
-		}
-
-		if _, ok := blacklist[filepath.Base(pth)]; ok {
-			continue
-		}
-
-		testFile(t, pth, &compiles, &builds, &runs)
-	}
-	if runs == 0 || runs < builds {
-		t.Errorf("compiles: %d, builds: %v, runs: %v", compiles, builds, runs)
-		return
-	}
-
-	if testing.Verbose() || *oEdit {
-		t.Logf("compiles: %d, builds: %v, runs: %v", compiles, builds, runs)
-	}
-
-	if *oEdit {
-		fmt.Printf("compiles: %d, builds: %v, runs: %v\n", compiles, builds, runs)
-	}
-}
-
-func TestGCC(t *testing.T) {
-	testDir(t, "../c99/testdata/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/*.c", map[string]struct{}{
-		"20010122-1.c":    {}, // __builtin_return_address
-		"20010904-1.c":    {}, // __attribute__((aligned(32)))
-		"20010904-2.c":    {}, // __attribute__((aligned(32)))
-		"20021127-1.c":    {}, // non standard GCC behavior
-		"frame-address.c": {}, // __builtin_frame_address
-		"medce-1.c":       {}, // references undefined function
-		"pr17377.c":       {}, // __builtin_return_address
-		"pr23467.c":       {}, // __attribute__ ((aligned (8)))
-
-		"bitfld-3.c":        {}, //TODO bits, arithmetic precision
-		"built-in-setjmp.c": {}, //TODO __builtin_setjmp
-		"pr38422.c":         {}, //TODO bits
-		"pr60003.c":         {}, //TODO __builtin_setjmp
-		"20000112-1.c":      {}, //TODO K&R style fn
-		"20000113-1.c":      {}, //TODO bit field initializer
-		"20000223-1.c":      {}, //TODO __alignof__
-	})
-	// compiles: 853, builds: 831, runs: 823
-}
-
-func testFile(t *testing.T, pth string, compiles, builds, runs *int) {
-	testFn = pth
-	fset := token.NewFileSet()
-	predefSource := c99.NewStringSource("<predefine>", fmt.Sprintf(injectGCC, runtime.GOARCH, runtime.GOOS))
-	crt0Source := c99.NewFileSource(filepath.Join(ccir.LibcIncludePath, "crt0.c"))
-	mainSource := c99.NewFileSource(pth)
-	inc := []string{"@", ccir.LibcIncludePath}
-	sysInc := []string{ccir.LibcIncludePath}
-	tweaks := &c99.Tweaks{
-		EnableEmptyStructs:         true,
-		EnableImplicitDeclarations: true,
-		EnableOmitFuncDeclSpec:     true,
-	}
-	crt0, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, crt0Source)
-	if err != nil {
-		t.Fatal(errString(err))
-	}
-
-	main, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, mainSource)
-	if err != nil {
-		if testing.Verbose() {
-			t.Logf("      cc: %s: %s", pth, compact(err.Error(), 10))
-		}
-		return
-	}
-
-	dir, err := ioutil.TempDir("", "test-ccgo-")
+	dir, err := ioutil.TempDir("", "test-ccgo-tcc-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,57 +259,421 @@ func testFile(t *testing.T, pth string, compiles, builds, runs *int) {
 		}
 	}()
 
-	*compiles++
-	if err := build(t, dir, []*c99.TranslationUnit{crt0, main}); err != nil {
-		if testing.Verbose() {
-			t.Logf("compiles: %v: %v", pth, compact(err.Error(), 15))
+	m, err := filepath.Glob(filepath.FromSlash("../c99/testdata/tcc-0.9.26/tests/tests2/*.c"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var cc, ccgo, build, run, ok int
+	for _, pth := range m {
+		if re != nil && !re.MatchString(filepath.Base(pth)) {
+			continue
 		}
-		return
+
+		if _, ok := blacklist[filepath.Base(pth)]; ok {
+			continue
+		}
+
+		run0 := run
+		out, err := test(t, false, &cc, &ccgo, &build, &run, "", "", "", dir, []string{pth})
+		if err != nil {
+			t.Errorf("%v: %v", pth, err)
+			continue
+		}
+
+		if run == run0 {
+			continue
+		}
+
+		fn := pth[:len(pth)-len(filepath.Ext(pth))] + ".expect"
+		s, err := ioutil.ReadFile(fn)
+		if err != nil {
+			if os.IsNotExist(err) {
+				ok++
+				continue
+			}
+		}
+
+		out = trim(out)
+		s = trim(s)
+		if !bytes.Equal(out, s) {
+			t.Errorf("%s\ngot\n%s\nexp\n%s----\ngot\n%s\nexp\n%s", pth, hex.Dump(out), hex.Dump(s), out, s)
+			continue
+		}
+
+		ok++
+	}
+	t.Logf("cc %v ccgo %v build %v run %v ok %v", cc, ccgo, build, run, ok)
+	if *oEdit {
+		fmt.Printf("TCC\tcc %v ccgo %v build %v run %v ok %v\n", cc, ccgo, build, run, ok)
+	}
+}
+
+func TestOther(t *testing.T) {
+	if s := *oRE; s != "" {
+		re = regexp.MustCompile(s)
 	}
 
-	*builds++
-	if out, err := run(t, dir); err != nil {
-		t.Errorf("    FAIL: %s: out: %s err: %s", pth, compact(string(out), 1), compact(err.Error(), 2))
-		return
+	dir, err := ioutil.TempDir("", "test-ccgo-other-")
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	*runs++
-	// if testing.Verbose() {
-	// 	t.Logf("    PASS: %s", pth)
-	// }
+	defer func() {
+		if err := os.RemoveAll(dir); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	m, err := filepath.Glob(filepath.FromSlash("../c99/testdata/bug/*.c"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var cc, ccgo, build, run, ok int
+	for _, pth := range m {
+		if re != nil && !re.MatchString(filepath.Base(pth)) {
+			continue
+		}
+
+		run0 := run
+		out, err := test(t, false, &cc, &ccgo, &build, &run, "", "", "", dir, []string{pth})
+		if err != nil {
+			t.Errorf("%v: %v", pth, err)
+			continue
+		}
+
+		if run == run0 {
+			continue
+		}
+
+		fn := pth[:len(pth)-len(filepath.Ext(pth))] + ".expect"
+		s, err := ioutil.ReadFile(fn)
+		if err != nil {
+			if os.IsNotExist(err) {
+				ok++
+				continue
+			}
+		}
+
+		out = trim(out)
+		s = trim(s)
+		if !bytes.Equal(out, s) {
+			t.Errorf("%s\ngot\n%s\nexp\n%s----\ngot\n%s\nexp\n%s", pth, hex.Dump(out), hex.Dump(s), out, s)
+			continue
+		}
+
+		ok++
+	}
+	t.Logf("cc %v ccgo %v build %v run %v ok %v", cc, ccgo, build, run, ok)
+	if *oEdit {
+		fmt.Printf("Other\tcc %v ccgo %v build %v run %v ok %v\n", cc, ccgo, build, run, ok)
+	}
+}
+
+func TestGCC(t *testing.T) {
+	const def = `
+#define SIGNAL_SUPPRESS // gcc.c-torture/execute/20101011-1.c
+`
+	blacklist := map[string]struct{}{
+		"20010904-1.c":    {}, // __attribute__((aligned(32)))
+		"20010904-2.c":    {}, // __attribute__((aligned(32)))
+		"20021127-1.c":    {}, // non standard GCC behavior
+		"pr23467.c":       {}, // __attribute__ ((aligned (8)))
+		"pushpop_macro.c": {}, // #pragma push_macro("_")
+
+		"bitfld-3.c": {}, //TODO bits, arithmetic precision
+	}
+
+	if s := *oRE; s != "" {
+		re = regexp.MustCompile(s)
+	}
+
+	dir, err := ioutil.TempDir("", "test-ccgo-gcc-")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() {
+		if err := os.RemoveAll(dir); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	m, err := filepath.Glob(filepath.FromSlash("../c99/testdata/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/*.c"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var cc, ccgo, build, run, ok int
+	for _, pth := range m {
+		if re != nil && !re.MatchString(filepath.Base(pth)) {
+			continue
+		}
+
+		if _, ok := blacklist[filepath.Base(pth)]; ok {
+			continue
+		}
+
+		run0 := run
+		out, err := test(t, false, &cc, &ccgo, &build, &run, def, "", "", dir, []string{pth})
+		if err != nil {
+			t.Errorf("%v: %v", pth, err)
+			continue
+		}
+
+		if run == run0 {
+			continue
+		}
+
+		fn := pth[:len(pth)-len(filepath.Ext(pth))] + ".expect"
+		s, err := ioutil.ReadFile(fn)
+		if err != nil {
+			if os.IsNotExist(err) {
+				ok++
+				continue
+			}
+		}
+
+		out = trim(out)
+		s = trim(s)
+		if !bytes.Equal(out, s) {
+			t.Errorf("%s\ngot\n%s\nexp\n%s----\ngot\n%s\nexp\n%s", pth, hex.Dump(out), hex.Dump(s), out, s)
+			continue
+		}
+
+		ok++
+	}
+	t.Logf("cc %v ccgo %v build %v run %v ok %v", cc, ccgo, build, run, ok)
+	if *oEdit {
+		fmt.Printf("GCC\tcc %v ccgo %v build %v run %v ok %v\n", cc, ccgo, build, run, ok)
+	}
 }
 
 func TestSQLiteShell(t *testing.T) {
-	fset := token.NewFileSet()
-	tweaks := &c99.Tweaks{
-		EnableAnonymousStructFields: true,
-		EnableEmptyStructs:          true,
-		InjectFinalNL:               true,
-	}
-	inc := []string{"@", ccir.LibcIncludePath}
-	sysInc := []string{ccir.LibcIncludePath}
-	repo := filepath.FromSlash("../../_sqlite/sqlite-amalgamation-3210000/")
-	predefSource := c99.NewStringSource("<predefine>", fmt.Sprintf(inject, runtime.GOARCH, runtime.GOOS))
-	sqliteSource := c99.NewFileSource(filepath.Join(repo, "sqlite3.c"))
-	sqlite, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, sqliteSource)
+	dir, err := ioutil.TempDir("", "test-ccgo-shell-")
 	if err != nil {
-		t.Fatal(errString(err))
-	}
-
-	crt0Source := c99.NewFileSource(filepath.Join(ccir.LibcIncludePath, "crt0.c"))
-	crt0, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, crt0Source)
-	if err != nil {
-		t.Fatal(errString(err))
-	}
-
-	shellSource := c99.NewFileSource(filepath.Join(repo, "shell.c"))
-	shell, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, shellSource)
-	if err != nil {
-		t.Fatal(errString(err))
-	}
-
-	var buf bytes.Buffer
-	if err = Command(&buf, []*c99.TranslationUnit{crt0, shell, sqlite}); err != nil {
 		t.Fatal(err)
+	}
+
+	defer func() {
+		if err := os.RemoveAll(dir); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	var cc, ccgo, build, run, ok int
+	root := filepath.FromSlash("../../_sqlite/sqlite-amalgamation-3210000")
+	if out, err := test(t, false, &cc, &ccgo, &build, &run, "",
+		`
+		import "math"
+`,
+		"",
+		dir,
+		[]string{
+			filepath.Join(root, "shell.c"),
+			filepath.Join(root, "sqlite3.c"),
+		},
+		"foo", "create table t(i)",
+	); err != nil {
+		t.Fatalf("%s: %v", out, err)
+	}
+
+	if run == 1 {
+		ok++
+	}
+	t.Logf("cc %v ccgo %v build %v run %v ok %v", cc, ccgo, build, run, ok)
+	if *oEdit {
+		fmt.Printf("Shell\tcc %v ccgo %v build %v run %v ok %v\n", cc, ccgo, build, run, ok)
+	}
+}
+
+func TestCSmith(t *testing.T) {
+	csmith, err := exec.LookPath("csmith")
+	if err != nil {
+		t.Logf("%v: skipping test", err)
+		return
+	}
+
+	gcc, err := exec.LookPath("gcc")
+	if err != nil {
+		t.Logf("%v: skipping test", err)
+		return
+	}
+
+	var inc string
+	switch runtime.GOOS {
+	case "linux":
+		inc = "/usr/include"
+	default:
+		t.Logf("unsupported OS")
+		return
+	}
+	if _, err := os.Stat(filepath.Join(inc, "csmith.h")); err != nil {
+		if os.IsNotExist(err) {
+			t.Logf("%s not found: skipping test", inc)
+			return
+		}
+
+		t.Fatal(err)
+	}
+
+	dir, err := ioutil.TempDir("", "test-ccgo-csmith-")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() {
+		if err := os.RemoveAll(dir); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() {
+		if err := os.Chdir(cwd); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	const (
+		gccBin = "gcc"
+		mainC  = "main.c"
+	)
+
+	ch := time.After(*oCSmith)
+	var cs, cc, ccgo, build, run, ok int
+	t0 := time.Now()
+out:
+	for {
+		select {
+		case <-ch:
+			break out
+		default:
+		}
+
+		if err := exec.Command(csmith, "-o", mainC,
+			"--no-argc",   // --argc | --no-argc: genereate main function with/without argv and argc being passed (enabled by default).
+			"--no-arrays", // --arrays | --no-arrays: enable | disable arrays (enabled by default).
+			// --bitfields | --no-bitfields: enable | disable full-bitfields structs (disabled by default).
+			// --builtin-function-prob <num>: set the probability of choosing a builtin function (default is 20).
+			// --builtins | --no-builtins: enable | disable to generate builtin functions (disabled by default).
+			// --checksum | --no-checksum: enable | disable checksum calculation (enabled by default).
+			"--no-comma-operators",     // --comma-operators | --no-comma-operators: enable | disable comma operators (enabled by default).
+			"--no-compound-assignment", // --compound-assignment | --no-compound-assignment: enable | disable compound assignments (enabled by default).
+			// --concise: generated programs with minimal comments (disabled by default).
+			"--no-const-pointers",   // --const-pointers | --no-const-pointers: enable | disable const pointers (enabled by default).
+			"--no-consts",           // --consts | --no-consts: enable | disable const qualifier (enabled by default).
+			"--no-divs",             // --divs | --no-divs: enable | disable divisions (enabled by default).
+			"--no-embedded-assigns", // --embedded-assigns | --no-embedded-assigns: enable | disable embedded assignments as sub-expressions (enabled by default).
+			// --enable-builtin-kinds k1,k2 | --disable-builtin-kinds k1,k2: enable | disable certain kinds of builtin functions.
+			// --float | --no-float: enable | disable float (disabled by default).
+			// --help or -h: print this information.
+			// --inline-function | --no-inline-function: enable | disable inline attributes on generated functions.
+			// --inline-function-prob <num>: set the probability of each function being marked as inline (default is 50).
+			"--no-int8",  // --int8 | --no-int8: enable | disable int8_t (enabled by default).
+			"--no-jumps", // --jumps | --no-jumps: enable | disable jumps (enabled by default).
+			// --lang-cpp : generate C++ code (C by default).
+			"--no-longlong", // --longlong| --no-longlong: enable | disable long long (enabled by default).
+			// --main | --nomain: enable | disable to generate main function (enabled by default).
+			"--no-math64", // --math64 | --no-math64: enable | disable 64-bit math ops (enabled by default).
+			// --max-array-dim <num>: limit array dimensions to <num>. (default 3)
+			// --max-array-len-per-dim <num>: limit array length per dimension to <num> (default 10).
+			// --max-block-depth <num>: limit depth of nested blocks to <num> (default 5).
+			// --max-block-size <size>: limit the number of non-return statements in a block to <size> (default 4).
+			// --max-expr-complexity <num>: limit expression complexities to <num> (default 10).
+			// --max-funcs <num>: limit the number of functions (besides main) to <num>  (default 10).
+			// --max-pointer-depth <depth>: limit the indirect depth of pointers to <depth> (default 2).
+			// --max-struct-fields <num>: limit the number of struct fields to <num> (default 10).
+			// --max-union-fields <num>: limit the number of union fields to <num> (default 5).
+			"--no-muls", // --muls | --no-muls: enable | disable multiplications (enabled by default).
+			// --output <filename> or -o <filename>: specify the output file name.
+			// --packed-struct | --no-packed-struct: enable | disable packed structs by adding #pragma pack(1) before struct definition (disabled by default).
+			// --paranoid | --no-paranoid: enable | disable pointer-related assertions (disabled by default).
+			"--no-pointers",           // --pointers | --no-pointers: enable | disable pointers (enabled by default).
+			"--no-post-decr-operator", // --post-decr-operator | --no-post-decr-operator: enable | disable post -- operator (enabled by default).
+			"--no-post-incr-operator", // --post-incr-operator | --no-post-incr-operator: enable | disable post ++ operator (enabled by default).
+			"--no-pre-decr-operator",  // --pre-decr-operator | --no-pre-decr-operator: enable | disable pre -- operator (enabled by default).
+			"--no-pre-incr-operator",  // --pre-incr-operator | --no-pre-incr-operator: enable | disable pre ++ operator (enabled by default).
+			// --quiet: generate programs with less comments (disabled by default).
+			"--no-safe-math", // --safe-math | --no-safe-math: Emit safe math wrapper functions (enabled by default).
+			// --seed <seed> or -s <seed>: use <seed> instead of a random seed generated by Csmith.
+			// --structs | --no-structs: enable | disable to generate structs (enable by default).
+			"--no-uint8",               // --uint8 | --no-uint8: enable | disable uint8_t (enabled by default).
+			"--no-unary-plus-operator", // --unary-plus-operator | --no-unary-plus-operator: enable | disable + operator (enabled by default).
+			// --unions | --no-unions: enable | disable to generate unions (enable by default).
+			// --version or -v: print the version of Csmith.
+			"--no-volatile-pointers", // --volatile-pointers | --no-volatile-pointers: enable | disable volatile pointers (enabled by default).
+			"--no-volatiles",         // --volatiles | --no-volatiles: enable | disable volatiles (enabled by default).
+			// -hh: describe extra options probably useful only for Csmith developers.
+		).Run(); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := exec.Command(gcc, "-o", gccBin, mainC).Run(); err != nil {
+			t.Fatal(err)
+		}
+
+		cs++
+		var gccOut []byte
+		func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+
+			defer cancel()
+
+			gccOut, err = exec.CommandContext(ctx, filepath.Join(dir, gccBin)).CombinedOutput()
+		}()
+
+		if err != nil {
+			continue
+		}
+
+		build0 := build
+		ccgoOut, err := test(t, false, &cc, &ccgo, &build, &run, "", "", inc, dir, []string{mainC})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if build == build0 {
+			continue
+		}
+
+		if bytes.Equal(gccOut, ccgoOut) {
+			ok++
+			if *oEdit {
+				fmt.Printf("cc %v ccgo %v build %v run %v ok %v csmith %v in %v\n", cc, ccgo, build, run, ok, cs, time.Since(t0))
+			}
+			continue
+		}
+
+		b, err := ioutil.ReadFile(mainC)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		t.Fatalf(`
+%s
+
+/* 
+
+ GCC output: %s
+CCGO output: %s
+cc %v ccgo %v build %v run %v ok %v csmith %v (%v)
+
+*/
+`, b, gccOut, ccgoOut, cc, ccgo, build, run, ok, cs, *oCSmith)
+	}
+	d := time.Since(t0)
+	t.Logf("cc %v ccgo %v build %v run %v ok %v csmith %v in %v", cc, ccgo, build, run, ok, cs, d)
+	if *oEdit {
+		fmt.Printf("CSmith\tcc %v ccgo %v build %v run %v ok %v csmith %v in %v\n", cc, ccgo, build, run, ok, cs, d)
 	}
 }

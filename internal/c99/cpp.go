@@ -993,6 +993,10 @@ func (c *cpp) directive(r tokenReader, w tokenWriter, cs conds) conds {
 				break
 			}
 
+			if c.tweaks.IgnorePragmas {
+				break
+			}
+
 			panic(fmt.Errorf("%v", c.position(t)))
 		case idUndef:
 			if !cs.on() {

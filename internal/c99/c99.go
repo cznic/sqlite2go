@@ -138,10 +138,12 @@ type Tweaks struct {
 	EnableAnonymousStructFields bool // struct{int;}
 	EnableBinaryLiterals        bool // 0b101010 == 42
 	EnableEmptyStructs          bool // struct{}
+	EnableImplicitBuiltins      bool // Undefined printf becomes __builtin_printf.
 	EnableImplicitDeclarations  bool // eg. using exit(1) w/o #include <stdlib.h>
 	EnableOmitFuncDeclSpec      bool // foo() { ... } == int foo() { ... }
 	EnableReturnExprInVoidFunc  bool // void f() { return 1; }
 	EnableTrigraphs             bool
+	IgnorePragmas               bool // #pragma
 	InjectFinalNL               bool // Specs want the source to always end in a newline.
 	cppExpandTest               bool // Fake includes
 }

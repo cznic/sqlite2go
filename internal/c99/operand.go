@@ -519,11 +519,11 @@ func (o Operand) integerPromotion(m Model) Operand {
 				bits := m[Int].Size * 8
 				switch {
 				case x.IsUnsigned():
-					if o.Bits < bits-1 {
+					if o.Bits < bits {
 						return o.convertTo(m, Int)
 					}
 				default:
-					if o.Bits < bits {
+					if o.Bits < bits-1 {
 						return o.convertTo(m, Int)
 					}
 				}
@@ -705,6 +705,8 @@ func (o Operand) mul(ctx *context, p Operand) (r Operand) {
 	switch x := o.Value.(type) {
 	case *ir.Int64Value:
 		return Operand{Type: o.Type, Value: &ir.Int64Value{Value: x.Value * p.Value.(*ir.Int64Value).Value}}.normalize(ctx.model)
+	case *ir.Float32Value:
+		return Operand{Type: o.Type, Value: &ir.Float32Value{Value: x.Value * p.Value.(*ir.Float32Value).Value}}
 	case *ir.Float64Value:
 		return Operand{Type: o.Type, Value: &ir.Float64Value{Value: x.Value * p.Value.(*ir.Float64Value).Value}}
 	default:

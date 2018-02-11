@@ -1028,44 +1028,16 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 	case ExprOr: // Expr '|' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).or(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
 	case ExprFloat: // FLOATCONST
-		s0 := string(dict.S(n.Token.Val))
-		s := s0
-	loop2:
-		for i := len(s) - 1; i > 0; i-- {
-			switch s0[i] {
-			case 'l', 'L', 'f', 'F':
-				s = s[:i]
-			default:
-				break loop2
-			}
-		}
-
-		var v float64
-		var err error
-		switch {
-		case strings.Contains(s, "p"):
-			var bf *big.Float
-			bf, _, err = big.ParseFloat(s, 0, 53, big.ToNearestEven)
-			if err == nil {
-				v, _ = bf.Float64()
-			}
-		default:
-			v, err = strconv.ParseFloat(s, 64)
-		}
-		if err != nil {
-			panic(ctx.position(n))
-		}
-
-		// [0]6.4.4.2
-		switch suff := strings.ToUpper(s0[len(s):]); suff {
-		case "":
-			n.Operand = Operand{Type: Double, Value: &ir.Float64Value{Value: v}}
-		default:
-			panic(fmt.Errorf("%v: TODO %q %q %v", ctx.position(n), s, suff, v))
-		}
+		n.floatConst(ctx)
 	case ExprIdent: // IDENTIFIER
 		// [0]6.5.1
 		nm := n.Token.Val
+		if n.Scope.LookupIdent(nm) == nil && ctx.tweaks.EnableImplicitBuiltins {
+			nm2 := dict.SID("__builtin_" + string(dict.S(nm)))
+			if n.Scope.LookupIdent(nm2) != nil {
+				nm = nm2
+			}
+		}
 		switch x := n.Scope.LookupIdent(nm).(type) {
 		case *Declarator:
 			n.Declarator = x
@@ -1137,6 +1109,12 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 	case ExprInt: // INTCONST
 		s0 := string(dict.S(n.Token.Val))
 		s := s0
+		if strings.Contains(s, "p") {
+			n.Case = ExprFloat
+			n.floatConst(ctx)
+			break
+		}
+
 	loop:
 		for i := len(s) - 1; i > 0; i-- {
 			switch s0[i] {
@@ -1255,6 +1233,46 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			//dbg("", ctx.position(n))
 			panic(fmt.Errorf("%T", x))
 		}
+	}
+}
+
+func (n *Expr) floatConst(ctx *context) {
+	s0 := string(dict.S(n.Token.Val))
+	s := s0
+loop2:
+	for i := len(s) - 1; i > 0; i-- {
+		switch s0[i] {
+		case 'l', 'L', 'f', 'F':
+			s = s[:i]
+		default:
+			break loop2
+		}
+	}
+
+	var v float64
+	var err error
+	switch {
+	case strings.Contains(s, "p"):
+		var bf *big.Float
+		bf, _, err = big.ParseFloat(s, 0, 53, big.ToNearestEven)
+		if err == nil {
+			v, _ = bf.Float64()
+		}
+	default:
+		v, err = strconv.ParseFloat(s, 64)
+	}
+	if err != nil {
+		panic(ctx.position(n))
+	}
+
+	// [0]6.4.4.2
+	switch suff := strings.ToUpper(s0[len(s):]); suff {
+	case "", "l", "L":
+		n.Operand = Operand{Type: Double, Value: &ir.Float64Value{Value: v}}
+	case "f", "F":
+		n.Operand = Operand{Type: Float, Value: &ir.Float32Value{Value: float32(v)}}
+	default:
+		panic(fmt.Errorf("%v: TODO %q %q %v", ctx.position(n), s, suff, v))
 	}
 }
 
@@ -1472,6 +1490,10 @@ func (n *DirectDeclarator) fpScope(ctx *context) *Scope {
 	case DirectDeclaratorParamList: // DirectDeclarator '(' ParameterTypeList ')'
 		switch n.DirectDeclarator.Case {
 		case DirectDeclaratorParen:
+			if n.DirectDeclarator.Declarator.DirectDeclarator.Case == DirectDeclaratorIdent {
+				return n.paramScope
+			}
+
 			return n.DirectDeclarator.Declarator.DirectDeclarator.fpScope(ctx)
 		case DirectDeclaratorIdent:
 			return n.paramScope
@@ -1517,6 +1539,20 @@ func (n *DirectDeclarator) parameterNames() (r []int) {
 			}
 			return r
 		case DirectDeclaratorParen:
+			if n.DirectDeclarator.Declarator.DirectDeclarator.Case == DirectDeclaratorIdent {
+				for l := n.ParameterTypeList.ParameterList; l != nil; l = l.ParameterList {
+					switch n := l.ParameterDeclaration; n.Case {
+					case ParameterDeclarationAbstract: // DeclarationSpecifiers AbstractDeclaratorOpt
+						r = append(r, 0)
+					case ParameterDeclarationDeclarator: // DeclarationSpecifiers Declarator
+						r = append(r, n.Declarator.Name())
+					default:
+						panic(n.Case)
+					}
+				}
+				return r
+			}
+
 			return n.DirectDeclarator.Declarator.DirectDeclarator.parameterNames()
 		default:
 			panic(n.DirectDeclarator.Case)
