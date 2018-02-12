@@ -691,7 +691,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			n.Operand.Value = &ir.Int64Value{Value: 0}
 		}
 	case ExprMod: // Expr '%' Expr
-		binop(ctx, n, arr2ptr, fn)
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).mod(ctx, n, n.Expr2.eval(ctx, arr2ptr, fn)) // [0]6.5.5
 	case ExprAnd: // Expr '&' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).and(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
@@ -779,7 +778,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			}
 		}
 	case ExprMul: // Expr '*' Expr
-		binop(ctx, n, arr2ptr, fn)
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).mul(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
 	case ExprAdd: // Expr '+' Expr
 		lhs := n.Expr.eval(ctx, arr2ptr, fn)
@@ -792,8 +790,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		// equivalent to adding 1.)
 		switch {
 		case lhs.isArithmeticType() && rhs.isArithmeticType():
-			binop(ctx, n, arr2ptr, fn)
-			n.Operand = lhs.add(ctx, rhs)
+			n.Operand = n.Expr.eval(ctx, arr2ptr, fn).add(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
 		case lhs.isPointerType() && rhs.isIntegerType():
 			n.Operand = lhs
 			n.Operand.Value = nil
@@ -813,7 +810,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			// both operands have arithmetic type;
 			lhs.isArithmeticType() && rhs.isArithmeticType():
 
-			binop(ctx, n, arr2ptr, fn)
 			n.Operand = n.Expr.eval(ctx, arr2ptr, fn).sub(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
 		case
 			// both operands are pointers to qualified or
@@ -898,7 +894,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			d.Referenced++
 		}
 	case ExprDiv: // Expr '/' Expr
-		binop(ctx, n, arr2ptr, fn)
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).div(ctx, n, n.Expr2.eval(ctx, arr2ptr, fn)) // [0]6.5.5
 	case ExprLt: // Expr '<' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).lt(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
@@ -1263,18 +1258,6 @@ loop2:
 		n.Operand = Operand{Type: Float, Value: &ir.Float32Value{Value: float32(v)}}
 	default:
 		panic(fmt.Errorf("%v: TODO %q %q %v", ctx.position(n), s, suff, v))
-	}
-}
-
-func binop(ctx *context, n *Expr, arr2ptr bool, fn *Declarator) {
-	n.Expr.eval(ctx, arr2ptr, fn)
-	n.Expr2.eval(ctx, arr2ptr, fn)
-	l, r := UsualArithmeticConversions(ctx.model, n.Expr.Operand, n.Expr2.Operand)
-	if n.Expr.Operand.Value != nil {
-		n.Expr.Operand = l
-	}
-	if n.Expr2.Operand.Value != nil {
-		n.Expr2.Operand = r
 	}
 }
 

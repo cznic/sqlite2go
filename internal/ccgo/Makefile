@@ -34,7 +34,7 @@ edit:
 editor:
 	gofmt -l -s -w *.go
 	go test -i
-	go test -edit 2>&1 | tee log
+	go test -timeout 1h -edit -nocmp 2>&1 | tee log #TODO- -nocmp
 	# go build
 	go install github.com/cznic/sqlite2go
 

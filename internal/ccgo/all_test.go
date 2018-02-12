@@ -6,9 +6,9 @@ package ccgo
 
 //	TCC	cc 51 ccgo 51 build 51 run 51 ok 51
 //	Other	cc 6 ccgo 6 build 6 run 6 ok 6
-//	GCC	cc 917 ccgo 903 build 888 run 888 ok 888
+//	GCC	cc 917 ccgo 905 build 890 run 890 ok 890
 //	Shell	cc 1 ccgo 1 build 1 run 1 ok 1
-//	CSmith	cc 107 ccgo 107 build 107 run 107 ok 107 (100.00%) csmith 107 (1m0.749035546s)
+//	CSmith	cc 47 ccgo 47 build 47 run 47 ok 46 (97.87%) csmith 47 (1m0.28278186s)
 
 import (
 	"bufio"
@@ -94,6 +94,7 @@ var (
 	oCCGO   = flag.Bool("ccgo", false, "full ccgo errors")
 	oCSmith = flag.Duration("csmith", time.Minute, "") // Use something like -timeout 25h -csmith 24h for real testing.
 	oEdit   = flag.Bool("edit", false, "")
+	oNoCmp  = flag.Bool("nocmp", false, "")
 	oRE     = flag.String("re", "", "")
 	re      *regexp.Regexp
 )
@@ -593,7 +594,7 @@ out:
 			// --max-array-len-per-dim <num>: limit array length per dimension to <num> (default 10).
 			"--max-block-depth", "1", //TODO --max-block-depth <num>: limit depth of nested blocks to <num> (default 5).
 			// --max-block-size <size>: limit the number of non-return statements in a block to <size> (default 4).
-			"--max-expr-complexity", "1", //TODO --max-expr-complexity <num>: limit expression complexities to <num> (default 10).
+			"--max-expr-complexity", "2", //TODO --max-expr-complexity <num>: limit expression complexities to <num> (default 10).
 			// --max-funcs <num>: limit the number of functions (besides main) to <num>  (default 10).
 			"--max-pointer-depth", "3", //TODO --max-pointer-depth <depth>: limit the indirect depth of pointers to <depth> (default 2).
 			// --max-struct-fields <num>: limit the number of struct fields to <num> (default 10).
@@ -628,7 +629,7 @@ out:
 
 		var gccOut []byte
 		func() {
-			ctx, cancel := context.WithTimeout(context.Background(), testTimeout/2)
+			ctx, cancel := context.WithTimeout(context.Background(), testTimeout/3)
 
 			defer cancel()
 
@@ -657,6 +658,10 @@ out:
 			if *oEdit {
 				fmt.Printf("cc %v ccgo %v build %v run %v ok %v (%.2f%%) csmith %v (%v)\n", cc, ccgo, build, run, ok, 100*float64(ok)/float64(cs), cs, time.Since(t0))
 			}
+			continue
+		}
+
+		if *oNoCmp {
 			continue
 		}
 

@@ -163,7 +163,6 @@ func (m Model) Layout(t Type) []FieldProperties {
 
 					r[i] = FieldProperties{Offset: off, Bitoff: bitoff, Bits: v.Bits}
 					bitoff = n
-					break
 				}
 			default:
 				if bitoff != 0 {

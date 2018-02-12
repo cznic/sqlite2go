@@ -312,7 +312,12 @@ func (g *gen) renderInitializer(b []byte, t c99.Type, n *c99.Initializer) {
 
 		switch x {
 		case c99.Float:
-			*(*float32)(unsafe.Pointer(&b[0])) = float32(n.Expr.Operand.Value.(*ir.Float64Value).Value)
+			switch x := n.Expr.Operand.Value.(type) {
+			case *ir.Float32Value:
+				*(*float32)(unsafe.Pointer(&b[0])) = x.Value
+			case *ir.Float64Value:
+				*(*float32)(unsafe.Pointer(&b[0])) = float32(x.Value)
+			}
 		case
 			c99.Double,
 			c99.LongDouble:

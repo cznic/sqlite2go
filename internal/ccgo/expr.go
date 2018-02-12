@@ -266,20 +266,22 @@ func (g *gen) void(n *c99.Expr) {
 				}
 			}
 		}
-	case c99.ExprDeref: // '*' Expr
-		g.w("_ = ")
-		g.value(n, false)
 	case
-		c99.ExprAnd,  // Expr '&' Expr
-		c99.ExprLAnd, // Expr "&&" Expr
-		c99.ExprLOr,  // Expr "||" Expr
-		c99.ExprLe:   // Expr "<=" Expr
+		c99.ExprAddrof, // '&' Expr
+		c99.ExprDeref:  // '*' Expr
+
+		g.w("_ = ")
+		g.value(n.Expr, false)
+	case
+		c99.ExprAnd,   // Expr '&' Expr
+		c99.ExprIdent, // IDENTIFIER
+		c99.ExprIndex, // Expr '[' ExprList ']'
+		c99.ExprLAnd,  // Expr "&&" Expr
+		c99.ExprLOr,   // Expr "||" Expr
+		c99.ExprLe:    // Expr "<=" Expr
 
 		g.w("_ = ")
 		g.value(n, false)
-	case c99.ExprAddrof: // '&' Expr
-		g.w("_ = ")
-		g.value(n.Expr, false)
 	default:
 		todo("", g.position0(n), n.Case, n.Operand) // void
 	}
@@ -300,30 +302,29 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 
 	defer g.w(")")
 
-	if n.Operand.Value == c99.Null {
-		g.w("%s", null)
-		return
-	}
-
-	if n.Operand.Value != nil && g.voidCanIgnore(n) {
-		g.constant(n)
-		return
-	}
-
 	switch n.Case {
 	case c99.ExprIdent: // IDENTIFIER
 		d := g.normalizeDeclarator(n.Declarator)
-		if d == nil { //TODO-
-			todo("", g.position0(n), n.Declarator == nil) //TODO-
-		} //TODO-
-		g.enqueue(d)
 		switch {
-		case d.Type.Kind() == c99.Function:
-			g.w("fp%d(%s)", g.registerType(g.fpTypes, d.Type), g.mangleDeclarator(d))
-		case g.escaped(d) && c99.UnderlyingType(d.Type).Kind() != c99.Array:
-			g.w(" *(*%s)(unsafe.Pointer(%s))", g.typ(d.Type), g.mangleDeclarator(d))
+		case d == nil:
+			if n.Operand.Type == nil || n.Operand.Value == nil {
+				todo("", g.position0(n), n.Operand)
+			}
+
+			// Enum const
+			g.w("%s(", g.typ(n.Operand.Type))
+			g.constant(n)
+			g.w(")")
 		default:
-			g.w("%s", g.mangleDeclarator(d))
+			g.enqueue(d)
+			switch {
+			case d.Type.Kind() == c99.Function:
+				g.w("fp%d(%s)", g.registerType(g.fpTypes, d.Type), g.mangleDeclarator(d))
+			case g.escaped(d) && c99.UnderlyingType(d.Type).Kind() != c99.Array:
+				g.w(" *(*%s)(unsafe.Pointer(%s))", g.typ(d.Type), g.mangleDeclarator(d))
+			default:
+				g.w("%s", g.mangleDeclarator(d))
+			}
 		}
 	case
 		c99.ExprEq, // Expr "==" Expr
@@ -383,7 +384,7 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 
 					g.value(l.Expr, false)
 				default:
-					if !g.voidCanIgnore(l.Expr) {
+					if !g.voidCanIgnore(l.Expr) && l.Expr.Case != c99.ExprIdent {
 						todo("", g.position0(l.Expr))
 					}
 				}
@@ -552,18 +553,42 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 		}
 	case c99.ExprAssign: // Expr '=' Expr
 		g.assignmentValue(n)
-	case c99.ExprLOr: // Expr "||" Expr
-		g.needBool2int++
-		g.w(" bool2int((")
-		g.value(n.Expr, false)
-		g.w(" != 0) || (")
-		g.value(n.Expr2, false)
-		g.w(" != 0))")
 	case c99.ExprLAnd: // Expr "&&" Expr
+		if g.voidCanIgnore(n) {
+			g.constant(n)
+			break
+		}
+
 		g.needBool2int++
+		if n.Expr.Operand.IsZero() {
+			g.w(" bool2int(")
+			g.value(n.Expr, false)
+			g.w(" != 0)")
+			break
+		}
+
 		g.w(" bool2int((")
 		g.value(n.Expr, false)
 		g.w(" != 0) && (")
+		g.value(n.Expr2, false)
+		g.w(" != 0))")
+	case c99.ExprLOr: // Expr "||" Expr
+		if g.voidCanIgnore(n) {
+			g.constant(n)
+			break
+		}
+
+		g.needBool2int++
+		if n.Expr.Operand.IsNonzero() {
+			g.w(" bool2int(")
+			g.value(n.Expr, false)
+			g.w(" != 0)")
+			break
+		}
+
+		g.w(" bool2int((")
+		g.value(n.Expr, false)
+		g.w(" != 0) || (")
 		g.value(n.Expr2, false)
 		g.w(" != 0))")
 	case c99.ExprCond: // Expr '?' ExprList ':' Expr
@@ -602,6 +627,7 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 				return
 			}
 		}
+
 		g.convert(n.Expr, t)
 	case c99.ExprPreInc: // "++" Expr
 		switch x := c99.UnderlyingType(n.Operand.Type).(type) {
@@ -903,6 +929,13 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 		}
 	case c99.ExprUnaryPlus: // '+' Expr
 		g.convert(n.Expr, n.Operand.Type)
+	case
+		c99.ExprInt,        // INTCONST
+		c99.ExprSizeofExpr, // "sizeof" Expr
+		c99.ExprSizeofType, // "sizeof" '(' TypeName ')'
+		c99.ExprString:     // STRINGLITERAL
+
+		g.constant(n)
 	default:
 		todo("", g.position0(n), n.Case, n.Operand) // value
 	}
@@ -946,11 +979,6 @@ func (g *gen) uintptr(n *c99.Expr, ignoreBits bool) {
 	g.w("(")
 
 	defer g.w(")")
-
-	if n.Operand.Value == c99.Null {
-		g.w("%s", null)
-		return
-	}
 
 	switch n.Case {
 	case c99.ExprIdent: // IDENTIFIER
@@ -1025,6 +1053,8 @@ func (g *gen) uintptr(n *c99.Expr, ignoreBits bool) {
 		default:
 			g.value(n.Expr, false)
 		}
+	case c99.ExprString: // STRINGLITERAL
+		g.constant(n)
 	default:
 		todo("", g.position0(n), n.Case, n.Operand) // uintptr
 	}
@@ -1036,10 +1066,11 @@ func (g *gen) voidCanIgnore(n *c99.Expr) bool {
 	}
 
 	switch n.Case {
+	case c99.ExprIdent: // IDENTIFIER
+		return n.Declarator == nil
 	case
 		c99.ExprChar,       // CHARCONST
 		c99.ExprFloat,      // FLOATCONST
-		c99.ExprIdent,      // IDENTIFIER
 		c99.ExprInt,        // INTCONST
 		c99.ExprSizeofExpr, // "sizeof" Expr
 		c99.ExprSizeofType, // "sizeof" '(' TypeName ')'
@@ -1138,10 +1169,6 @@ func (g *gen) voidCanIgnoreExprList(n *c99.ExprList) bool {
 }
 
 func (g *gen) constant(n *c99.Expr) {
-	if !g.voidCanIgnore(n) {
-		todo("", g.position0(n), n.Case)
-	}
-
 	switch x := n.Operand.Value.(type) {
 	case *ir.Float32Value:
 		switch {
@@ -1255,7 +1282,8 @@ func (g *gen) constant(n *c99.Expr) {
 			case y.Item.Kind() == c99.Function:
 				g.w("uintptr(%v)", uintptr(x.Value))
 			case n.Operand.Type.String() == vaListType && x.Value == 1:
-				g.w(" %s", ap)
+				todo("TODO-")
+				//TODO- g.w(" %s", ap)
 			default:
 				g.w("uintptr("+f+")", uintptr(x.Value))
 			}
@@ -1269,8 +1297,15 @@ func (g *gen) constant(n *c99.Expr) {
 		g.w(f, v)
 	case *ir.StringValue:
 		g.w(" ts+%d %s", g.allocString(int(x.StringID)), strComment(x))
+	case *ir.AddressValue:
+		if x == c99.Null {
+			g.w("%s", null)
+			return
+		}
+
+		todo("", g.position0(n))
 	default:
-		todo("%v: %T", g.position0(n), x)
+		todo("%v: %v %T(%v)", g.position0(n), n.Operand, x, x)
 	}
 }
 
@@ -1431,16 +1466,42 @@ func (g *gen) convert(n *c99.Expr, t c99.Type) {
 		return
 	}
 
+	if isVaList(n.Operand.Type) && !isVaList(t) {
+		g.w("%sVA%s(&", crt, g.typ(c99.UnderlyingType(t)))
+		g.value(n, false)
+		g.w(")")
+		return
+	}
+
 	if t.Kind() == c99.Ptr {
 		switch {
-		case n.Operand.Value == c99.Null || n.Operand.IsZero():
-			g.w("null")
+		case n.Operand.Value != nil && isVaList(t):
+			g.w("%s", ap)
+		case n.Operand.Type.Kind() == c99.Ptr:
+			g.value(n, false)
+		case isVaList(t):
+			switch x := n.Operand.Value.(type) {
+			case *ir.Int64Value:
+				if x.Value == 1 {
+					g.w("%s", ap)
+					return
+				}
+			default:
+				todo("%v, %T, %v %v -> %v", g.position0(n), x, n.Case, n.Operand, t)
+			}
+			todo("", g.position0(n))
 		case n.Operand.Type.IsIntegerType():
+			if n.Operand.Value != nil && g.voidCanIgnore(n) {
+				n.Operand.Type = t
+				g.constant(n)
+				return
+			}
+
 			g.w(" uintptr(")
 			g.value(n, false)
 			g.w(")")
 		default:
-			g.value(n, false)
+			todo("%v: %v -> %v, %T, %v", g.position0(n), n.Operand, t, t, c99.UnderlyingType(t))
 		}
 		return
 	}
