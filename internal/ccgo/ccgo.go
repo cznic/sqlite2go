@@ -77,6 +77,8 @@ type gen struct {
 	queue               list.List
 	rshTypes            map[string]int
 	setBitsTypes        map[string]int
+	shlTypes            map[string]int
+	shrTypes            map[string]int
 	strings             map[int]int64
 	subTypes            map[string]int
 	tCache              map[tCacheKey]string
@@ -125,6 +127,8 @@ func newGen(out io.Writer, in []*c99.TranslationUnit) *gen {
 		producedStructTags:  map[int]struct{}{},
 		rshTypes:            map[string]int{},
 		setBitsTypes:        map[string]int{},
+		shlTypes:            map[string]int{},
+		shrTypes:            map[string]int{},
 		strings:             map[int]int64{},
 		subTypes:            map[string]int{},
 		tCache:              map[tCacheKey]string{},
@@ -399,6 +403,48 @@ return r
 		g.w("\n\nfunc xor%d(n *%[2]s, m %[2]s) %[2]s { *n ^= m; return *n }", g.xorTypes[k], k)
 	}
 	a = a[:0]
+	for k := range g.shrTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		b := strings.Split(k, "|")
+		g.w(`
+
+func shr%d(n %[2]s, m int) %[2]s {
+	if m < 0 {
+		m = -m
+	}
+	if m >= %[3]s {
+		return n
+	}
+
+	return n >> uint(m)
+}
+`, g.shrTypes[k], b[1], b[0])
+	}
+	a = a[:0]
+	for k := range g.shlTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		b := strings.Split(k, "|")
+		g.w(`
+
+func shl%d(n %[2]s, m int) %[2]s {
+	if m < 0 {
+		m = -m
+	}
+	if m >= %[3]s {
+		return n
+	}
+
+	return n << uint(m)
+}
+`, g.shlTypes[k], b[1], b[0])
+	}
+	a = a[:0]
 	for k := range g.rshTypes {
 		a = append(a, k)
 	}
@@ -659,6 +705,20 @@ func (g *gen) registerType(m map[string]int, t c99.Type) int {
 
 func (g *gen) registerBitType(m map[string]int, field, packed c99.Type) int {
 	s := g.typ(field) + "|" + g.typ(packed)
+	if id := m[s]; id != 0 {
+		return id
+	}
+
+	m[s] = len(m) + 1
+	return len(m)
+}
+
+func (g *gen) registerShiftType(m map[string]int, t c99.Type) int {
+	b := 32
+	if g.model.Sizeof(t) > 4 {
+		b = 64
+	}
+	s := fmt.Sprintf("%d|%s", b, g.typ(t))
 	if id := m[s]; id != 0 {
 		return id
 	}

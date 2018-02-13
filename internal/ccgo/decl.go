@@ -121,7 +121,7 @@ func (g *gen) tld(n *c99.Declarator) {
 		return
 	}
 
-	g.w("\n\n// %s is defined at %v", g.mangleDeclarator(n), g.position(n))
+	g.w("\n\n// %s %s, escapes: %v, %v", g.mangleDeclarator(n), n.Type, g.escaped(n), g.position(n))
 	if g.isZeroInitializer(n.Initializer) {
 		if isVaList(n.Type) {
 			g.w("\nvar %s []interface{}", g.mangleDeclarator(n))

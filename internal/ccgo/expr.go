@@ -278,7 +278,8 @@ func (g *gen) void(n *c99.Expr) {
 		c99.ExprIndex, // Expr '[' ExprList ']'
 		c99.ExprLAnd,  // Expr "&&" Expr
 		c99.ExprLOr,   // Expr "||" Expr
-		c99.ExprLe:    // Expr "<=" Expr
+		c99.ExprLe,    // Expr "<=" Expr
+		c99.ExprMod:   // Expr '%' Expr
 
 		g.w("_ = ")
 		g.value(n, false)
@@ -301,6 +302,11 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 	g.w("(")
 
 	defer g.w(")")
+
+	if n.Operand.Value != nil && g.voidCanIgnore(n) {
+		g.constant(n)
+		return
+	}
 
 	switch n.Case {
 	case c99.ExprIdent: // IDENTIFIER
@@ -554,7 +560,7 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 	case c99.ExprAssign: // Expr '=' Expr
 		g.assignmentValue(n)
 	case c99.ExprLAnd: // Expr "&&" Expr
-		if g.voidCanIgnore(n) {
+		if n.Operand.Value != nil && g.voidCanIgnore(n) {
 			g.constant(n)
 			break
 		}
@@ -573,7 +579,7 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 		g.value(n.Expr2, false)
 		g.w(" != 0))")
 	case c99.ExprLOr: // Expr "||" Expr
-		if g.voidCanIgnore(n) {
+		if n.Operand.Value != nil && g.voidCanIgnore(n) {
 			g.constant(n)
 			break
 		}
@@ -760,24 +766,28 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 		g.value(n.Expr, false)
 		g.w(" == 0)")
 	case c99.ExprLsh: // Expr "<<" Expr
+		//TODO fix also the assign variant
 		if n.Expr.Operand.Bits != 0 {
 			g.w("(")
 			g.convert(n.Expr, n.Operand.Type)
-			g.w(" << uint(")
+			g.w(" << uint(") //TODO shl
 			g.value(n.Expr2, false)
 			g.w(")&%#x)", uint64(1)<<uint(n.Expr.Operand.Bits)-1)
 			return
 		}
 
+		g.w(" shl%d(", g.registerShiftType(g.shlTypes, c99.UnderlyingType(n.Operand.Type)))
 		g.convert(n.Expr, n.Operand.Type)
-		g.w(" << uint(")
+		g.w(", int(")
 		g.value(n.Expr2, false)
-		g.w(")")
+		g.w("))")
 	case c99.ExprRsh: // Expr ">>" Expr
+		//TODO fix also the assign variant
+		g.w(" shr%d(", g.registerShiftType(g.shrTypes, c99.UnderlyingType(n.Operand.Type)))
 		g.convert(n.Expr, n.Operand.Type)
-		g.w(" >> uint(")
+		g.w(", int(")
 		g.value(n.Expr2, false)
-		g.w(")")
+		g.w("))")
 	case c99.ExprUnaryMinus: // '-' Expr
 		g.w("- ")
 		g.convert(n.Expr, n.Operand.Type)
@@ -1066,11 +1076,10 @@ func (g *gen) voidCanIgnore(n *c99.Expr) bool {
 	}
 
 	switch n.Case {
-	case c99.ExprIdent: // IDENTIFIER
-		return n.Declarator == nil
 	case
 		c99.ExprChar,       // CHARCONST
 		c99.ExprFloat,      // FLOATCONST
+		c99.ExprIdent,      // IDENTIFIER
 		c99.ExprInt,        // INTCONST
 		c99.ExprSizeofExpr, // "sizeof" Expr
 		c99.ExprSizeofType, // "sizeof" '(' TypeName ')'
@@ -1084,7 +1093,6 @@ func (g *gen) voidCanIgnore(n *c99.Expr) bool {
 		c99.ExprAndAssign, // Expr "&=" Expr
 		c99.ExprAssign,    // Expr '=' Expr
 		c99.ExprCall,      // Expr '(' ArgumentExprListOpt ')'
-		c99.ExprDeref,     // '*' Expr
 		c99.ExprDivAssign, // Expr "/=" Expr
 		c99.ExprLshAssign, // Expr "<<=" Expr
 		c99.ExprModAssign, // Expr "%=" Expr
@@ -1133,12 +1141,13 @@ func (g *gen) voidCanIgnore(n *c99.Expr) bool {
 
 		return g.voidCanIgnore(n.Expr) && g.voidCanIgnore(n.Expr2)
 	case c99.ExprLAnd: // Expr "&&" Expr
-		return n.Operand.Value != nil && g.voidCanIgnore(n.Expr)
+		return g.voidCanIgnore(n.Expr) && g.voidCanIgnore(n.Expr2)
 	case c99.ExprLOr: // Expr "||" Expr
-		return n.Operand.Value != nil && g.voidCanIgnore(n.Expr)
+		return g.voidCanIgnore(n.Expr) && g.voidCanIgnore(n.Expr2)
 	case
 		c99.ExprAddrof,     // '&' Expr
 		c99.ExprCpl,        // '~' Expr
+		c99.ExprDeref,      // '*' Expr
 		c99.ExprNot,        // '!' Expr
 		c99.ExprPSelect,    // Expr "->" IDENTIFIER
 		c99.ExprSelect,     // Expr '.' IDENTIFIER
@@ -1307,7 +1316,7 @@ func (g *gen) constant(n *c99.Expr) {
 	default:
 		todo("%v: %v %T(%v)", g.position0(n), n.Operand, x, x)
 	}
-}
+} // constant
 
 func (g *gen) voidArithmeticAsop(n *c99.Expr) {
 	op, _ := c99.UsualArithmeticConversions(g.model, n.Expr.Operand, n.Expr2.Operand)
@@ -1367,7 +1376,7 @@ func (g *gen) assignmentValue(n *c99.Expr) {
 
 func (g *gen) binop(n *c99.Expr) {
 	l, r := n.Expr.Operand.Type, n.Expr2.Operand.Type
-	if n.Expr.Operand.Type.IsArithmeticType() && n.Expr2.Operand.Type.IsArithmeticType() {
+	if l.IsArithmeticType() && r.IsArithmeticType() {
 		op, _ := c99.UsualArithmeticConversions(g.model, n.Expr.Operand, n.Expr2.Operand)
 		l, r = op.Type, op.Type
 	}
@@ -1396,12 +1405,12 @@ func (g *gen) relop(n *c99.Expr) {
 	g.needBool2int++
 	g.w(" bool2int(")
 	l, r := n.Expr.Operand.Type, n.Expr2.Operand.Type
-	if n.Expr.Operand.Type.IsArithmeticType() && n.Expr2.Operand.Type.IsArithmeticType() {
+	if l.IsArithmeticType() && r.IsArithmeticType() {
 		op, _ := c99.UsualArithmeticConversions(g.model, n.Expr.Operand, n.Expr2.Operand)
 		l, r = op.Type, op.Type
 	}
 	switch {
-	case n.Expr.Operand.Type.Kind() == c99.Ptr || n.Expr2.Operand.Type.Kind() == c99.Ptr:
+	case l.Kind() == c99.Ptr || r.Kind() == c99.Ptr:
 		g.value(n.Expr, false)
 		g.w(" %s ", c99.TokSrc(n.Token))
 		g.value(n.Expr2, false)

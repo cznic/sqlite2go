@@ -694,6 +694,21 @@ func (o Operand) mod(ctx *context, n Node, p Operand) (r Operand) {
 		return
 	}
 
+	if o.IsZero() { // 0 % x == 0
+		return o
+	}
+
+	switch x := p.Value.(type) {
+	case *ir.Int64Value:
+		if x.Value == 1 || x.Value == -1 {
+			return Operand{Type: o.Type, Value: &ir.Int64Value{Value: 0}}.normalize(ctx.model) //  x % {1,-1} == 0
+		}
+	case nil:
+		return Operand{Type: o.Type}
+	default:
+		panic(fmt.Errorf("TODO %T", x))
+	}
+
 	if o.Value == nil || p.Value == nil {
 		return Operand{Type: o.Type}
 	}

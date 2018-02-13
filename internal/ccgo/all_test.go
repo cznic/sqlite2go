@@ -5,10 +5,12 @@
 package ccgo
 
 //	TCC	cc 51 ccgo 51 build 51 run 51 ok 51
-//	Other	cc 6 ccgo 6 build 6 run 6 ok 6
-//	GCC	cc 917 ccgo 905 build 890 run 890 ok 890
+//	Other	cc 7 ccgo 7 build 7 run 7 ok 7
+//	GCC	cc 917 ccgo 905 build 890 run 889 ok 889
 //	Shell	cc 1 ccgo 1 build 1 run 1 ok 1
 //	CSmith	cc 47 ccgo 47 build 47 run 47 ok 46 (97.87%) csmith 47 (1m0.28278186s)
+
+//TODO ../c99/testdata/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/pr70429.c: exit status 1
 
 import (
 	"bufio"
@@ -94,6 +96,7 @@ var (
 	oCCGO   = flag.Bool("ccgo", false, "full ccgo errors")
 	oCSmith = flag.Duration("csmith", time.Minute, "") // Use something like -timeout 25h -csmith 24h for real testing.
 	oEdit   = flag.Bool("edit", false, "")
+	oI      = flag.String("I", "", "")
 	oNoCmp  = flag.Bool("nocmp", false, "")
 	oRE     = flag.String("re", "", "")
 	re      *regexp.Regexp
@@ -341,7 +344,7 @@ func TestOther(t *testing.T) {
 		}
 
 		run0 := run
-		out, err := test(t, false, &cc, &ccgo, &build, &run, "", "", "", dir, []string{pth})
+		out, err := test(t, false, &cc, &ccgo, &build, &run, "", "", *oI, dir, []string{pth})
 		if err != nil {
 			t.Errorf("%v: %v", pth, err)
 			continue
@@ -566,7 +569,7 @@ out:
 		}
 
 		if err := exec.Command(csmith, "-o", mainC,
-			"--no-argc",      // --argc | --no-argc: genereate main function with/without argv and argc being passed (enabled by default).
+			"--argc",         // --argc | --no-argc: genereate main function with/without argv and argc being passed (enabled by default).
 			"--arrays",       // --arrays | --no-arrays: enable | disable arrays (enabled by default).
 			"--no-bitfields", //TODO --bitfields | --no-bitfields: enable | disable full-bitfields structs (disabled by default).
 			// --builtin-function-prob <num>: set the probability of choosing a builtin function (default is 20).
@@ -589,14 +592,14 @@ out:
 			// --lang-cpp : generate C++ code (C by default).
 			"--longlong", // --longlong| --no-longlong: enable | disable long long (enabled by default).
 			// --main | --nomain: enable | disable to generate main function (enabled by default).
-			"--no-math64", //TODO --math64 | --no-math64: enable | disable 64-bit math ops (enabled by default).
-			// --max-array-dim <num>: limit array dimensions to <num>. (default 3)
+			"--no-math64",          //TODO --math64 | --no-math64: enable | disable 64-bit math ops (enabled by default).
+			"--max-array-dim", "1", //TODO --max-array-dim <num>: limit array dimensions to <num>. (default 3)
 			// --max-array-len-per-dim <num>: limit array length per dimension to <num> (default 10).
 			"--max-block-depth", "1", //TODO --max-block-depth <num>: limit depth of nested blocks to <num> (default 5).
 			// --max-block-size <size>: limit the number of non-return statements in a block to <size> (default 4).
 			"--max-expr-complexity", "2", //TODO --max-expr-complexity <num>: limit expression complexities to <num> (default 10).
 			// --max-funcs <num>: limit the number of functions (besides main) to <num>  (default 10).
-			"--max-pointer-depth", "3", //TODO --max-pointer-depth <depth>: limit the indirect depth of pointers to <depth> (default 2).
+			"--max-pointer-depth", "1", //TODO --max-pointer-depth <depth>: limit the indirect depth of pointers to <depth> (default 2).
 			// --max-struct-fields <num>: limit the number of struct fields to <num> (default 10).
 			// --max-union-fields <num>: limit the number of union fields to <num> (default 5).
 			"--muls", // --muls | --no-muls: enable | disable multiplications (enabled by default).
@@ -628,14 +631,17 @@ out:
 		}
 
 		var gccOut []byte
+		var gccT0 time.Time
+		var gccT time.Duration
 		func() {
 			ctx, cancel := context.WithTimeout(context.Background(), testTimeout/3)
 
 			defer cancel()
 
-			gccOut, err = exec.CommandContext(ctx, filepath.Join(dir, gccBin)).CombinedOutput()
+			gccT0 = time.Now()
+			gccOut, err = exec.CommandContext(ctx, filepath.Join(dir, gccBin), "1").CombinedOutput()
+			gccT = time.Since(gccT0)
 		}()
-
 		if err != nil {
 			continue
 		}
@@ -643,10 +649,10 @@ out:
 		cs++
 		build0 := build
 		os.Remove("main.go")
-		ccgoOut, err := test(t, false, &cc, &ccgo, &build, &run, "", "", inc, dir, []string{mainC})
+		ccgoOut, err := test(t, false, &cc, &ccgo, &build, &run, "", "", inc, dir, []string{mainC}, "1")
 		if err != nil {
 			t.Log(err)
-			csmithFatal(t, mainC, gccOut, ccgoOut, cc, ccgo, build, run, ok, cs)
+			csmithFatal(t, mainC, gccOut, ccgoOut, cc, ccgo, build, run, ok, cs, gccT)
 		}
 
 		if build == build0 {
@@ -665,7 +671,7 @@ out:
 			continue
 		}
 
-		csmithFatal(t, mainC, gccOut, ccgoOut, cc, ccgo, build, run, ok, cs)
+		csmithFatal(t, mainC, gccOut, ccgoOut, cc, ccgo, build, run, ok, cs, gccT)
 	}
 	d := time.Since(t0)
 	t.Logf("cc %v ccgo %v build %v run %v ok %v (%.2f%%) csmith %v (%v)", cc, ccgo, build, run, ok, 100*float64(ok)/float64(cs), cs, d)
@@ -674,7 +680,7 @@ out:
 	}
 }
 
-func csmithFatal(t *testing.T, mainC string, gccOut, ccgoOut []byte, cc, ccgo, build, run, ok, cs int) {
+func csmithFatal(t *testing.T, mainC string, gccOut, ccgoOut []byte, cc, ccgo, build, run, ok, cs int, gccT time.Duration) {
 	b, err := ioutil.ReadFile(mainC)
 	if err != nil {
 		t.Fatal(err)
@@ -691,9 +697,11 @@ func csmithFatal(t *testing.T, mainC string, gccOut, ccgoOut []byte, cc, ccgo, b
 ==== Go code (if any ) ========================================================
 %s
 ===============================================================================
+ GCC   time: %v
  GCC output: %s
 CCGO output: %s
 cc %v ccgo %v build %v run %v ok %v (%.2f%%) csmith %v (%v)
 `,
-		b, b2, gccOut, ccgoOut, cc, ccgo, build, run, ok, 100*float64(ok)/float64(cs), cs, *oCSmith)
+		b, b2, gccT, bytes.TrimSpace(gccOut), bytes.TrimSpace(ccgoOut),
+		cc, ccgo, build, run, ok, 100*float64(ok)/float64(cs), cs, *oCSmith)
 }
