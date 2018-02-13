@@ -411,10 +411,11 @@ return r
 		b := strings.Split(k, "|")
 		g.w(`
 
-func shr%d(n %[2]s, m int) %[2]s {
+func shr%[1]d(n %[2]s, m int) %[2]s {
 	if m < 0 {
-		m = -m
+		return shl%[1]d(n, -m)
 	}
+
 	if m >= %[3]s {
 		return n
 	}
@@ -432,10 +433,11 @@ func shr%d(n %[2]s, m int) %[2]s {
 		b := strings.Split(k, "|")
 		g.w(`
 
-func shl%d(n %[2]s, m int) %[2]s {
+func shl%[1]d(n %[2]s, m int) %[2]s {
 	if m < 0 {
-		m = -m
+		return shr%[1]d(n, -m)
 	}
+
 	if m >= %[3]s {
 		return n
 	}

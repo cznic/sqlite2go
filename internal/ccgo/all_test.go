@@ -6,11 +6,8 @@ package ccgo
 
 //	TCC	cc 51 ccgo 51 build 51 run 51 ok 51
 //	Other	cc 7 ccgo 7 build 7 run 7 ok 7
-//	GCC	cc 917 ccgo 905 build 890 run 889 ok 889
+//	GCC	cc 916 ccgo 904 build 889 run 889 ok 889
 //	Shell	cc 1 ccgo 1 build 1 run 1 ok 1
-//	CSmith	cc 47 ccgo 47 build 47 run 47 ok 46 (97.87%) csmith 47 (1m0.28278186s)
-
-//TODO ../c99/testdata/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/pr70429.c: exit status 1
 
 import (
 	"bufio"
@@ -391,6 +388,7 @@ func TestGCC(t *testing.T) {
 
 		"bitfld-1.c": {}, //TODO bits, arithmetic precision
 		"bitfld-3.c": {}, //TODO bits, arithmetic precision
+		"pr70429.c":  {}, //TODO https://github.com/golang/go/issues/23812
 	}
 
 	if s := *oRE; s != "" {

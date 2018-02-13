@@ -776,14 +776,18 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 			return
 		}
 
-		g.w(" shl%d(", g.registerShiftType(g.shlTypes, c99.UnderlyingType(n.Operand.Type)))
+		t := c99.UnderlyingType(n.Operand.Type)
+		g.registerShiftType(g.shrTypes, t)
+		g.w(" shl%d(", g.registerShiftType(g.shlTypes, t))
 		g.convert(n.Expr, n.Operand.Type)
 		g.w(", int(")
 		g.value(n.Expr2, false)
 		g.w("))")
 	case c99.ExprRsh: // Expr ">>" Expr
 		//TODO fix also the assign variant
-		g.w(" shr%d(", g.registerShiftType(g.shrTypes, c99.UnderlyingType(n.Operand.Type)))
+		t := c99.UnderlyingType(n.Operand.Type)
+		g.registerShiftType(g.shlTypes, t)
+		g.w(" shr%d(", g.registerShiftType(g.shrTypes, t))
 		g.convert(n.Expr, n.Operand.Type)
 		g.w(", int(")
 		g.value(n.Expr2, false)
