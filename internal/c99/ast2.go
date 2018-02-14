@@ -453,14 +453,26 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 
 			n.Operand = lhs.ne(ctx, rhs)
 		case
-			// both operands are pointers to qualified or unqualified versions of compatible types
-			lhs.isPointerType() && rhs.isPointerType() && lhs.Type.IsCompatible(rhs.Type):
+			// one operand is a pointer and the other is a null
+			// pointer constant.
+			lhs.isPointerType() && rhs.isNullPtrConst():
 
 			n.Operand = Operand{Type: Int}
+			if n.Expr.Case == ExprAddrof { // &expr != NULL is statically true
+				n.Operand.Value = &ir.Int64Value{Value: 1}
+			}
 		case
 			// one operand is a pointer and the other is a null
 			// pointer constant.
-			lhs.isPointerType() && rhs.isIntegerType() && rhs.IsZero():
+			lhs.isNullPtrConst() && rhs.isPointerType():
+
+			n.Operand = Operand{Type: Int}
+			if n.Expr2.Case == ExprAddrof { // NULL != &expr is statically true
+				n.Operand.Value = &ir.Int64Value{Value: 1}
+			}
+		case
+			// both operands are pointers to qualified or unqualified versions of compatible types
+			lhs.isPointerType() && rhs.isPointerType() && lhs.Type.IsCompatible(rhs.Type):
 
 			n.Operand = Operand{Type: Int}
 		default:
@@ -641,20 +653,26 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 
 			n.Operand = lhs.eq(ctx, rhs)
 		case
+			// one operand is a pointer and the other is a null
+			// pointer constant.
+			lhs.isPointerType() && rhs.isNullPtrConst():
+
+			n.Operand = Operand{Type: Int}
+			if n.Expr.Case == ExprAddrof { // &expr == NULL is statically false
+				n.Operand.Value = &ir.Int64Value{Value: 0}
+			}
+		case
+			// one operand is a pointer and the other is a null
+			// pointer constant.
+			lhs.isNullPtrConst() && rhs.isPointerType():
+
+			n.Operand = Operand{Type: Int}
+			if n.Expr2.Case == ExprAddrof { // NULL == &expr is statically false
+				n.Operand.Value = &ir.Int64Value{Value: 0}
+			}
+		case
 			// both operands are pointers to qualified or unqualified versions of compatible types
 			lhs.isPointerType() && rhs.isPointerType() && lhs.Type.IsCompatible(rhs.Type):
-
-			n.Operand = Operand{Type: Int}
-		case
-			// one operand is a pointer and the other is a null
-			// pointer constant.
-			lhs.isPointerType() && rhs.isIntegerType() && rhs.IsZero():
-
-			n.Operand = Operand{Type: Int}
-		case
-			// one operand is a pointer and the other is a null
-			// pointer constant.
-			lhs.isIntegerType() && lhs.IsZero() && rhs.isPointerType():
 
 			n.Operand = Operand{Type: Int}
 		default:
@@ -947,7 +965,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			n.Operand = Operand{Type: a.Type}
 		case
 			// one operand is a pointer and the other is a null pointer constant
-			a.isIntegerType() && a.IsZero() && b.isPointerType():
+			a.isNullPtrConst() && b.isPointerType():
 
 			n.Operand = Operand{Type: b.Type}
 			if cond.IsNonzero() {
@@ -956,7 +974,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			}
 		case
 			// one operand is a pointer and the other is a null pointer constant
-			a.isPointerType() && b.isIntegerType() && b.IsZero():
+			a.isPointerType() && b.isNullPtrConst():
 
 			n.Operand = Operand{Type: a.Type}
 			if cond.IsZero() {

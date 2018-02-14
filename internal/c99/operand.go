@@ -596,6 +596,10 @@ func (o Operand) IsZero() bool {
 	}
 }
 
+func (o Operand) isNullPtrConst() bool {
+	return o.isIntegerType() && o.IsZero() || o.Value == Null
+}
+
 func (o Operand) le(ctx *context, p Operand) (r Operand) {
 	r = Operand{Type: Int}
 	if o.Value == nil || p.Value == nil {

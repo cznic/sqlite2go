@@ -854,7 +854,7 @@ func (t *PointerType) assign(ctx *context, op Operand) (r Operand) {
 	case
 		// the left operand is a pointer and the right is a null
 		// pointer constant;
-		op.isIntegerType() && op.IsZero():
+		op.isNullPtrConst():
 
 		return Operand{Type: t, Value: Null}
 	default:
