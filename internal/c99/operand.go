@@ -86,11 +86,11 @@ func newBoolDomain() *interval.Int128 {
 }
 
 func newFalseDomain() *interval.Int128 {
-	return &interval.Int128{Cls: interval.Degenerate, A: mathutil.Int128{Lo: 0}, B: mathutil.Int128{Hi: 0}}
+	return &interval.Int128{Cls: interval.Degenerate}
 }
 
 func newTrueDomain() *interval.Int128 {
-	return &interval.Int128{Cls: interval.Degenerate, A: mathutil.Int128{Lo: 1}, B: mathutil.Int128{Hi: 1}}
+	return &interval.Int128{Cls: interval.Degenerate, A: mathutil.Int128{Lo: 1}, B: mathutil.Int128{Lo: 1}}
 }
 
 // UsualArithmeticConversions performs transformations of operands of a binary
