@@ -133,3 +133,11 @@ func (n *Expr) dumpValues(s string) {
 		panic(n.Case.String())
 	}
 }
+
+func (n *Expr) dumpDomains(s string) {
+	fmt.Printf("%s%v %v\n", s, n.Case, n.Operand.Domain)
+	switch n.Case {
+	default:
+		panic(n.Case.String())
+	}
+}

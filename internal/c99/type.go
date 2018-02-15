@@ -979,7 +979,7 @@ func (t *StructType) assign(ctx *context, op Operand) Operand {
 func (t *StructType) IsPointerType() bool { panic("TODO") }
 
 // IsIntegerType implements Type.
-func (t *StructType) IsIntegerType() bool { panic("TODO") }
+func (t *StructType) IsIntegerType() bool { return false }
 
 // IsScalarType implements Type.
 func (t *StructType) IsScalarType() bool { panic("TODO") }
@@ -1296,7 +1296,7 @@ func (t *TaggedUnionType) assign(ctx *context, op Operand) Operand {
 func (t *TaggedUnionType) IsPointerType() bool { panic("TODO") }
 
 // IsIntegerType implements Type.
-func (t *TaggedUnionType) IsIntegerType() bool { panic("TODO") }
+func (t *TaggedUnionType) IsIntegerType() bool { return false }
 
 // IsScalarType implements Type.
 func (t *TaggedUnionType) IsScalarType() bool { panic("TODO") }
