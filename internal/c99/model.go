@@ -403,6 +403,7 @@ func (m Model) defaultArgumentPromotion(op Operand) (r Operand) {
 			case
 				Char,
 				Int,
+				Long,
 				LongLong,
 				SChar,
 				Short,

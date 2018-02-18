@@ -85,14 +85,6 @@ func newBoolDomain() *interval.Int128 {
 	return &interval.Int128{Cls: interval.Closed, B: mathutil.Int128{Lo: 1}}
 }
 
-func newFalseDomain() *interval.Int128 {
-	return &interval.Int128{Cls: interval.Degenerate}
-}
-
-func newTrueDomain() *interval.Int128 {
-	return &interval.Int128{Cls: interval.Degenerate, A: mathutil.Int128{Lo: 1}, B: mathutil.Int128{Lo: 1}}
-}
-
 // UsualArithmeticConversions performs transformations of operands of a binary
 // operation. The function panics if either of the operands is not an
 // artithmetic type.
@@ -246,7 +238,7 @@ func newIntConst(ctx *context, n Node, v uint64, t ...TypeKind) (r Operand) {
 }
 
 func (o Operand) isArithmeticType() bool { return o.Type.IsArithmeticType() }
-func (o Operand) String() string         { return fmt.Sprintf("(%v, %v)", o.Type, o.Value) }
+func (o Operand) String() string         { return fmt.Sprintf("(%v, %v, %v)", o.Type, o.Value, o.Domain) }
 func (o Operand) isIntegerType() bool    { return o.Type.IsIntegerType() }
 func (o Operand) isPointerType() bool    { return o.Type.IsPointerType() }
 func (o Operand) isScalarType() bool     { return o.Type.IsScalarType() } // [0]6.2.5-21
@@ -255,7 +247,7 @@ func (o Operand) isSigned() bool         { return isSigned[o.Type.Kind()] }
 func (o Operand) add(ctx *context, p Operand) (r Operand) {
 	o, p = UsualArithmeticConversions(ctx.model, o, p)
 	if o.Value == nil || p.Value == nil {
-		return Operand{Type: o.Type}
+		return Operand{Type: o.Type}.normalize(ctx.model)
 	}
 
 	switch x := o.Value.(type) {
@@ -272,9 +264,27 @@ func (o Operand) and(ctx *context, p Operand) (r Operand) {
 	if !o.isIntegerType() || !p.isIntegerType() {
 		panic("TODO")
 	}
+
 	o, p = UsualArithmeticConversions(ctx.model, o, p)
+	if o.IsZero() || p.IsZero() {
+		return Operand{Type: o.Type, Value: &ir.Int64Value{Value: 0}}.normalize(ctx.model)
+	}
+
+	if a, b := o.Domain, p.Domain; a != nil && b != nil {
+		if a.Class() > b.Class() {
+			a, b = b, a
+		}
+		switch x, y := a.(*interval.Int128), b.(*interval.Int128); {
+		case x.Class() == interval.Degenerate && y.Class() == interval.Closed:
+			bits := mathutil.Max(mathutil.BitLenUint64(uint64(y.A.Lo)), mathutil.BitLenUint64(uint64(y.B.Lo)))
+			if bits < 64 && x.A.Lo&(1<<uint(bits)-1) == 0 {
+				return Operand{Type: o.Type, Value: &ir.Int64Value{Value: 0}}.normalize(ctx.model)
+			}
+		}
+	}
+
 	if o.Value == nil || p.Value == nil {
-		return Operand{Type: o.Type}
+		return Operand{Type: o.Type}.normalize(ctx.model)
 	}
 
 	switch x := o.Value.(type) {
@@ -323,8 +333,28 @@ func (o Operand) convertTo(m Model, t Type) (r Operand) {
 	}
 
 	if o.Value == nil {
-		if o.isIntegerType() && t.IsIntegerType() && o.Type.IsUnsigned() != t.IsUnsigned() {
-			o.Domain = nil
+		if o.isIntegerType() && t.IsIntegerType() {
+			if o.Domain == nil {
+				o.Domain = domain(o.Type, m)
+			}
+			d := o.Domain.(*interval.Int128)
+			switch {
+			case o.Type.IsUnsigned() && !t.IsUnsigned():
+				td := domain(t, m)
+				if !isSubset(o.Domain, td) {
+					o.Domain = td
+				}
+			case !o.Type.IsUnsigned() && t.IsUnsigned():
+				hi := d.A
+				hi, _ = hi.Add(hi)
+				hi, _ = hi.Add((&mathutil.Int128{}).SetInt64(1))
+				hi, _ = hi.Neg()
+				if d.B.Cmp(hi) > 0 {
+					hi = d.B
+				}
+				d.A = mathutil.Int128{}
+				d.B = hi
+			}
 		}
 		o.Type = t
 		return o.normalize(m)
@@ -414,22 +444,22 @@ func (o Operand) div(ctx *context, n Node, p Operand) (r Operand) {
 	o, p = UsualArithmeticConversions(ctx.model, o, p)
 	if p.IsZero() {
 		ctx.err(n, "division by zero")
-		return
+		return Operand{Type: o.Type}.normalize(ctx.model)
 	}
 
 	if o.IsZero() { // 0 / x == 0
-		return o
+		return o.normalize(ctx.model)
 	}
 
 	if o.Value == nil || p.Value == nil {
-		return Operand{Type: o.Type}
+		return Operand{Type: o.Type, Domain: o.Domain}.normalize(ctx.model)
 	}
 
 	switch x := o.Value.(type) {
 	case *ir.Int64Value:
 		return Operand{Type: o.Type, Value: &ir.Int64Value{Value: x.Value / p.Value.(*ir.Int64Value).Value}}.normalize(ctx.model)
 	case *ir.Float64Value:
-		return Operand{Type: o.Type, Value: &ir.Float64Value{Value: x.Value / p.Value.(*ir.Float64Value).Value}}
+		return Operand{Type: o.Type, Value: &ir.Float64Value{Value: x.Value / p.Value.(*ir.Float64Value).Value}}.normalize(ctx.model)
 	default:
 		panic(fmt.Errorf("TODO %T", x))
 	}
@@ -473,15 +503,63 @@ func (o Operand) ge(ctx *context, p Operand) (r Operand) {
 	if o.isArithmeticType() && p.isArithmeticType() {
 		o, p = UsualArithmeticConversions(ctx.model, o, p)
 	}
-	if o.Value == nil || p.Value == nil {
-		if a, b := o.Domain, p.Domain; a != nil && b != nil && interval.Intersection(a, b).Class() == interval.Empty {
-			switch {
-			case a.(*interval.Int128).B.Cmp(b.(*interval.Int128).A) < 0:
-				r.Value = &ir.Int64Value{Value: 0}
-			case a.(*interval.Int128).A.Cmp(b.(*interval.Int128).B) >= 0:
-				r.Value = &ir.Int64Value{Value: 1}
+	if a, b := o.Domain, p.Domain; a != nil && b != nil {
+		x, y := a.(*interval.Int128), b.(*interval.Int128)
+		switch x.Class() {
+		case interval.Closed:
+			switch y.Class() {
+			case interval.Closed: // x[A, B] y[A, B]
+				if x.B.Cmp(y.A) < 0 {
+					r.Value = &ir.Int64Value{Value: 0}
+					return r.normalize(ctx.model)
+				}
+
+				if x.A.Cmp(y.B) >= 0 {
+					r.Value = &ir.Int64Value{Value: 1}
+					return r.normalize(ctx.model)
+				}
+			case interval.Degenerate: // x[A, B] y{A}
+				if x.B.Cmp(y.A) < 0 {
+					r.Value = &ir.Int64Value{Value: 0}
+					return r.normalize(ctx.model)
+				}
+
+				if x.A.Cmp(y.A) >= 0 {
+					r.Value = &ir.Int64Value{Value: 1}
+					return r.normalize(ctx.model)
+				}
+			default:
+				panic(fmt.Errorf("%v >= %v", x, y))
 			}
+		case interval.Degenerate:
+			switch y.Class() {
+			case interval.Degenerate: // x{A} y{A}
+				if x.A.Cmp(y.A) < 0 {
+					r.Value = &ir.Int64Value{Value: 0}
+					return r.normalize(ctx.model)
+				}
+
+				r.Value = &ir.Int64Value{Value: 1}
+				return r.normalize(ctx.model)
+			case interval.Closed: // x{A} y[A, B]
+				if x.A.Cmp(y.A) < 0 {
+					r.Value = &ir.Int64Value{Value: 0}
+					return r.normalize(ctx.model)
+				}
+
+				if x.A.Cmp(y.B) >= 0 {
+					r.Value = &ir.Int64Value{Value: 1}
+					return r.normalize(ctx.model)
+				}
+			default:
+				panic(fmt.Errorf("%v >= %v", x, y))
+			}
+		default:
+			panic(fmt.Errorf("%v >= %v", x, y))
 		}
+	}
+
+	if o.Value == nil || p.Value == nil {
 		return r.normalize(ctx.model)
 	}
 
@@ -517,15 +595,63 @@ func (o Operand) gt(ctx *context, p Operand) (r Operand) {
 	if o.isArithmeticType() && p.isArithmeticType() {
 		o, p = UsualArithmeticConversions(ctx.model, o, p)
 	}
-	if o.Value == nil || p.Value == nil {
-		if a, b := o.Domain, p.Domain; a != nil && b != nil && interval.Intersection(a, b).Class() == interval.Empty {
-			switch {
-			case a.(*interval.Int128).B.Cmp(b.(*interval.Int128).A) <= 0:
-				r.Value = &ir.Int64Value{Value: 0}
-			case a.(*interval.Int128).A.Cmp(b.(*interval.Int128).B) > 0:
-				r.Value = &ir.Int64Value{Value: 1}
+	if a, b := o.Domain, p.Domain; a != nil && b != nil {
+		x, y := a.(*interval.Int128), b.(*interval.Int128)
+		switch x.Class() {
+		case interval.Closed:
+			switch y.Class() {
+			case interval.Closed: // x[A, B] y[A, B]
+				if x.B.Cmp(y.A) <= 0 {
+					r.Value = &ir.Int64Value{Value: 0}
+					return r.normalize(ctx.model)
+				}
+
+				if x.A.Cmp(y.B) > 0 {
+					r.Value = &ir.Int64Value{Value: 1}
+					return r.normalize(ctx.model)
+				}
+			case interval.Degenerate: // x[A, B] y{A}
+				if x.B.Cmp(y.A) <= 0 {
+					r.Value = &ir.Int64Value{Value: 0}
+					return r.normalize(ctx.model)
+				}
+
+				if x.A.Cmp(y.A) > 0 {
+					r.Value = &ir.Int64Value{Value: 1}
+					return r.normalize(ctx.model)
+				}
+			default:
+				panic(fmt.Errorf("%v > %v", x, y))
 			}
+		case interval.Degenerate:
+			switch y.Class() {
+			case interval.Degenerate: // x{A} y{A}
+				if x.A.Cmp(y.A) <= 0 {
+					r.Value = &ir.Int64Value{Value: 0}
+					return r.normalize(ctx.model)
+				}
+
+				r.Value = &ir.Int64Value{Value: 1}
+				return r.normalize(ctx.model)
+			case interval.Closed: // x{A} y[A, B]
+				if x.A.Cmp(y.A) <= 0 {
+					r.Value = &ir.Int64Value{Value: 0}
+					return r.normalize(ctx.model)
+				}
+
+				if x.A.Cmp(y.B) > 0 {
+					r.Value = &ir.Int64Value{Value: 1}
+					return r.normalize(ctx.model)
+				}
+			default:
+				panic(fmt.Errorf("%v >= %v", x, y))
+			}
+		default:
+			panic(fmt.Errorf("%v > %v", x, y))
 		}
+	}
+
+	if o.Value == nil || p.Value == nil {
 		return r.normalize(ctx.model)
 	}
 
@@ -660,15 +786,63 @@ func (o Operand) le(ctx *context, p Operand) (r Operand) {
 	if o.isArithmeticType() && p.isArithmeticType() {
 		o, p = UsualArithmeticConversions(ctx.model, o, p)
 	}
-	if o.Value == nil || p.Value == nil {
-		if a, b := o.Domain, p.Domain; a != nil && b != nil && interval.Intersection(a, b).Class() == interval.Empty {
-			switch {
-			case a.(*interval.Int128).B.Cmp(b.(*interval.Int128).A) <= 0:
-				r.Value = &ir.Int64Value{Value: 1}
-			case a.(*interval.Int128).A.Cmp(b.(*interval.Int128).B) > 0:
-				r.Value = &ir.Int64Value{Value: 0}
+	if a, b := o.Domain, p.Domain; a != nil && b != nil {
+		x, y := a.(*interval.Int128), b.(*interval.Int128)
+		switch x.Class() {
+		case interval.Closed:
+			switch y.Class() {
+			case interval.Degenerate: // x[A, B] y{A}
+				if x.B.Cmp(y.A) <= 0 {
+					r.Value = &ir.Int64Value{Value: 1}
+					return r.normalize(ctx.model)
+				}
+
+				if x.A.Cmp(y.A) > 0 {
+					r.Value = &ir.Int64Value{Value: 0}
+					return r.normalize(ctx.model)
+				}
+			case interval.Closed: // x[A, B] y[A, B]
+				if x.B.Cmp(y.A) <= 0 {
+					r.Value = &ir.Int64Value{Value: 1}
+					return r.normalize(ctx.model)
+				}
+
+				if x.A.Cmp(y.B) > 0 {
+					r.Value = &ir.Int64Value{Value: 0}
+					return r.normalize(ctx.model)
+				}
+			default:
+				panic(fmt.Errorf("%v <= %v", x, y))
 			}
+		case interval.Degenerate:
+			switch y.Class() {
+			case interval.Degenerate: // x{A} y{A}
+				if x.A.Cmp(y.A) <= 0 {
+					r.Value = &ir.Int64Value{Value: 1}
+					return r.normalize(ctx.model)
+				}
+
+				r.Value = &ir.Int64Value{Value: 0}
+				return r.normalize(ctx.model)
+			case interval.Closed: // x{A} y[A, B]
+				if x.A.Cmp(y.A) <= 0 {
+					r.Value = &ir.Int64Value{Value: 1}
+					return r.normalize(ctx.model)
+				}
+
+				if x.A.Cmp(y.B) > 0 {
+					r.Value = &ir.Int64Value{Value: 0}
+					return r.normalize(ctx.model)
+				}
+			default:
+				panic(fmt.Errorf("%v <= %v", x, y))
+			}
+		default:
+			panic(fmt.Errorf("%v <= %v", x, y))
 		}
+	}
+
+	if o.Value == nil || p.Value == nil {
 		return r.normalize(ctx.model)
 	}
 
@@ -729,15 +903,63 @@ func (o Operand) lt(ctx *context, p Operand) (r Operand) {
 	if o.isArithmeticType() && p.isArithmeticType() {
 		o, p = UsualArithmeticConversions(ctx.model, o, p)
 	}
-	if o.Value == nil || p.Value == nil {
-		if a, b := o.Domain, p.Domain; a != nil && b != nil && interval.Intersection(a, b).Class() == interval.Empty {
-			switch {
-			case a.(*interval.Int128).B.Cmp(b.(*interval.Int128).A) < 0:
-				r.Value = &ir.Int64Value{Value: 1}
-			case a.(*interval.Int128).A.Cmp(b.(*interval.Int128).B) >= 0:
-				r.Value = &ir.Int64Value{Value: 0}
+	if a, b := o.Domain, p.Domain; a != nil && b != nil {
+		x, y := a.(*interval.Int128), b.(*interval.Int128)
+		switch x.Class() {
+		case interval.Closed:
+			switch y.Class() {
+			case interval.Degenerate: // x[A, B] y{A}
+				if x.B.Cmp(y.A) < 0 {
+					r.Value = &ir.Int64Value{Value: 1}
+					return r.normalize(ctx.model)
+				}
+
+				if x.A.Cmp(y.A) >= 0 {
+					r.Value = &ir.Int64Value{Value: 0}
+					return r.normalize(ctx.model)
+				}
+			case interval.Closed: // x[A, B] y[A, B]
+				if x.B.Cmp(y.A) < 0 {
+					r.Value = &ir.Int64Value{Value: 1}
+					return r.normalize(ctx.model)
+				}
+
+				if x.A.Cmp(y.B) >= 0 {
+					r.Value = &ir.Int64Value{Value: 0}
+					return r.normalize(ctx.model)
+				}
+			default:
+				panic(fmt.Errorf("%v < %v", x, y))
 			}
+		case interval.Degenerate:
+			switch y.Class() {
+			case interval.Degenerate: // x{A} y{A}
+				if x.A.Cmp(y.A) < 0 {
+					r.Value = &ir.Int64Value{Value: 1}
+					return r.normalize(ctx.model)
+				}
+
+				r.Value = &ir.Int64Value{Value: 0}
+				return r.normalize(ctx.model)
+			case interval.Closed: // x{A} y[A, B]
+				if x.A.Cmp(y.A) < 0 {
+					r.Value = &ir.Int64Value{Value: 1}
+					return r.normalize(ctx.model)
+				}
+
+				if x.A.Cmp(y.B) >= 0 {
+					r.Value = &ir.Int64Value{Value: 0}
+					return r.normalize(ctx.model)
+				}
+			default:
+				panic(fmt.Errorf("%v < %v", x, y))
+			}
+		default:
+			panic(fmt.Errorf("%v < %v", x, y))
 		}
+	}
+
+	if o.Value == nil || p.Value == nil {
 		return r.normalize(ctx.model)
 	}
 
@@ -771,11 +993,11 @@ func (o Operand) mod(ctx *context, n Node, p Operand) (r Operand) {
 	o, p = UsualArithmeticConversions(ctx.model, o, p)
 	if p.IsZero() {
 		ctx.err(n, "division by zero")
-		return
+		return p.normalize(ctx.model)
 	}
 
 	if o.IsZero() { // 0 % x == 0
-		return o
+		return o.normalize(ctx.model)
 	}
 
 	switch x := p.Value.(type) {
@@ -784,13 +1006,13 @@ func (o Operand) mod(ctx *context, n Node, p Operand) (r Operand) {
 			return Operand{Type: o.Type, Value: &ir.Int64Value{Value: 0}}.normalize(ctx.model) //  x % {1,-1} == 0
 		}
 	case nil:
-		return Operand{Type: o.Type}
+		return Operand{Type: o.Type}.normalize(ctx.model)
 	default:
 		panic(fmt.Errorf("TODO %T", x))
 	}
 
 	if o.Value == nil || p.Value == nil {
-		return Operand{Type: o.Type}
+		return Operand{Type: o.Type}.normalize(ctx.model)
 	}
 
 	switch x := o.Value.(type) {
@@ -917,42 +1139,8 @@ func (o Operand) normalize(m Model) (r Operand) {
 		}
 		o.Domain = &interval.Int128{Cls: interval.Degenerate, A: a, B: a}
 	case nil:
-		var a, b mathutil.Int128
 		if o.Type.IsIntegerType() {
-			sz := m[o.Type.Kind()].Size
-			switch {
-			case o.Type.IsUnsigned():
-				switch sz {
-				case 1:
-					b.SetUint64(math.MaxUint8)
-				case 2:
-					b.SetUint64(math.MaxUint16)
-				case 4:
-					b.SetUint64(math.MaxUint32)
-				case 8:
-					b.SetUint64(math.MaxUint64)
-				default:
-					panic("internal error")
-				}
-			default:
-				switch sz {
-				case 1:
-					a.SetInt64(math.MinInt8)
-					b.SetInt64(math.MaxInt8)
-				case 2:
-					a.SetInt64(math.MinInt16)
-					b.SetInt64(math.MaxInt16)
-				case 4:
-					a.SetInt64(math.MinInt32)
-					b.SetInt64(math.MaxInt32)
-				case 8:
-					a.SetInt64(math.MinInt64)
-					b.SetInt64(math.MaxInt64)
-				default:
-					panic("internal error")
-				}
-			}
-			d := interval.Interface(&interval.Int128{Cls: interval.Closed, A: a, B: b})
+			d := domain(o.Type, m)
 			if e := o.Domain; e != nil {
 				d = interval.Intersection(d, e)
 			}
@@ -972,6 +1160,7 @@ func (o Operand) normalize(m Model) (r Operand) {
 }
 
 func (o Operand) or(ctx *context, p Operand) (r Operand) {
+	//TODO (char)x|255 > 255 etc
 	if !o.isIntegerType() || !p.isIntegerType() {
 		panic("TODO")
 	}
@@ -1021,7 +1210,7 @@ func (o Operand) rsh(ctx *context, p Operand) (r Operand) { // [0]6.5.7
 func (o Operand) sub(ctx *context, p Operand) (r Operand) {
 	o, p = UsualArithmeticConversions(ctx.model, o, p)
 	if o.Value == nil || p.Value == nil {
-		return Operand{Type: o.Type}
+		return Operand{Type: o.Type, Domain: o.Domain}.normalize(ctx.model)
 	}
 
 	switch x := o.Value.(type) {
@@ -1065,5 +1254,70 @@ func (o Operand) xor(ctx *context, p Operand) (r Operand) {
 		return Operand{Type: o.Type, Value: &ir.Int64Value{Value: x.Value ^ p.Value.(*ir.Int64Value).Value}}.normalize(ctx.model)
 	default:
 		panic(fmt.Errorf("TODO %T", x))
+	}
+}
+
+func domain(t Type, m Model) interval.Interface {
+	var a, b mathutil.Int128
+	if t.IsIntegerType() {
+		sz := m[t.Kind()].Size
+		switch {
+		case t.IsUnsigned():
+			switch sz {
+			case 1:
+				b.SetUint64(math.MaxUint8)
+			case 2:
+				b.SetUint64(math.MaxUint16)
+			case 4:
+				b.SetUint64(math.MaxUint32)
+			case 8:
+				b.SetUint64(math.MaxUint64)
+			default:
+				panic("internal error")
+			}
+		default:
+			switch sz {
+			case 1:
+				a.SetInt64(math.MinInt8)
+				b.SetInt64(math.MaxInt8)
+			case 2:
+				a.SetInt64(math.MinInt16)
+				b.SetInt64(math.MaxInt16)
+			case 4:
+				a.SetInt64(math.MinInt32)
+				b.SetInt64(math.MaxInt32)
+			case 8:
+				a.SetInt64(math.MinInt64)
+				b.SetInt64(math.MaxInt64)
+			default:
+				panic("internal error")
+			}
+		}
+		return interval.Interface(&interval.Int128{Cls: interval.Closed, A: a, B: b})
+	}
+	return nil
+}
+
+func isSubset(a, b interval.Interface) bool {
+	x, y := a.(*interval.Int128), b.(*interval.Int128)
+	switch x.Cls {
+	case interval.Closed:
+		switch y.Cls {
+		case interval.Closed:
+			return x.A.Cmp(y.A) >= 0 && x.B.Cmp(y.B) <= 0
+		default:
+			panic(y.Cls)
+		}
+	case interval.Degenerate:
+		switch y.Cls {
+		case interval.Closed:
+			return x.A.Cmp(y.A) >= 0
+		default:
+			panic(y.Cls)
+		}
+	case interval.Empty:
+		return false
+	default:
+		panic(x.Cls)
 	}
 }

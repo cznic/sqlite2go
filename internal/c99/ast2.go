@@ -244,7 +244,7 @@ func (n *ConstExpr) eval(ctx *context) Operand {
 	if n.Operand.Type == nil {
 		n.Operand = n.Expr.eval(ctx, true, nil)
 		if n.Operand.Value == nil { // not a constant expression
-			panic("TODO")
+			panic(fmt.Errorf("TODO247 %v", ctx.position(n)))
 		}
 	}
 	return n.Operand
@@ -254,6 +254,12 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 	if n.Operand.Type != nil {
 		return n.Operand
 	}
+
+	defer func() {
+		if n.Operand.Type != nil && n.Operand.Type.IsArithmeticType() {
+			n.Operand = n.Operand.normalize(ctx.model)
+		}
+	}()
 
 	switch n.Case {
 	case ExprPreInc: // "++" Expr
@@ -444,6 +450,11 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 	case ExprNe: // Expr "!=" Expr
 		lhs := n.Expr.eval(ctx, arr2ptr, fn)
 		rhs := n.Expr2.eval(ctx, arr2ptr, fn)
+		if n.Expr.Case == ExprIdent && n.Expr2.Case == ExprIdent && n.Expr.Token.Val == n.Expr2.Token.Val {
+			n.Operand = Operand{Type: Int, Value: &ir.Int64Value{Value: 0}}.normalize(ctx.model)
+			break
+		}
+
 		// [0]6.5.9
 		switch {
 		// One of the following shall hold:
@@ -641,9 +652,16 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		n.Operand = n.Expr.Operand
 	case ExprLe: // Expr "<=" Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).le(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
+		// fmt.Printf("TODO655 %v\n", ctx.position(n))
+		// n.dumpOperands("· ") //TODO-
 	case ExprEq: // Expr "==" Expr
 		lhs := n.Expr.eval(ctx, arr2ptr, fn)
 		rhs := n.Expr2.eval(ctx, arr2ptr, fn)
+		if n.Expr.Case == ExprIdent && n.Expr2.Case == ExprIdent && n.Expr.Token.Val == n.Expr2.Token.Val {
+			n.Operand = Operand{Type: Int, Value: &ir.Int64Value{Value: 1}}.normalize(ctx.model)
+			break
+		}
+
 		// [0]6.5.9
 		switch {
 		// One of the following shall hold:
@@ -1104,12 +1122,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			panic(fmt.Errorf("%v: %T", ctx.position(n), x))
 		}
 	case ExprInt: // INTCONST
-		defer func() { //TODO-
-			if n.Operand.Type == nil || n.Operand.Value == nil {
-				fmt.Printf("TODO1114 %v: %q %v\n", ctx.position(n), n.Token.S(), n.Operand)         //TODO-
-				panic(fmt.Sprintf("TODO1114 %v: %q %v\n", ctx.position(n), n.Token.S(), n.Operand)) //TODO-
-			}
-		}() //TODO-
 		s0 := string(dict.S(n.Token.Val))
 		s := s0
 		if strings.Contains(s, "p") {
@@ -1145,18 +1157,18 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			n.Operand = newIntConst(ctx, n, v, Int, Long, LongLong)
 		case suff == "" && !decadic:
 			n.Operand = newIntConst(ctx, n, v, Int, UInt, Long, ULong, LongLong, ULongLong)
+		case suff == "U":
+			n.Operand = newIntConst(ctx, n, v, UInt, ULong, ULongLong)
 		case suff == "L" && decadic:
 			n.Operand = newIntConst(ctx, n, v, Long, LongLong)
 		case suff == "L" && !decadic:
-			n.Operand = newIntConst(ctx, n, v, Int, UInt, Long, ULong, LongLong, ULongLong)
+			n.Operand = newIntConst(ctx, n, v, Long, ULong, LongLong, ULongLong)
+		case suff == "UL", suff == "LU":
+			n.Operand = newIntConst(ctx, n, v, ULong, ULongLong)
 		case suff == "LL" && decadic:
 			n.Operand = newIntConst(ctx, n, v, LongLong)
 		case suff == "LL" && !decadic:
 			n.Operand = newIntConst(ctx, n, v, LongLong, ULongLong)
-		case suff == "U":
-			n.Operand = newIntConst(ctx, n, v, UInt, ULong, ULongLong)
-		case suff == "UL", suff == "LU":
-			n.Operand = newIntConst(ctx, n, v, ULong, ULongLong)
 		case suff == "ULL", suff == "LLU":
 			n.Operand = newIntConst(ctx, n, v, ULongLong)
 		default:
@@ -1276,15 +1288,6 @@ loop2:
 		n.Operand = Operand{Type: Float, Value: &ir.Float32Value{Value: float32(v)}}
 	default:
 		panic(fmt.Errorf("%v: TODO %q %q %v", ctx.position(n), s, suff, v))
-	}
-}
-
-func pitem(t Type) Type {
-	switch x := t.(type) {
-	case *PointerType:
-		return x.Item
-	default:
-		panic(fmt.Errorf("%T", x))
 	}
 }
 
@@ -2150,7 +2153,6 @@ func (n *DirectDeclarator) check(ctx *context, t Type, sc []int, fn *Declarator)
 		var sz Operand
 		if o := n.ExprOpt; o != nil {
 			sz = o.Expr.Operand
-			//o.Expr.dumpValues("· ") //TODO-
 		}
 		t := &ArrayType{
 			Item:           t,

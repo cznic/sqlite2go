@@ -25,6 +25,7 @@ type opt struct {
 	out          io.Writer
 	out0         bytes.Buffer
 	write        bool
+	fn           string
 }
 
 func newOpt() *opt { return &opt{} }
@@ -52,6 +53,7 @@ func (o *opt) pos(n ast.Node) token.Position {
 }
 
 func (o *opt) do(out io.Writer, in io.Reader, fn string, needBool2int int) error {
+	o.fn = fn
 	o.needBool2int = needBool2int
 	o.out = out
 	o.fset = token.NewFileSet()
@@ -399,7 +401,7 @@ func (o *opt) not(n ast.Expr) ast.Expr {
 	case *ast.ParenExpr:
 		return o.not(x.X)
 	default:
-		todo("%v: %T", o.pos(n), x)
+		todo("%v: %T %s", o.pos(n), x, o.fn)
 	}
 	panic("unreachable")
 }

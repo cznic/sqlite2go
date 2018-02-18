@@ -85,58 +85,49 @@ func printError(w io.Writer, pref string, err error) {
 	}
 }
 
-func isConst(n *Expr) bool {
-	switch n.Case {
-	case
-		ExprSizeofExpr,
-		ExprSizeofType,
-		ExprChar,
-		ExprFloat,
-		ExprIdent,
-		ExprInt,
-		ExprLChar,
-		ExprLString,
-		ExprString:
-
-		return true
-	default:
-		return false
-	}
-}
-
-func (n *Expr) dumpValues(s string) {
-	fmt.Printf("%s%v %v\n", s, n.Case, n.Operand.Value)
+func (n *Expr) dumpOperands(s string) {
+	fmt.Printf("%s%v %v\n", s, n.Case, n.Operand)
 	switch n.Case {
 	case ExprPExprList:
 		for l := n.ExprList; l != nil; l = l.ExprList {
-			l.Expr.dumpValues(s + "· ")
+			l.Expr.dumpOperands(s + "· ")
 		}
 	case
-		ExprAdd,
-		ExprMod,
-		ExprSub:
+		ExprCast,
+		ExprCpl,
+		ExprDeref,
+		ExprIndex,
+		ExprPSelect,
+		ExprSelect,
+		ExprUnaryMinus:
 
-		n.Expr.dumpValues(s + "· ")
-		n.Expr2.dumpValues(s + "· ")
+		n.Expr.dumpOperands(s + "· ")
 	case
-		ExprInt,
-		ExprSizeofType:
+		ExprAdd,
+		ExprAnd,
+		ExprDiv,
+		ExprEq,
+		ExprGe,
+		ExprGt,
+		ExprLAnd,
+		ExprLOr,
+		ExprLe,
+		ExprLt,
+		ExprMod,
+		ExprMul,
+		ExprNe,
+		ExprRsh,
+		ExprSub,
+		ExprXor:
+
+		n.Expr.dumpOperands(s + "· ")
+		n.Expr2.dumpOperands(s + "· ")
+	case
+		ExprFloat,
+		ExprIdent,
+		ExprInt:
 
 		// nop
-	case
-		ExprAddrof,
-		ExprCast,
-		ExprPSelect:
-
-		n.Expr.dumpValues(s + "· ")
-	default:
-		panic(n.Case.String())
-	}
-}
-
-func (n *Expr) dumpDomains(s string) {
-	fmt.Printf("%s%v %v\n", s, n.Case, n.Operand.Domain)
-	switch n.Case {
 	default:
 		panic(n.Case.String())
 	}

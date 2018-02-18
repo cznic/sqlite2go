@@ -5,8 +5,8 @@
 package ccgo
 
 //	TCC	cc 51 ccgo 51 build 51 run 51 ok 51
-//	Other	cc 7 ccgo 7 build 7 run 7 ok 7
-//	GCC	cc 916 ccgo 904 build 889 run 889 ok 889
+//	Other	cc 8 ccgo 8 build 8 run 8 ok 8
+//	GCC	cc 918 ccgo 906 build 891 run 891 ok 891
 //	Shell	cc 1 ccgo 1 build 1 run 1 ok 1
 
 import (
@@ -126,6 +126,7 @@ func trim(b []byte) []byte {
 }
 
 func test(t *testing.T, clean bool, cc, ccgo, build, run *int, def, imp, inc2, dir string, pth []string, args ...string) ([]byte, error) {
+	testFn = pth[len(pth)-1]
 	if clean {
 		m, err := filepath.Glob(filepath.Join(dir, "*.*"))
 		if err != nil {
@@ -388,7 +389,6 @@ func TestGCC(t *testing.T) {
 
 		"bitfld-1.c": {}, //TODO bits, arithmetic precision
 		"bitfld-3.c": {}, //TODO bits, arithmetic precision
-		"pr70429.c":  {}, //TODO https://github.com/golang/go/issues/23812
 	}
 
 	if s := *oRE; s != "" {

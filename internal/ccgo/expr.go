@@ -121,7 +121,7 @@ func (g *gen) void(n *c99.Expr) {
 		case c99.TypeKind:
 			if n.Expr.Operand.Bits != 0 {
 				//TODO ../c99/testdata/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/pr55750.c:14:3
-				todo("", g.position0(n))
+				todo("bit field", g.position0(n))
 			}
 			if x.IsArithmeticType() {
 				g.w(" *(")

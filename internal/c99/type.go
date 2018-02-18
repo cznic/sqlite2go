@@ -135,7 +135,8 @@ func (t TypeKind) IsIntegerType() bool {
 	case
 		Double,
 		Float,
-		LongDouble:
+		LongDouble,
+		Void:
 
 		return false
 	default:
@@ -490,7 +491,7 @@ func (t *ArrayType) assign(ctx *context, op Operand) Operand { panic("TODO") }
 func (t *ArrayType) IsPointerType() bool { panic("TODO") }
 
 // IsIntegerType implements Type.
-func (t *ArrayType) IsIntegerType() bool { panic("TODO") }
+func (t *ArrayType) IsIntegerType() bool { return false }
 
 // IsScalarType implements Type.
 func (t *ArrayType) IsScalarType() bool { return false }
@@ -647,7 +648,7 @@ func (t *FunctionType) assign(ctx *context, op Operand) Operand { panic("TODO") 
 func (t *FunctionType) IsPointerType() bool { return false }
 
 // IsIntegerType implements Type.
-func (t *FunctionType) IsIntegerType() bool { panic("TODO") }
+func (t *FunctionType) IsIntegerType() bool { return false }
 
 // IsScalarType implements Type.
 func (t *FunctionType) IsScalarType() bool { panic("TODO") }
@@ -1228,7 +1229,7 @@ func (t *TaggedUnionType) IsUnsigned() bool { panic("TODO") }
 func (t *TaggedUnionType) IsVoidPointerType() bool { panic("TODO") }
 
 // IsArithmeticType implements Type.
-func (t *TaggedUnionType) IsArithmeticType() bool { panic("TODO") }
+func (t *TaggedUnionType) IsArithmeticType() bool { return false }
 
 // IsCompatible implements Type.
 func (t *TaggedUnionType) IsCompatible(u Type) bool { return t.Equal(u) }
@@ -1307,9 +1308,7 @@ func (t *TaggedUnionType) String() string { return fmt.Sprintf("union %s", dict.
 func (t *UnionType) IsVoidPointerType() bool { panic("TODO") }
 
 // IsArithmeticType implements Type.
-func (t *UnionType) IsArithmeticType() bool {
-	panic("TODO")
-}
+func (t *UnionType) IsArithmeticType() bool { return false }
 
 // IsCompatible implements Type.
 func (t *UnionType) IsCompatible(u Type) bool {
@@ -1367,7 +1366,7 @@ func (t *UnionType) assign(ctx *context, op Operand) Operand {
 func (t *UnionType) IsPointerType() bool { panic("TODO") }
 
 // IsIntegerType implements Type.
-func (t *UnionType) IsIntegerType() bool { panic("TODO") }
+func (t *UnionType) IsIntegerType() bool { return false }
 
 // IsScalarType implements Type.
 func (t *UnionType) IsScalarType() bool { panic("TODO") }

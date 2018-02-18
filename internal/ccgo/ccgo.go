@@ -2,6 +2,10 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Need go1.1O+ b/c of https://github.com/golang/go/issues/23812
+
+// +build go1.10
+
 // Package ccgo translates c99 ASTs to Go source code. (Work In Progress)
 //
 // This package is a modification of [1] supporting only SQLite.
@@ -409,20 +413,7 @@ return r
 	sort.Strings(a)
 	for _, k := range a {
 		b := strings.Split(k, "|")
-		g.w(`
-
-func shr%[1]d(n %[2]s, m int) %[2]s {
-	if m < 0 {
-		return shl%[1]d(n, -m)
-	}
-
-	if m >= %[3]s {
-		return n
-	}
-
-	return n >> uint(m)
-}
-`, g.shrTypes[k], b[1], b[0])
+		g.w("\n\nfunc shr%[1]d(n %[2]s, m int) %[2]s { return n >> (uint(m)%%%[3]s) }", g.shrTypes[k], b[1], b[0])
 	}
 	a = a[:0]
 	for k := range g.shlTypes {
@@ -431,20 +422,7 @@ func shr%[1]d(n %[2]s, m int) %[2]s {
 	sort.Strings(a)
 	for _, k := range a {
 		b := strings.Split(k, "|")
-		g.w(`
-
-func shl%[1]d(n %[2]s, m int) %[2]s {
-	if m < 0 {
-		return shr%[1]d(n, -m)
-	}
-
-	if m >= %[3]s {
-		return n
-	}
-
-	return n << uint(m)
-}
-`, g.shlTypes[k], b[1], b[0])
+		g.w("\n\nfunc shl%[1]d(n %[2]s, m int) %[2]s { return n << (uint(m)%%%[3]s) }", g.shlTypes[k], b[1], b[0])
 	}
 	a = a[:0]
 	for k := range g.rshTypes {
