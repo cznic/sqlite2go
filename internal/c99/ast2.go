@@ -486,6 +486,14 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			lhs.isPointerType() && rhs.isPointerType() && lhs.Type.IsCompatible(rhs.Type):
 
 			n.Operand = Operand{Type: Int}
+			if n.Expr.Case == ExprAddrof && n.Expr.Expr.Case == ExprIdent &&
+				n.Expr2.Case == ExprAddrof && n.Expr2.Expr.Case == ExprIdent {
+				var val int64
+				if n.Expr.Expr.Token.Val != n.Expr2.Expr.Token.Val {
+					val = 1
+				}
+				n.Operand.Value = &ir.Int64Value{Value: val}
+			}
 		default:
 			panic(fmt.Errorf("%v: %v %v", ctx.position(n), lhs, rhs))
 		}
@@ -494,7 +502,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		n.Expr.eval(ctx, arr2ptr, fn).mod(ctx, n, n.Expr2.eval(ctx, arr2ptr, fn))
 		n.Operand = n.Expr.Operand
 	case ExprLAnd: // Expr "&&" Expr
-		n.Operand = Operand{Type: Int}
+		n.Operand = Operand{Type: Int, Domain: newBoolDomain()}
 		a := n.Expr.eval(ctx, arr2ptr, fn)
 		if a.IsZero() {
 			n.Operand.Value = &ir.Int64Value{Value: 0}
@@ -652,8 +660,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		n.Operand = n.Expr.Operand
 	case ExprLe: // Expr "<=" Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).le(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
-		// fmt.Printf("TODO655 %v\n", ctx.position(n))
-		// n.dumpOperands("· ") //TODO-
 	case ExprEq: // Expr "==" Expr
 		lhs := n.Expr.eval(ctx, arr2ptr, fn)
 		rhs := n.Expr2.eval(ctx, arr2ptr, fn)
@@ -693,6 +699,14 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			lhs.isPointerType() && rhs.isPointerType() && lhs.Type.IsCompatible(rhs.Type):
 
 			n.Operand = Operand{Type: Int}
+			if n.Expr.Case == ExprAddrof && n.Expr.Expr.Case == ExprIdent &&
+				n.Expr2.Case == ExprAddrof && n.Expr2.Expr.Case == ExprIdent {
+				var val int64
+				if n.Expr.Expr.Token.Val == n.Expr2.Expr.Token.Val {
+					val = 1
+				}
+				n.Operand.Value = &ir.Int64Value{Value: val}
+			}
 		default:
 			panic(fmt.Errorf("%v: %v %v", ctx.position(n), lhs, rhs))
 		}
@@ -710,7 +724,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		n.Expr.eval(ctx, arr2ptr, fn).or(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
 		n.Operand = n.Expr.Operand
 	case ExprLOr: // Expr "||" Expr
-		n.Operand = Operand{Type: Int}
+		n.Operand = Operand{Type: Int, Domain: newBoolDomain()}
 		a := n.Expr.eval(ctx, arr2ptr, fn)
 		if a.IsNonzero() {
 			n.Operand.Value = &ir.Int64Value{Value: 1}
@@ -1038,6 +1052,8 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).xor(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
 	case ExprOr: // Expr '|' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).or(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
+		// fmt.Printf("TODO1055 %v\n", ctx.position(n))
+		// n.dumpOperands("· ") //TODO-
 	case ExprFloat: // FLOATCONST
 		n.floatConst(ctx)
 	case ExprIdent: // IDENTIFIER

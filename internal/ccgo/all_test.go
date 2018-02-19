@@ -6,7 +6,7 @@ package ccgo
 
 //	TCC	cc 51 ccgo 51 build 51 run 51 ok 51
 //	Other	cc 8 ccgo 8 build 8 run 8 ok 8
-//	GCC	cc 918 ccgo 906 build 891 run 891 ok 891
+//	GCC	cc 928 ccgo 912 build 895 run 895 ok 895
 //	Shell	cc 1 ccgo 1 build 1 run 1 ok 1
 
 import (

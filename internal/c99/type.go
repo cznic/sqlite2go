@@ -228,7 +228,12 @@ func (t TypeKind) Equal(u Type) bool {
 	switch x := u.(type) {
 	case *ArrayType:
 		switch t {
-		case Void:
+		case
+			Double,
+			Int,
+			UInt,
+			Void:
+
 			return false
 		default:
 			panic(t)
@@ -754,7 +759,7 @@ type PointerType struct {
 }
 
 // IsUnsigned implements Type.
-func (t *PointerType) IsUnsigned() bool { panic("TODO") }
+func (t *PointerType) IsUnsigned() bool { return true }
 
 // IsVoidPointerType implements Type.
 func (t *PointerType) IsVoidPointerType() bool { return UnderlyingType(t.Item) == Void }
@@ -806,6 +811,7 @@ func (t *PointerType) Equal(u Type) bool {
 		case
 			Char,
 			Double,
+			Float,
 			Int,
 			Long,
 			LongLong,

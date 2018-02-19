@@ -121,7 +121,7 @@ func (g *gen) void(n *c99.Expr) {
 		case c99.TypeKind:
 			if n.Expr.Operand.Bits != 0 {
 				//TODO ../c99/testdata/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/pr55750.c:14:3
-				todo("bit field", g.position0(n))
+				todo("bit field %v", g.position0(n))
 			}
 			if x.IsArithmeticType() {
 				g.w(" *(")
@@ -776,22 +776,16 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 			return
 		}
 
-		t := c99.UnderlyingType(n.Operand.Type)
-		g.registerShiftType(g.shrTypes, t)
-		g.w(" shl%d(", g.registerShiftType(g.shlTypes, t))
 		g.convert(n.Expr, n.Operand.Type)
-		g.w(", int(")
+		g.w(" << (uint(")
 		g.value(n.Expr2, false)
-		g.w("))")
+		g.w(") %% %d)", g.shiftMod(c99.UnderlyingType(n.Operand.Type)))
 	case c99.ExprRsh: // Expr ">>" Expr
 		//TODO fix also the assign variant
-		t := c99.UnderlyingType(n.Operand.Type)
-		g.registerShiftType(g.shlTypes, t)
-		g.w(" shr%d(", g.registerShiftType(g.shrTypes, t))
 		g.convert(n.Expr, n.Operand.Type)
-		g.w(", int(")
+		g.w(" >> (uint(")
 		g.value(n.Expr2, false)
-		g.w("))")
+		g.w(") %% %d)", g.shiftMod(c99.UnderlyingType(n.Operand.Type)))
 	case c99.ExprUnaryMinus: // '-' Expr
 		g.w("- ")
 		g.convert(n.Expr, n.Operand.Type)

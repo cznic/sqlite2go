@@ -116,6 +116,7 @@ func (n *Expr) dumpOperands(s string) {
 		ExprMod,
 		ExprMul,
 		ExprNe,
+		ExprOr,
 		ExprRsh,
 		ExprSub,
 		ExprXor:
