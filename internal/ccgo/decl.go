@@ -199,7 +199,7 @@ func (g *gen) functionDefinition(n *c99.Declarator) {
 	if len(names) != len(t.Params) {
 		if len(names) != 0 {
 			if !(len(names) == 1 && names[0] == 0) {
-				todo("K&R C", g.position(n), names, t.Params)
+				todo("K&R C %v %v %v", g.position(n), names, t.Params)
 			}
 		}
 

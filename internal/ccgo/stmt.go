@@ -217,17 +217,64 @@ func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int
 			*deadcode = false
 		}
 	case c99.SelectionStmtIf: // "if" '(' ExprList ')' Stmt
+		g.w("\n")
+		if n.ExprList.IsZero() {
+			a := g.local()
+			g.exprList(n.ExprList, true)
+			g.w("\ngoto _%d\n", a)
+			t := true
+			g.stmt(n.Stmt, cases, brk, cont, &t)
+			g.w("\n_%d:", a)
+			*deadcode = false
+			break
+		}
+
+		if n.ExprList.IsNonZero() {
+			g.exprList(n.ExprList, true)
+			g.stmt(n.Stmt, cases, brk, cont, deadcode)
+			*deadcode = false
+			break
+		}
+
 		// if exprList == 0 { goto A }
 		// stmt
 		// A:
 		a := g.local()
-		g.w("\nif ")
+		g.w("if ")
 		g.exprList(n.ExprList, false)
 		g.w(" == 0 { goto _%d }\n", a)
 		g.stmt(n.Stmt, cases, brk, cont, deadcode)
 		g.w("\n_%d:", a)
 		*deadcode = false
 	case c99.SelectionStmtIfElse: // "if" '(' ExprList ')' Stmt "else" Stmt
+		g.w("\n")
+		if n.ExprList.IsZero() {
+			a := g.local()
+			b := g.local()
+			g.exprList(n.ExprList, true)
+			g.w("\ngoto _%d\n", a)
+			t := true
+			g.stmt(n.Stmt, cases, brk, cont, &t)
+			g.w("\ngoto _%d\n", b)
+			g.w("\n_%d:", a)
+			g.stmt(n.Stmt2, cases, brk, cont, deadcode)
+			g.w("\n_%d:", b)
+			*deadcode = false
+			break
+		}
+
+		if n.ExprList.IsNonZero() {
+			a := g.local()
+			g.exprList(n.ExprList, true)
+			g.stmt(n.Stmt, cases, brk, cont, deadcode)
+			g.w("\ngoto _%d\n", a)
+			t := true
+			g.stmt(n.Stmt2, cases, brk, cont, &t)
+			g.w("\n_%d:", a)
+			*deadcode = false
+			break
+		}
+
 		// if exprList == 0 { goto A }
 		// stmt
 		// goto B
@@ -236,7 +283,7 @@ func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int
 		// B:
 		a := g.local()
 		b := g.local()
-		g.w("\nif ")
+		g.w("if ")
 		g.exprList(n.ExprList, false)
 		g.w(" == 0 { goto _%d }\n", a)
 		g.stmt(n.Stmt, cases, brk, cont, deadcode)
@@ -350,9 +397,9 @@ func (g *gen) jumpStmt(n *c99.JumpStmt, brk, cont *int, deadcode *bool) {
 				case isSingleExpression(o.ExprList) && o.ExprList.Expr.Case == c99.ExprCond:
 					n := o.ExprList.Expr // Expr '?' ExprList ':' Expr
 					switch {
-					case n.Expr.Operand.IsZero() && g.voidCanIgnore(n.Expr):
+					case n.Expr.IsZero() && g.voidCanIgnore(n.Expr):
 						todo("", g.position0(n))
-					case n.Expr.Operand.IsNonzero() && g.voidCanIgnore(n.Expr):
+					case n.Expr.IsNonZero() && g.voidCanIgnore(n.Expr):
 						todo("", g.position0(n))
 					default:
 						g.w("\nif ")

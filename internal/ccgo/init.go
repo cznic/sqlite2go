@@ -17,7 +17,7 @@ func (g *gen) isZeroInitializer(n *c99.Initializer) bool {
 	}
 
 	if n.Case == c99.InitializerExpr { // Expr
-		return n.Expr.Operand.IsZero()
+		return n.Expr.IsZero()
 	}
 
 	// '{' InitializerList CommaOpt '}'
@@ -145,7 +145,7 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 		}
 		g.w("}")
 	case *c99.PointerType:
-		if n.Expr.Operand.IsZero() || n.Expr.Operand.Value == c99.Null {
+		if n.Expr.IsZero() || n.Expr.Operand.Value == c99.Null {
 			g.w("0")
 			return
 		}
@@ -238,9 +238,9 @@ func (g *gen) renderInitializer(b []byte, t c99.Type, n *c99.Initializer) {
 		}
 	case *c99.PointerType:
 		switch {
-		case n.Expr.Operand.IsNonzero():
+		case n.Expr.IsNonZero():
 			todo("", g.position0(n))
-		case n.Expr.Operand.IsZero():
+		case n.Expr.IsZero():
 			// nop
 		default:
 			todo("", g.position0(n), n.Expr.Operand)

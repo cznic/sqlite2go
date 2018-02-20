@@ -105,6 +105,7 @@ var (
 	idStatic   = dict.SID("static")
 	idUndef    = dict.SID("undef")
 	idVaArgs   = dict.SID("__VA_ARGS__")
+	idVaList   = dict.SID("va_list")
 	idWarning  = dict.SID("warning")
 	idZero     = dict.SID("0")
 

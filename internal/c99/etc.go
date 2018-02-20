@@ -112,6 +112,7 @@ func (n *Expr) dumpOperands(s string) {
 		ExprLAnd,
 		ExprLOr,
 		ExprLe,
+		ExprLsh,
 		ExprLt,
 		ExprMod,
 		ExprMul,
@@ -124,6 +125,7 @@ func (n *Expr) dumpOperands(s string) {
 		n.Expr.dumpOperands(s + "· ")
 		n.Expr2.dumpOperands(s + "· ")
 	case
+		ExprCall,
 		ExprFloat,
 		ExprIdent,
 		ExprInt:
@@ -132,4 +134,9 @@ func (n *Expr) dumpOperands(s string) {
 	default:
 		panic(n.Case.String())
 	}
+}
+
+func isVaList(t Type) bool { //TODO export and use
+	x, ok := t.(*NamedType)
+	return ok && x.Name == idVaList
 }

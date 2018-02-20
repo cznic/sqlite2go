@@ -113,7 +113,6 @@ func (d *DeclarationSpecifier) typ() Type {
 			default:
 				panic(fmt.Errorf("%T", x))
 			}
-			return r
 		case TypeSpecifierShort:
 			return Short
 		case TypeSpecifierStruct:
@@ -328,12 +327,12 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 	case ExprNot: // '!' Expr
 		n.Operand = Operand{Type: Int}
 		a := n.Expr.eval(ctx, arr2ptr, fn)
-		if a.IsZero() {
+		if a.IsZero() { //TODO n.Expr.IsZero everywhere
 			n.Operand.Value = &ir.Int64Value{Value: 1}
 			break
 		}
 
-		if a.IsNonzero() {
+		if a.IsNonZero() { //TODO n.Expr.IsNonZero everywhere
 			n.Operand.Value = &ir.Int64Value{Value: 0}
 		}
 	case ExprAddrof: // '&' Expr
@@ -469,8 +468,13 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			lhs.isPointerType() && rhs.isNullPtrConst():
 
 			n.Operand = Operand{Type: Int}
-			if n.Expr.Case == ExprAddrof { // &expr != NULL is statically true
-				n.Operand.Value = &ir.Int64Value{Value: 1}
+			if n.Expr.Case == ExprAddrof {
+				switch {
+				case n.Expr.IsNonZero():
+					n.Operand.Value = &ir.Int64Value{Value: 1}
+				case n.Expr.IsZero():
+					n.Operand.Value = &ir.Int64Value{Value: 0}
+				}
 			}
 		case
 			// one operand is a pointer and the other is a null
@@ -478,8 +482,13 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			lhs.isNullPtrConst() && rhs.isPointerType():
 
 			n.Operand = Operand{Type: Int}
-			if n.Expr2.Case == ExprAddrof { // NULL != &expr is statically true
-				n.Operand.Value = &ir.Int64Value{Value: 1}
+			if n.Expr2.Case == ExprAddrof && n.Expr2.IsNonZero() { // NULL != &expr is statically true
+				switch {
+				case n.Expr2.IsNonZero():
+					n.Operand.Value = &ir.Int64Value{Value: 1}
+				case n.Expr2.IsZero():
+					n.Operand.Value = &ir.Int64Value{Value: 0}
+				}
 			}
 		case
 			// both operands are pointers to qualified or unqualified versions of compatible types
@@ -515,7 +524,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			break
 		}
 
-		if a.IsNonzero() && b.IsNonzero() {
+		if a.IsNonZero() && b.IsNonZero() {
 			n.Operand.Value = &ir.Int64Value{Value: 1}
 		}
 	case ExprAndAssign: // Expr "&=" Expr
@@ -683,7 +692,12 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 
 			n.Operand = Operand{Type: Int}
 			if n.Expr.Case == ExprAddrof { // &expr == NULL is statically false
-				n.Operand.Value = &ir.Int64Value{Value: 0}
+				switch {
+				case n.Expr.IsNonZero():
+					n.Operand.Value = &ir.Int64Value{Value: 0}
+				case n.Expr.IsZero():
+					n.Operand.Value = &ir.Int64Value{Value: 1}
+				}
 			}
 		case
 			// one operand is a pointer and the other is a null
@@ -692,7 +706,12 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 
 			n.Operand = Operand{Type: Int}
 			if n.Expr2.Case == ExprAddrof { // NULL == &expr is statically false
-				n.Operand.Value = &ir.Int64Value{Value: 0}
+				switch {
+				case n.Expr2.IsNonZero():
+					n.Operand.Value = &ir.Int64Value{Value: 0}
+				case n.Expr2.IsZero():
+					n.Operand.Value = &ir.Int64Value{Value: 1}
+				}
 			}
 		case
 			// both operands are pointers to qualified or unqualified versions of compatible types
@@ -714,6 +733,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).ge(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
 	case ExprRsh: // Expr ">>" Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).rsh(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
+		// fmt.Printf("TODO736 %v\n", ctx.position(n))
+		// n.Operand = n.Operand.normalize(ctx.model)
+		// n.dumpOperands("· ") //TODO-
 	case ExprRshAssign: // Expr ">>=" Expr
 		n.Expr.eval(ctx, arr2ptr, fn).rsh(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
 		n.Operand = n.Expr.Operand
@@ -726,13 +748,13 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 	case ExprLOr: // Expr "||" Expr
 		n.Operand = Operand{Type: Int, Domain: newBoolDomain()}
 		a := n.Expr.eval(ctx, arr2ptr, fn)
-		if a.IsNonzero() {
+		if a.IsNonZero() {
 			n.Operand.Value = &ir.Int64Value{Value: 1}
 			break
 		}
 
 		b := n.Expr2.eval(ctx, arr2ptr, fn)
-		if b.IsNonzero() {
+		if b.IsNonZero() {
 			n.Operand.Value = &ir.Int64Value{Value: 1}
 			break
 		}
@@ -744,6 +766,22 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).mod(ctx, n, n.Expr2.eval(ctx, arr2ptr, fn)) // [0]6.5.5
 	case ExprAnd: // Expr '&' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).and(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
+		if n.isSideEffectsFree(ctx) {
+			// x & (x | y) == x
+			x, y := n.Expr, n.Expr2
+			if y.Case == ExprIdent {
+				x, y = y, x
+			}
+			if x.Case == ExprIdent && y.Case == ExprPExprList && y.ExprList.ExprList == nil {
+				if z := y.ExprList.Expr; z.Case == ExprOr {
+					if z.Expr.Case == ExprIdent && z.Expr.Token.Val == x.Token.Val ||
+						z.Expr2.Case == ExprIdent && z.Expr2.Token.Val == x.Token.Val {
+						*n = *x
+					}
+				}
+
+			}
+		}
 	case ExprCall: // Expr '(' ArgumentExprListOpt ')'
 		// [0]6.5.2.2
 		op := n.Expr.eval(ctx, arr2ptr, fn)
@@ -1000,7 +1038,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			a.isNullPtrConst() && b.isPointerType():
 
 			n.Operand = Operand{Type: b.Type}
-			if cond.IsNonzero() {
+			if cond.IsNonZero() {
 				n.Operand.Value = Null
 				done = true
 			}
@@ -1022,7 +1060,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		}
 
 		switch {
-		case cond.IsNonzero():
+		case cond.IsNonZero():
 			n.Operand = a
 		case cond.IsZero():
 			n.Operand = b
@@ -1052,8 +1090,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).xor(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
 	case ExprOr: // Expr '|' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).or(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
-		// fmt.Printf("TODO1055 %v\n", ctx.position(n))
-		// n.dumpOperands("· ") //TODO-
 	case ExprFloat: // FLOATCONST
 		n.floatConst(ctx)
 	case ExprIdent: // IDENTIFIER
@@ -2565,3 +2601,253 @@ func (n *DeclarationSpecifiersOpt) check(ctx *context, ds *DeclarationSpecifier)
 
 // IsTLD reports whether n is declared in file scope.
 func (n *Declarator) IsTLD() bool { return n.scope.Parent == nil }
+
+func (n *Expr) isSideEffectsFree(ctx *context) bool {
+	switch n.Case {
+	case
+		ExprChar,       // CHARCONST
+		ExprFloat,      // FLOATCONST
+		ExprIdent,      // IDENTIFIER
+		ExprInt,        // INTCONST
+		ExprSizeofExpr, // "sizeof" Expr
+		ExprSizeofType, // "sizeof" '(' TypeName ')'
+		ExprString:     // STRINGLITERAL
+
+		return true
+	case ExprPExprList: // '(' ExprList ')'
+		return n.ExprList.isSideEffectsFree(ctx)
+	case
+		ExprAddAssign, // Expr "+=" Expr
+		ExprAndAssign, // Expr "&=" Expr
+		ExprAssign,    // Expr '=' Expr
+		ExprCall,      // Expr '(' ArgumentExprListOpt ')'
+		ExprDivAssign, // Expr "/=" Expr
+		ExprLshAssign, // Expr "<<=" Expr
+		ExprModAssign, // Expr "%=" Expr
+		ExprMulAssign, // Expr "*=" Expr
+		ExprOrAssign,  // Expr "|=" Expr
+		ExprPostDec,   // Expr "--"
+		ExprPostInc,   // Expr "++"
+		ExprPreDec,    // "--" Expr
+		ExprPreInc,    // "++" Expr
+		ExprRshAssign, // Expr ">>=" Expr
+		ExprSubAssign, // Expr "-=" Expr
+		ExprXorAssign: // Expr "^=" Expr
+
+		return false
+	case ExprCast: // '(' TypeName ')' Expr
+		return !isVaList(n.Expr.Operand.Type) && n.Expr.isSideEffectsFree(ctx)
+	case ExprCond: // Expr '?' ExprList ':' Expr
+		if !n.Expr.isSideEffectsFree(ctx) {
+			return false
+		}
+
+		switch {
+		case n.Expr.Operand.IsNonZero():
+			return n.ExprList.isSideEffectsFree(ctx)
+		case n.Expr.Operand.IsZero():
+			return n.Expr2.isSideEffectsFree(ctx)
+		}
+		return false
+	case
+		ExprAdd, // Expr '+' Expr
+		ExprAnd, // Expr '&' Expr
+		ExprDiv, // Expr '/' Expr
+		ExprEq,  // Expr "==" Expr
+		ExprGe,  // Expr ">=" Expr
+		ExprGt,  // Expr ">" Expr
+		ExprLe,  // Expr "<=" Expr
+		ExprLsh, // Expr "<<" Expr
+		ExprLt,  // Expr '<' Expr
+		ExprMod, // Expr '%' Expr
+		ExprMul, // Expr '*' Expr
+		ExprNe,  // Expr "!=" Expr
+		ExprOr,  // Expr '|' Expr
+		ExprRsh, // Expr ">>" Expr
+		ExprSub, // Expr '-' Expr
+		ExprXor: // Expr '^' Expr
+
+		return n.Expr.isSideEffectsFree(ctx) && n.Expr2.isSideEffectsFree(ctx)
+	case ExprLAnd: // Expr "&&" Expr
+		return n.Expr.isSideEffectsFree(ctx) && n.Expr2.isSideEffectsFree(ctx)
+	case ExprLOr: // Expr "||" Expr
+		return n.Expr.isSideEffectsFree(ctx) && n.Expr2.isSideEffectsFree(ctx)
+	case
+		ExprAddrof,     // '&' Expr
+		ExprCpl,        // '~' Expr
+		ExprDeref,      // '*' Expr
+		ExprNot,        // '!' Expr
+		ExprPSelect,    // Expr "->" IDENTIFIER
+		ExprSelect,     // Expr '.' IDENTIFIER
+		ExprUnaryMinus, // '-' Expr
+		ExprUnaryPlus:  // '+' Expr
+
+		return n.Expr.isSideEffectsFree(ctx)
+	case ExprIndex: // Expr '[' ExprList ']'
+		return n.Expr.isSideEffectsFree(ctx) && n.ExprList.isSideEffectsFree(ctx)
+	default:
+		panic(fmt.Sprint(ctx.position(n), n.Case, n.Operand))
+	}
+}
+
+func (n *ExprList) isSideEffectsFree(ctx *context) bool {
+	for l := n; l != nil; l = l.ExprList {
+		if !l.Expr.isSideEffectsFree(ctx) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (n *ExprList) IsNonZero() bool {
+	for n.ExprList != nil {
+		n = n.ExprList
+	}
+	return n.Expr.IsNonZero()
+}
+
+func (n *Expr) IsNonZero() bool {
+	if n.Operand.IsNonZero() {
+		return true
+	}
+
+	switch n.Case {
+	case
+		ExprAdd,        // Expr '+' Expr
+		ExprAddrof,     // '&' Expr
+		ExprAnd,        // Expr '&' Expr
+		ExprCall,       // Expr '(' ArgumentExprListOpt ')'
+		ExprChar,       // CHARCONST
+		ExprDeref,      // '*' Expr
+		ExprDiv,        // Expr '/' Expr
+		ExprEq,         // Expr "==" Expr
+		ExprFloat,      // FLOATCONST
+		ExprGe,         // Expr ">=" Expr
+		ExprGt,         // Expr '>' Expr
+		ExprIdent,      // IDENTIFIER
+		ExprIndex,      // Expr '[' ExprList ']'
+		ExprInt,        // INTCONST
+		ExprLe,         // Expr "<=" Expr
+		ExprLsh,        // Expr "<<" Expr
+		ExprLt,         // Expr '<' Expr
+		ExprMod,        // Expr '%' Expr
+		ExprMul,        // Expr '*' Expr
+		ExprPSelect,    // Expr "->" IDENTIFIER
+		ExprPostInc,    // Expr "++"
+		ExprPreDec,     // "--" Expr
+		ExprRsh,        // Expr ">>" Expr
+		ExprSelect,     // Expr '.' IDENTIFIER
+		ExprSizeofExpr, // "sizeof" Expr
+		ExprSizeofType, // "sizeof" '(' TypeName ')'
+		ExprString,     // STRINGLITERAL
+		ExprSub:        // Expr '-' Expr
+
+		return false
+	case ExprAssign: // Expr '=' Expr
+		return n.Expr.IsNonZero()
+	case ExprCast: // '(' TypeName ')' Expr
+		return n.Expr.IsNonZero()
+	case ExprCond: // Expr '?' ExprList ':' Expr
+		return n.Expr.IsNonZero() && n.ExprList.IsNonZero() || n.Expr.IsZero() && n.Expr2.IsNonZero()
+	case ExprCpl: // '~' Expr
+		return n.Expr.IsZero()
+	case ExprLAnd: // Expr "&&" Expr
+		return n.Expr.IsNonZero() && n.Expr2.IsNonZero()
+	case ExprLOr: // Expr "||" Expr
+		return n.Expr.IsNonZero() || n.Expr2.IsNonZero()
+	case ExprNe: // Expr "!=" Expr
+		return n.Expr.IsZero() && n.Expr2.IsNonZero() || n.Expr.IsNonZero() && n.Expr2.IsZero()
+	case ExprNot: // '!' Expr
+		return n.Expr.IsZero()
+	case ExprOr: // Expr '|' Expr
+		return n.Expr.IsNonZero() || n.Expr2.IsNonZero()
+	case ExprPExprList: // '(' ExprList ')'
+		return n.ExprList.IsNonZero()
+	case ExprUnaryMinus: // '-' Expr
+		return n.Expr.IsNonZero()
+	case ExprUnaryPlus: // '+' Expr
+		return n.Expr.IsNonZero()
+	case ExprXor: // Expr '^' Expr
+		return n.Expr.IsNonZero() && n.Expr2.IsZero() || n.Expr.IsZero() && n.Expr2.IsNonZero()
+	default:
+		panic(fmt.Errorf("%T.IsNonZero %v", n, n.Case))
+	}
+}
+
+func (n *ExprList) IsZero() bool {
+	for n.ExprList != nil {
+		n = n.ExprList
+	}
+	return n.Expr.IsZero()
+}
+
+func (n *Expr) IsZero() bool {
+	if n.Operand.IsZero() {
+		return true
+	}
+
+	switch n.Case {
+	case
+		ExprAdd,        // Expr '+' Expr
+		ExprAddrof,     // '&' Expr
+		ExprCall,       // Expr '(' ArgumentExprListOpt ')'
+		ExprChar,       // CHARCONST
+		ExprCpl,        // '~' Expr
+		ExprDeref,      // '*' Expr
+		ExprDiv,        // Expr '/' Expr
+		ExprEq,         // Expr "==" Expr
+		ExprFloat,      // FLOATCONST
+		ExprGe,         // Expr ">=" Expr
+		ExprGt,         // Expr '>' Expr
+		ExprIdent,      // IDENTIFIER
+		ExprIndex,      // Expr '[' ExprList ']'
+		ExprInt,        // INTCONST
+		ExprLe,         // Expr "<=" Expr
+		ExprLsh,        // Expr "<<" Expr
+		ExprLt,         // Expr '<' Expr
+		ExprPSelect,    // Expr "->" IDENTIFIER
+		ExprPostInc,    // Expr "++"
+		ExprPreDec,     // "--" Expr
+		ExprRsh,        // Expr ">>" Expr
+		ExprSelect,     // Expr '.' IDENTIFIER
+		ExprSizeofExpr, // "sizeof" Expr
+		ExprSizeofType, // "sizeof" '(' TypeName ')'
+		ExprString,     // STRINGLITERAL
+		ExprSub:        // Expr '-' Expr
+
+		return false
+	case ExprAnd: // Expr '&' Expr
+		return n.Expr.IsZero() || n.Expr2.IsZero()
+	case ExprAssign: // Expr '=' Expr
+		return n.Expr.IsZero()
+	case ExprCast: // '(' TypeName ')' Expr
+		return n.Expr.IsZero()
+	case ExprCond: // Expr '?' ExprList ':' Expr
+		return n.Expr.IsNonZero() && n.ExprList.IsZero() || n.Expr.IsNonZero() && n.Expr2.IsZero()
+	case ExprLAnd: // Expr "&&" Expr
+		return n.Expr.IsZero() || n.Expr2.IsZero()
+	case ExprLOr: // Expr "||" Expr
+		return n.Expr.IsZero() && n.Expr2.IsZero()
+	case ExprMod: // Expr '%' Expr
+		return n.Expr.IsZero()
+	case ExprMul: // Expr '*' Expr
+		return n.Expr.IsZero() || n.Expr2.IsZero()
+	case ExprNe: // Expr "!=" Expr
+		return n.Expr.IsZero() && n.Expr2.IsZero()
+	case ExprNot: // '!' Expr
+		return n.Expr.IsNonZero()
+	case ExprOr: // Expr '|' Expr
+		return n.Expr.IsZero() && n.Expr2.IsZero()
+	case ExprPExprList: // '(' ExprList ')'
+		return n.ExprList.IsZero()
+	case ExprUnaryMinus: // '-' Expr
+		return n.Expr.IsZero()
+	case ExprUnaryPlus: // '+' Expr
+		return n.Expr.IsZero()
+	case ExprXor: // Expr '^' Expr
+		return n.Expr.IsZero() && n.Expr2.IsZero()
+	default:
+		panic(fmt.Errorf("%T.IsZero %v", n, n.Case))
+	}
+}

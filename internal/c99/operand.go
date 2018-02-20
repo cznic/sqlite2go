@@ -270,20 +270,20 @@ func (o Operand) and(ctx *context, p Operand) (r Operand) {
 		return Operand{Type: o.Type, Value: &ir.Int64Value{Value: 0}}.normalize(ctx.model)
 	}
 
-	if x, y := o.Domain, p.Domain; x != nil && y != nil {
-		if x.Class() > y.Class() {
-			x, y = y, x
-		}
-		switch {
-		case x.Class() == interval.Degenerate && y.Class() == interval.Closed:
-			bits := mathutil.Max(mathutil.BitLenUint64(uint64(y.A.Lo)), mathutil.BitLenUint64(uint64(y.B.Lo)))
-			if bits < 64 && x.A.Lo&(1<<uint(bits)-1) == 0 {
-				return Operand{Type: o.Type, Value: &ir.Int64Value{Value: 0}}.normalize(ctx.model)
+	if o.Value == nil || p.Value == nil {
+		if x, y := o.Domain, p.Domain; x != nil && y != nil {
+			if x.Class() > y.Class() {
+				x, y = y, x
+			}
+			switch {
+			case x.Class() == interval.Degenerate && y.Class() == interval.Closed:
+				bits := mathutil.Max(mathutil.BitLenUint64(uint64(y.A.Lo)), mathutil.BitLenUint64(uint64(y.B.Lo)))
+				if bits < 64 && x.A.Lo&(1<<uint(bits)-1) == 0 {
+					return Operand{Type: o.Type, Value: &ir.Int64Value{Value: 0}}.normalize(ctx.model)
+				}
 			}
 		}
-	}
 
-	if o.Value == nil || p.Value == nil {
 		return Operand{Type: o.Type}.normalize(ctx.model)
 	}
 
@@ -435,7 +435,63 @@ func (o Operand) div(ctx *context, n Node, p Operand) (r Operand) {
 	}
 
 	if o.Value == nil || p.Value == nil {
-		return Operand{Type: o.Type}.normalize(ctx.model)
+		o.Value = nil
+		if o.Domain != nil && p.Domain != nil {
+			var z mathutil.Int128
+			lo := o.Domain.A
+			hi := lo
+			if o.Domain.Class() == interval.Closed {
+				hi = o.Domain.B
+			}
+			switch p.Domain.Class() {
+			case interval.Closed:
+				switch {
+				case p.Domain.A.Sign() < 0:
+					switch {
+					case p.Domain.B.Sign() < 0:
+						panic(fmt.Errorf("Operand.div %v %v", o, p))
+					case p.Domain.B.Sign() >= 0:
+						// eg.: (int, <nil>, [-2147483648, 2147483647]) (int, <nil>, [-2147483648, 2147483647])
+						if o.Domain.Class() == interval.Degenerate {
+							lo, _ = lo.Neg()
+						}
+					}
+				case p.Domain.A.Sign() >= 0:
+					// eg.: (unsigned long, <nil>, {18446744073709551615}) (unsigned long, <nil>, [0, 18446744073709551615])
+					switch {
+					case hi.Sign() < 0:
+						hi = z
+					case lo.Sign() >= 0:
+						lo = z
+					}
+				}
+			case interval.Degenerate:
+				switch {
+				case p.Domain.A.Sign() < 0:
+					// eg.: (long long, <nil>, [-9223372036854775808, 9223372036854775807]) (long long, -2147483648, {-2147483648})
+					lo, _ = lo.Neg()
+					hi, _ = hi.Neg()
+				case p.Domain.A.Sign() >= 0:
+					// eg.: (int, <nil>, [-2147483648, 2147483647]) (int, 100, {100})
+					if o.Domain.Class() == interval.Degenerate {
+						lo, _ = lo.Neg()
+					}
+				}
+			}
+			if lo.Cmp(hi) > 0 {
+				lo, hi = hi, lo
+			}
+			switch {
+			case lo.Cmp(hi) == 0:
+				o.Domain.Cls = interval.Degenerate
+				o.Domain.A = lo
+			default:
+				o.Domain.Cls = interval.Closed
+				o.Domain.A = lo
+				o.Domain.B = hi
+			}
+		}
+		return o.normalize(ctx.model)
 	}
 
 	switch x := o.Value.(type) {
@@ -722,7 +778,7 @@ func (o Operand) integerPromotion(m Model) Operand {
 }
 
 // IsNonzero returns true when the value of o is known to be non-zero.
-func (o Operand) IsNonzero() bool {
+func (o Operand) IsNonZero() bool {
 	switch x := o.Value.(type) {
 	case nil:
 		return false
@@ -870,7 +926,7 @@ func (o Operand) lsh(ctx *context, p Operand) (r Operand) { // [0]6.5.7
 		m = 64
 	}
 	if o.Value == nil || p.Value == nil {
-		return Operand{Type: o.Type}
+		return Operand{Type: o.Type}.normalize(ctx.model)
 	}
 
 	switch x := o.Value.(type) {
@@ -1111,7 +1167,6 @@ func convertInt64(n int64, t Type, m Model) int64 {
 	default:
 		panic(fmt.Errorf("TODO %v", sz))
 	}
-	panic("unreachable")
 }
 
 func convertDomain(d *interval.Int128, t Type, m Model) *interval.Int128 {
@@ -1130,11 +1185,7 @@ func convertDomain(d *interval.Int128, t Type, m Model) *interval.Int128 {
 
 			return interval.Intersection(d, td).(*interval.Int128)
 		default:
-			if d.B.Cmp(td.B) > 0 {
-				return td
-			}
-
-			panic(fmt.Errorf("%v -> %v %v", d, td, t))
+			return td
 		}
 	case interval.Degenerate:
 		switch {
@@ -1153,10 +1204,8 @@ func convertDomain(d *interval.Int128, t Type, m Model) *interval.Int128 {
 		}
 	default:
 		panic(fmt.Errorf("convertDomain %v -> %v %v", d, td, t))
-		// all_test.go:427: ../c99/testdata/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/pr45034.c: PANIC: convertDomain {255} -> [-128, 127] signed char
 
 	}
-	panic("unrechable")
 }
 
 func (o Operand) normalize(m Model) (r Operand) {
@@ -1258,9 +1307,6 @@ func (o Operand) rsh(ctx *context, p Operand) (r Operand) { // [0]6.5.7
 				lhs = x.B
 			}
 			rhs := y.A
-			if y.Class() == interval.Closed {
-				rhs = y.B
-			}
 			if uint64(mathutil.BitLenUint64(uint64(lhs.Lo))) <= uint64(rhs.Lo)%m {
 				r.Value = &ir.Int64Value{Value: 0}
 				return r.normalize(ctx.model)
@@ -1285,7 +1331,7 @@ func (o Operand) rsh(ctx *context, p Operand) (r Operand) { // [0]6.5.7
 func (o Operand) sub(ctx *context, p Operand) (r Operand) {
 	o, p = UsualArithmeticConversions(ctx.model, o, p)
 	if o.Value == nil || p.Value == nil {
-		return Operand{Type: o.Type, Domain: o.Domain}.normalize(ctx.model)
+		return Operand{Type: o.Type}.normalize(ctx.model)
 	}
 
 	switch x := o.Value.(type) {
