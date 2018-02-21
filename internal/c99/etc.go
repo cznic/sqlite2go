@@ -97,6 +97,7 @@ func (n *Expr) dumpOperands(s string) {
 		ExprCpl,
 		ExprDeref,
 		ExprIndex,
+		ExprNot,
 		ExprPSelect,
 		ExprSelect,
 		ExprUnaryMinus:
@@ -126,6 +127,7 @@ func (n *Expr) dumpOperands(s string) {
 		n.Expr2.dumpOperands(s + "· ")
 	case
 		ExprCall,
+		ExprChar,
 		ExprFloat,
 		ExprIdent,
 		ExprInt:

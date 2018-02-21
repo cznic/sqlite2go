@@ -1039,18 +1039,29 @@ func (o Operand) mod(ctx *context, n Node, p Operand) (r Operand) {
 		return o.normalize(ctx.model)
 	}
 
-	switch x := p.Value.(type) {
-	case *ir.Int64Value:
-		if x.Value == 1 || x.Value == -1 {
-			return Operand{Type: o.Type, Value: &ir.Int64Value{Value: 0}}.normalize(ctx.model) //  x % {1,-1} == 0
-		}
-	case nil:
-		return Operand{Type: o.Type}.normalize(ctx.model)
-	default:
-		panic(fmt.Errorf("TODO %T", x))
+	if y, ok := p.Value.(*ir.Int64Value); ok && (y.Value == 1 || y.Value == -1) {
+		return Operand{Type: o.Type, Value: &ir.Int64Value{Value: 0}}.normalize(ctx.model) //  y % {1,-1} == 0
 	}
 
 	if o.Value == nil || p.Value == nil {
+		if x, y := o.Domain, p.Domain; x != nil && y != nil {
+			switch x.Class() {
+			case interval.Closed:
+				// ok
+			case interval.Degenerate:
+				x.B = x.A
+				x.A = mathutil.Int128{}
+				if x.A.Cmp(x.B) > 0 {
+					x.A, x.B = x.B, x.A
+				}
+				x.Cls = interval.Closed
+				o.Domain = x
+				o.Value = nil
+			default:
+				panic("Operand.mod internal error")
+			}
+			return o.normalize(ctx.model)
+		}
 		return Operand{Type: o.Type}.normalize(ctx.model)
 	}
 

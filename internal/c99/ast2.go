@@ -462,6 +462,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			lhs.isArithmeticType() && rhs.isArithmeticType():
 
 			n.Operand = lhs.ne(ctx, rhs)
+			// fmt.Printf("TODO465 %v\n", ctx.position(n))
+			// n.Operand = n.Operand.normalize(ctx.model)
+			// n.dumpOperands("· ") //TODO-
 		case
 			// one operand is a pointer and the other is a null
 			// pointer constant.
@@ -733,9 +736,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).ge(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
 	case ExprRsh: // Expr ">>" Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).rsh(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
-		// fmt.Printf("TODO736 %v\n", ctx.position(n))
-		// n.Operand = n.Operand.normalize(ctx.model)
-		// n.dumpOperands("· ") //TODO-
 	case ExprRshAssign: // Expr ">>=" Expr
 		n.Expr.eval(ctx, arr2ptr, fn).rsh(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
 		n.Operand = n.Expr.Operand
