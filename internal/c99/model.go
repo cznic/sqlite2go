@@ -91,7 +91,7 @@ func (m Model) Sizeof(t Type) int64 {
 		}
 
 		lf := layout[len(layout)-1]
-		return roundup(lf.Offset+lf.Size+int64(lf.Padding), int64(m.Alignof(t)))
+		return lf.Offset + lf.Size + int64(lf.Padding)
 	case *TaggedStructType:
 		u := x.getType()
 		if u == x {
@@ -103,12 +103,12 @@ func (m Model) Sizeof(t Type) int64 {
 		return int64(m[x].Size)
 	case *UnionType:
 		var sz int64
-		for _, v := range x.Fields {
-			if n := m.Sizeof(v.Type); n > sz {
+		for _, v := range m.Layout(x) {
+			if n := v.Size + int64(v.Padding); n > sz {
 				sz = n
 			}
 		}
-		return roundup(sz, int64(m.Alignof(t)))
+		return sz
 	case nil:
 		panic("internal error")
 	default:
@@ -149,10 +149,17 @@ func (m Model) Layout(t Type) []FieldProperties {
 			switch {
 			case v.Bits != 0:
 				switch {
-				case bitoff == 0:
+				case bitoff == 0 && v.Bits > 0:
 					r[i] = FieldProperties{Offset: off, Bitoff: bitoff, Bits: v.Bits}
 					bitoff = v.Bits
 				default:
+					if v.Bits < 0 {
+						off = m.packBits(bitoff, i-1, off, r)
+						r[i] = FieldProperties{Offset: off, Bits: -1}
+						bitoff = 0
+						break
+					}
+
 					n := bitoff + v.Bits
 					if n > 64 {
 						off = m.packBits(bitoff, i-1, off, r)
@@ -187,7 +194,7 @@ func (m Model) Layout(t Type) []FieldProperties {
 			off = m.packBits(bitoff, i, off, r)
 		}
 		for i, v := range r {
-			if v.Bits != 0 {
+			if v.Bits > 0 {
 				x.Fields[i].PackedType = v.PackedType
 			}
 		}
@@ -203,36 +210,28 @@ func (m Model) Layout(t Type) []FieldProperties {
 		}
 
 		r := make([]FieldProperties, len(x.Fields))
-		var off int64
 		for i, v := range x.Fields {
 			switch {
-			case v.Bits != 0:
-				panic("internal error")
+			case v.Bits < 0:
+				m.packBits(v.Bits, i, 0, r)
+			case v.Bits > 0:
+				r[i] = FieldProperties{Bits: v.Bits}
+				m.packBits(v.Bits, i, 0, r)
+				x.Fields[i].PackedType = r[i].PackedType
 			default:
 				sz := m.Sizeof(v.Type)
-				a := m.StructAlignof(v.Type)
-				z := off
-				if a != 0 {
-					off = roundup(off, int64(a))
-				}
-				if off != z {
-					r[i-1].Padding = int(off - z)
-				}
-				r[i] = FieldProperties{Offset: off, Size: sz, Bits: v.Bits}
+				r[i] = FieldProperties{Size: sz, Bits: v.Bits}
 			}
 		}
 		for i, v := range r {
 			if v.Bits != 0 {
-				if v.PackedType == nil {
-					panic("TODO")
-				}
 				x.Fields[i].PackedType = v.PackedType
 			}
 		}
-		z := off
-		off = roundup(off, int64(m.Alignof(t)))
-		if off != z {
-			r[len(r)-1].Padding = int(off - z)
+		lf := &r[len(r)-1]
+		a := m.Alignof(t)
+		if sz := roundup(lf.Size, int64(a)); sz != lf.Size {
+			lf.Padding = int(sz - lf.Size)
 		}
 		return r
 	case nil:
@@ -263,7 +262,7 @@ func (m *Model) packBits(bitoff, i int, off int64, r []FieldProperties) int64 {
 		off = roundup(off, int64(a))
 	}
 	var first int
-	for first = i; first >= 0 && r[first].Bits != 0 && r[first].PackedType == nil; first-- {
+	for first = i; first >= 0 && r[first].Bits > 0 && r[first].PackedType == nil; first-- {
 	}
 	first++
 	if off != z {
@@ -291,7 +290,11 @@ func (m Model) Alignof(t Type) int {
 		r := 1
 		for _, v := range x.Fields {
 			t := v.Type
-			if v.Bits != 0 {
+			if v.Bits < 0 {
+				continue
+			}
+
+			if v.Bits > 0 {
 				t = v.PackedType
 			}
 			if a := m.Alignof(t); a > r {
@@ -317,7 +320,11 @@ func (m Model) Alignof(t Type) int {
 		r := 1
 		for _, v := range x.Fields {
 			t := v.Type
-			if v.Bits != 0 {
+			if v.Bits < 0 {
+				continue
+			}
+
+			if v.Bits > 0 {
 				t = v.PackedType
 			}
 			if a := m.Alignof(t); a > r {
@@ -346,7 +353,15 @@ func (m Model) StructAlignof(t Type) int {
 	case *StructType:
 		r := 1
 		for _, v := range x.Fields {
-			if a := m.StructAlignof(v.Type); a > r {
+			t := v.Type
+			if v.Bits < 0 {
+				continue
+			}
+
+			if v.Bits > 0 {
+				t = v.PackedType
+			}
+			if a := m.StructAlignof(t); a > r {
 				r = a
 			}
 		}
@@ -362,7 +377,15 @@ func (m Model) StructAlignof(t Type) int {
 	case *UnionType:
 		r := 1
 		for _, v := range x.Fields {
-			if a := m.StructAlignof(v.Type); a > r {
+			t := v.Type
+			if v.Bits < 0 {
+				continue
+			}
+
+			if v.Bits > 0 {
+				t = v.PackedType
+			}
+			if a := m.StructAlignof(t); a > r {
 				r = a
 			}
 		}
@@ -397,7 +420,7 @@ func (m Model) defaultArgumentPromotion(op Operand) (r Operand) {
 			op.Type = x
 			switch x {
 			case Float:
-				return op.convertTo(m, Double)
+				return op.ConvertTo(m, Double)
 			case Double:
 				return op
 			case

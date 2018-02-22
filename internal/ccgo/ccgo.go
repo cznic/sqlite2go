@@ -602,7 +602,7 @@ func (g gen) escaped(n *c99.Declarator) bool {
 
 	switch c99.UnderlyingType(n.Type).(type) {
 	case *c99.ArrayType:
-		return true
+		return !n.IsFunctionParameter
 	case
 		*c99.StructType,
 		*c99.TaggedStructType,
@@ -616,27 +616,26 @@ func (g gen) escaped(n *c99.Declarator) bool {
 }
 
 func (g *gen) hasBitFields(t c99.Type) bool {
-	switch x := c99.UnderlyingType(t).(type) {
+	t = c99.UnderlyingType(t)
+	if k := t.Kind(); k != c99.Struct && k != c99.Union {
+		return false
+	}
+
+	switch x := t.(type) {
 	case *c99.StructType:
 		for _, v := range x.Fields {
 			if v.Bits != 0 {
 				return true
 			}
 		}
-
-		return false
 	case *c99.UnionType:
 		for _, v := range x.Fields {
 			if v.Bits != 0 {
 				return true
 			}
 		}
-
-		return false
-	default:
-		todo("%T", x)
 	}
-	panic("unreachable")
+	return false
 }
 
 func (g *gen) allocString(s int) int64 {

@@ -367,7 +367,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		switch x := t.(type) {
 		case *PointerType:
 			//dbg("", ctx.position(n), t, op)
-			n.Operand = op.convertTo(ctx.model, t)
+			n.Operand = op.ConvertTo(ctx.model, t)
 		case *NamedType:
 			t = x.Type
 			goto more
@@ -389,7 +389,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 				UShort:
 
 				//dbg("", ctx.position(n), t, op)
-				n.Operand = op.convertTo(ctx.model, t)
+				n.Operand = op.ConvertTo(ctx.model, t)
 			default:
 				panic(x)
 			}
@@ -397,7 +397,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			panic(x)
 		}
 		if n.Expr.Operand.Value != nil {
-			op := n.Expr.Operand.convertTo(ctx.model, t)
+			op := n.Expr.Operand.ConvertTo(ctx.model, t)
 			n.Operand.Value = op.Value
 		}
 	case ExprDeref: // '*' Expr
@@ -849,7 +849,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		}
 		for i, v := range ops {
 			if v.Value != nil {
-				ops[i] = v.convertTo(ctx.model, ops[i].Type)
+				ops[i] = v.ConvertTo(ctx.model, ops[i].Type)
 			}
 		}
 		if o := n.ArgumentExprListOpt; o != nil {
@@ -1661,7 +1661,7 @@ func (n *LabeledStmt) check(ctx *context, fn *Declarator, seq *int, sc []int, in
 	//[0]6.8.1
 	switch n.Case {
 	case LabeledStmtSwitchCase: // "case" ConstExpr ':' Stmt
-		op := n.ConstExpr.eval(ctx).convertTo(ctx.model, inSwitch.SwitchOp.Type)
+		op := n.ConstExpr.eval(ctx).ConvertTo(ctx.model, inSwitch.SwitchOp.Type)
 		n.ConstExpr.Operand = op
 		if op.Value == nil {
 			panic("TODO")
@@ -1773,7 +1773,7 @@ func (n *JumpStmt) check(ctx *context, fn *Declarator, inSwitch *SelectionStmt, 
 			if op.Type == nil {
 				panic(ctx.position(n))
 			}
-			n.ReturnOperand = op.convertTo(ctx.model, t)
+			n.ReturnOperand = op.ConvertTo(ctx.model, t)
 		}
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
@@ -2539,8 +2539,6 @@ func (n *StructDeclarator) check(ctx *context, ds *DeclarationSpecifier, field i
 			d.IsField = true
 			d.Field = field
 			t = d.check(ctx, ds, t, false, nil, nil)
-		} else {
-			panic(ctx.position(n))
 		}
 		op := n.ConstExpr.eval(ctx)
 		if op.Value == nil {
@@ -2550,8 +2548,12 @@ func (n *StructDeclarator) check(ctx *context, ds *DeclarationSpecifier, field i
 			panic(ctx.position)
 		}
 		bits := op.Value.(*ir.Int64Value).Value
-		if bits < 1 || bits > 64 {
+		if bits > 64 {
 			panic(ctx.position)
+		}
+
+		if bits == 0 {
+			bits = -1
 		}
 		n.Bits = int(bits)
 		if d != nil {

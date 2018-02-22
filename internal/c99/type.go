@@ -100,7 +100,7 @@ func (t TypeKind) assign(ctx *context, op Operand) Operand {
 		// the left operand has qualified or unqualified arithmetic
 		// type and the right has arithmetic type;
 		t.IsArithmeticType() && op.Type.IsArithmeticType():
-		return op.convertTo(ctx.model, t)
+		return op.ConvertTo(ctx.model, t)
 	default:
 		panic(fmt.Sprintf("%v <- %v", t, op))
 	}
@@ -841,7 +841,7 @@ func (t *PointerType) assign(ctx *context, op Operand) (r Operand) {
 	switch {
 	// One of the following shall hold:
 	case ctx.tweaks.EnablePointerCompatibility && op.Type.IsPointerType():
-		return op.convertTo(ctx.model, t)
+		return op.ConvertTo(ctx.model, t)
 	case
 		// both operands are pointers to qualified or unqualified
 		// versions of compatible types, and the type pointed to by the
@@ -849,7 +849,7 @@ func (t *PointerType) assign(ctx *context, op Operand) (r Operand) {
 		// right;
 		op.Type.IsPointerType() && t.IsCompatible(op.Type):
 
-		return op.convertTo(ctx.model, t)
+		return op.ConvertTo(ctx.model, t)
 	case
 		// one operand is a pointer to an object or incomplete type and
 		// the other is a pointer to a qualified or unqualified version
@@ -999,6 +999,9 @@ func (t *StructType) String() string {
 			buf.WriteString("; ")
 		}
 		fmt.Fprintf(&buf, "%s %s", dict.S(v.Name), v.Type)
+		if v.Bits != 0 {
+			fmt.Fprintf(&buf, ".%d", v.Bits)
+		}
 	}
 	buf.WriteByte('}')
 	return buf.String()
@@ -1385,6 +1388,10 @@ func (t *UnionType) String() string {
 			buf.WriteString("; ")
 		}
 		fmt.Fprintf(&buf, "%s %s", dict.S(v.Name), v.Type)
+		if v.Bits != 0 {
+			fmt.Fprintf(&buf, ".%d", v.Bits)
+		}
+
 	}
 	buf.WriteByte('}')
 	return buf.String()

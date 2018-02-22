@@ -275,7 +275,7 @@ func (g *gen) void(n *c99.Expr) {
 	case c99.ExprLOr: // Expr "||" Expr
 		g.w("if ")
 		g.value(n.Expr, false)
-		g.w(" != 0 {")
+		g.w(" == 0 {")
 		g.void(n.Expr2)
 		g.w("}")
 	case c99.ExprIndex: // Expr '[' ExprList ']'
@@ -344,6 +344,7 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 			g.w("func() %v {", g.typ(n.Operand.Type))
 			g.void(n)
 			g.w("; return ")
+			n.Operand = n.Operand.ConvertTo(g.model, n.Operand.Type)
 			g.constant(n)
 			g.w(" }()")
 		}
@@ -471,17 +472,23 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 			}
 		case *c99.UnionType:
 			d := x.Field(n.Token2.Val)
-			layout := g.model.Layout(x)
-			if bits := layout[d.Field].Bits; bits != 0 {
-				todo("", g.position0(n), n.Operand)
-			}
+			fp := g.model.Layout(x)[d.Field]
 			switch {
 			case d.Type.Kind() == c99.Array:
 				g.uintptr(n.Expr, false)
 			default:
-				g.w("*(*%s)(unsafe.Pointer(", g.typ(n.Operand.Type))
-				g.uintptr(n.Expr, false)
-				g.w("))")
+				switch {
+				case fp.Bits != 0 && !ignoreBits:
+					g.bitField(n, fp.PackedType, n.Operand.Type, fp.Bits, 0)
+				default:
+					t := n.Operand.Type
+					if fp.Bits != 0 {
+						t = packedType(fp.PackedType, t)
+					}
+					g.w("*(*%s)(unsafe.Pointer(", g.typ(t))
+					g.uintptr(n.Expr, false)
+					g.w("))")
+				}
 			}
 		default:
 			todo("%v: %T", g.position0(n), x)
@@ -609,6 +616,13 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 
 		g.needBool2int++
 		if n.Expr.IsZero() {
+			g.w(" bool2int(")
+			g.value(n.Expr, false)
+			g.w(" != 0)")
+			break
+		}
+
+		if n.Expr.Case == c99.ExprIdent && n.Expr2.Case == c99.ExprIdent && n.Expr.Token.Val == n.Expr2.Token.Val {
 			g.w(" bool2int(")
 			g.value(n.Expr, false)
 			g.w(" != 0)")
@@ -809,15 +823,6 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 		g.w(" == 0)")
 	case c99.ExprLsh: // Expr "<<" Expr
 		//TODO fix also the assign variant
-		if n.Expr.Operand.Bits != 0 {
-			g.w("(")
-			g.convert(n.Expr, n.Operand.Type)
-			g.w(" << uint(") //TODO shl
-			g.value(n.Expr2, false)
-			g.w(")&%#x)", uint64(1)<<uint(n.Expr.Operand.Bits)-1)
-			return
-		}
-
 		g.convert(n.Expr, n.Operand.Type)
 		g.w(" << (uint(")
 		g.value(n.Expr2, false)

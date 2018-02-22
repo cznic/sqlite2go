@@ -6,7 +6,7 @@ package ccgo
 
 //	TCC	cc 51 ccgo 51 build 51 run 51 ok 51
 //	Other	cc 8 ccgo 8 build 8 run 8 ok 8
-//	GCC	cc 928 ccgo 912 build 895 run 895 ok 895
+//	GCC	cc 932 ccgo 916 build 900 run 900 ok 900
 //	Shell	cc 1 ccgo 1 build 1 run 1 ok 1
 
 import (
@@ -387,8 +387,10 @@ func TestGCC(t *testing.T) {
 		"pr23467.c":       {}, // __attribute__ ((aligned (8)))
 		"pushpop_macro.c": {}, // #pragma push_macro("_")
 
-		"bitfld-1.c": {}, //TODO bits, arithmetic precision
-		"bitfld-3.c": {}, //TODO bits, arithmetic precision
+		"bitfld-1.c":  {}, //TODO bits, arithmetic precision
+		"bitfld-3.c":  {}, //TODO bits, arithmetic precision
+		"pr32244-1.c": {}, //TODO bits, arithmetic precision
+		"pr34971.c":   {}, //TODO bits, arithmetic precision
 	}
 
 	if s := *oRE; s != "" {
@@ -567,9 +569,9 @@ out:
 		}
 
 		if err := exec.Command(csmith, "-o", mainC,
-			"--argc",         // --argc | --no-argc: genereate main function with/without argv and argc being passed (enabled by default).
-			"--arrays",       // --arrays | --no-arrays: enable | disable arrays (enabled by default).
-			"--no-bitfields", //TODO --bitfields | --no-bitfields: enable | disable full-bitfields structs (disabled by default).
+			"--argc",      // --argc | --no-argc: genereate main function with/without argv and argc being passed (enabled by default).
+			"--arrays",    // --arrays | --no-arrays: enable | disable arrays (enabled by default).
+			"--bitfields", // --bitfields | --no-bitfields: enable | disable full-bitfields structs (disabled by default).
 			// --builtin-function-prob <num>: set the probability of choosing a builtin function (default is 20).
 			// --builtins | --no-builtins: enable | disable to generate builtin functions (disabled by default).
 			// --checksum | --no-checksum: enable | disable checksum calculation (enabled by default).

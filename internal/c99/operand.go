@@ -111,33 +111,33 @@ func UsualArithmeticConversions(m Model, a, b Operand) (Operand, Operand) {
 	// double, the other operand is converted, without change of type
 	// domain, to a type whose corresponding real type is long double.
 	if a.Type.Kind() == LongDoubleComplex || b.Type.Kind() == LongDoubleComplex {
-		return a.convertTo(m, LongDoubleComplex), b.convertTo(m, LongDoubleComplex)
+		return a.ConvertTo(m, LongDoubleComplex), b.ConvertTo(m, LongDoubleComplex)
 	}
 
 	if a.Type.Kind() == LongDouble || b.Type.Kind() == LongDouble {
-		return a.convertTo(m, LongDouble), b.convertTo(m, LongDouble)
+		return a.ConvertTo(m, LongDouble), b.ConvertTo(m, LongDouble)
 	}
 
 	// Otherwise, if the corresponding real type of either operand is
 	// double, the other operand is converted, without change of type
 	// domain, to a type whose corresponding real type is double.
 	if a.Type.Kind() == DoubleComplex || b.Type.Kind() == DoubleComplex {
-		return a.convertTo(m, DoubleComplex), b.convertTo(m, DoubleComplex)
+		return a.ConvertTo(m, DoubleComplex), b.ConvertTo(m, DoubleComplex)
 	}
 
 	if a.Type.Kind() == Double || b.Type.Kind() == Double {
-		return a.convertTo(m, Double), b.convertTo(m, Double)
+		return a.ConvertTo(m, Double), b.ConvertTo(m, Double)
 	}
 
 	// Otherwise, if the corresponding real type of either operand is
 	// float, the other operand is converted, without change of type
 	// domain, to a type whose corresponding real type is float.)
 	if a.Type.Kind() == FloatComplex || b.Type.Kind() == FloatComplex {
-		return a.convertTo(m, FloatComplex), b.convertTo(m, FloatComplex)
+		return a.ConvertTo(m, FloatComplex), b.ConvertTo(m, FloatComplex)
 	}
 
 	if a.Type.Kind() == Float || b.Type.Kind() == Float {
-		return a.convertTo(m, Float), b.convertTo(m, Float)
+		return a.ConvertTo(m, Float), b.ConvertTo(m, Float)
 	}
 
 	// Otherwise, the integer promotions are performed on both operands.
@@ -166,7 +166,7 @@ func UsualArithmeticConversions(m Model, a, b Operand) (Operand, Operand) {
 		if intConvRank[b.Type.Kind()] > intConvRank[a.Type.Kind()] {
 			t = b.Type
 		}
-		return a.convertTo(m, t), b.convertTo(m, t)
+		return a.ConvertTo(m, t), b.ConvertTo(m, t)
 	}
 
 	// Otherwise, if the operand that has unsigned integer type has rank
@@ -176,11 +176,11 @@ func UsualArithmeticConversions(m Model, a, b Operand) (Operand, Operand) {
 	switch {
 	case a.isSigned(): // b is unsigned
 		if intConvRank[b.Type.Kind()] >= intConvRank[a.Type.Kind()] {
-			return a.convertTo(m, b.Type), b
+			return a.ConvertTo(m, b.Type), b
 		}
 	case b.isSigned(): // a is unsigned
 		if intConvRank[a.Type.Kind()] >= intConvRank[b.Type.Kind()] {
-			return a, b.convertTo(m, a.Type)
+			return a, b.ConvertTo(m, a.Type)
 		}
 	default:
 		panic(fmt.Errorf("TODO %v %v", a, b))
@@ -193,11 +193,11 @@ func UsualArithmeticConversions(m Model, a, b Operand) (Operand, Operand) {
 	switch {
 	case a.isSigned(): // b is unsigned
 		if intConvRank[a.Type.Kind()] > intConvRank[b.Type.Kind()] {
-			return a, b.convertTo(m, a.Type)
+			return a, b.ConvertTo(m, a.Type)
 		}
 	case b.isSigned(): // a is unsigned
 		if intConvRank[b.Type.Kind()] > intConvRank[a.Type.Kind()] {
-			return a.convertTo(m, b.Type), b
+			return a.ConvertTo(m, b.Type), b
 		}
 	default:
 		panic(fmt.Errorf("TODO %v %v", a, b))
@@ -295,8 +295,8 @@ func (o Operand) and(ctx *context, p Operand) (r Operand) {
 	}
 }
 
-// convertTo converts o to type t.
-func (o Operand) convertTo(m Model, t Type) (r Operand) {
+// ConvertTo converts o to type t.
+func (o Operand) ConvertTo(m Model, t Type) (r Operand) {
 	if o.Type.Equal(t) {
 		return o.normalize(m)
 	}
@@ -327,7 +327,7 @@ func (o Operand) convertTo(m Model, t Type) (r Operand) {
 			panic(x)
 		}
 	case *NamedType:
-		return o.convertTo(m, x.Type)
+		return o.ConvertTo(m, x.Type)
 	default:
 		panic(fmt.Errorf("%T", x))
 	}
@@ -740,11 +740,11 @@ func (o Operand) integerPromotion(m Model) Operand {
 				switch {
 				case x.IsUnsigned():
 					if o.Bits < bits {
-						return o.convertTo(m, Int)
+						return o.ConvertTo(m, Int)
 					}
 				default:
 					if o.Bits < bits-1 {
-						return o.convertTo(m, Int)
+						return o.ConvertTo(m, Int)
 					}
 				}
 			}
@@ -767,7 +767,7 @@ func (o Operand) integerPromotion(m Model) Operand {
 				UChar,
 				UShort:
 
-				return o.convertTo(m, Int)
+				return o.ConvertTo(m, Int)
 			default:
 				panic(x)
 			}

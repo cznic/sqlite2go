@@ -219,7 +219,7 @@ func (g *gen) functionDefinition(n *c99.Declarator) {
 			nm := names[i]
 			g.w(", ")
 			switch {
-			case param != nil && param.AddressTaken:
+			case param != nil && g.escaped(param):
 				g.w("a%s %s", dict.S(nm), g.typ(v))
 				escParams = append(escParams, param)
 			default:

@@ -91,6 +91,10 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool, lvl int) (r string) {
 		buf.WriteString("struct{")
 		layout := g.model.Layout(x)
 		for i, v := range x.Fields {
+			if v.Bits < 0 {
+				continue
+			}
+
 			if v.Bits != 0 {
 				if layout[i].Bitoff == 0 {
 					fmt.Fprintf(&buf, "F%d %s;", layout[i].Offset, g.typ(layout[i].PackedType))
@@ -159,7 +163,7 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool, lvl int) (r string) {
 		case al == sz:
 			return fmt.Sprintf("struct{X int%d}", 8*sz)
 		default:
-			return fmt.Sprintf("struct{X int%d; _ [%d]byte}", 8*al, sz-al)
+			return fmt.Sprintf("struct{X int%d; _ [%d]byte}", 8*al, sz-al) //TODO use precomputed padding from model layout?
 		}
 	default:
 		todo("%v %T %v", t, x, ptr2uintptr)

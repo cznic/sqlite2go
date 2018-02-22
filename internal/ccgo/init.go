@@ -167,7 +167,10 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 				if l.Designation != nil {
 					todo("", g.position0(n))
 				}
-				if layout[fld].Bits != 0 {
+				switch {
+				case layout[fld].Bits < 0:
+					// nop
+				case layout[fld].Bits > 0:
 					todo("bit field %v", g.position0(n))
 				}
 				d := fields[fld]
@@ -257,11 +260,15 @@ func (g *gen) renderInitializer(b []byte, t c99.Type, n *c99.Initializer) {
 			if l.Designation != nil {
 				todo("", g.position0(n))
 			}
+		more:
 			fp := layout[fld]
 			lo := layout[fld].Offset
 			hi := lo + layout[fld].Size
 			switch {
-			case fp.Bits != 0:
+			case fp.Bits < 0 || fields[fld].Name == 0:
+				fld++
+				goto more
+			case fp.Bits > 0:
 				v := uint64(l.Initializer.Expr.Operand.Value.(*ir.Int64Value).Value)
 				switch sz := g.model.Sizeof(fp.PackedType); sz {
 				case 1:
@@ -339,22 +346,49 @@ func (g *gen) renderInitializer(b []byte, t c99.Type, n *c99.Initializer) {
 		layout := g.model.Layout(t)
 		fld := 0
 		fields := x.Fields
-		i := 0
 		for l := n.InitializerList; l != nil; l = l.InitializerList {
-			if i != 0 {
-				todo("%v", g.position0(n))
-			}
 			if l.Designation != nil {
 				todo("", g.position0(n))
 			}
-			if layout[fld].Bits != 0 {
-				todo("bit field %v", g.position0(n))
+			if fld != 0 {
+				todo("%v", g.position0(n))
 			}
+			fp := layout[fld]
 			lo := layout[fld].Offset
 			hi := lo + layout[fld].Size
-			g.renderInitializer(b[lo:hi:hi], fields[fld].Type, l.Initializer)
+			switch {
+			case layout[fld].Bits < 0 || fields[fld].Name == 0:
+				// nop
+			case layout[fld].Bits > 0:
+				v := uint64(l.Initializer.Expr.Operand.Value.(*ir.Int64Value).Value)
+				switch sz := g.model.Sizeof(fp.PackedType); sz {
+				case 1:
+					m := fp.Mask()
+					x := uint64(b[lo])
+					x = x&^m | v<<uint(fp.Bitoff)&m
+					b[lo] = byte(x)
+				case 2:
+					m := fp.Mask()
+					x := uint64(*(*uint16)(unsafe.Pointer(&b[lo])))
+					x = x&^m | v<<uint(fp.Bitoff)&m
+					*(*uint16)(unsafe.Pointer(&b[lo])) = uint16(x)
+				case 4:
+					m := fp.Mask()
+					x := uint64(*(*uint32)(unsafe.Pointer(&b[lo])))
+					x = x&^m | v<<uint(fp.Bitoff)&m
+					*(*uint32)(unsafe.Pointer(&b[lo])) = uint32(x)
+				case 8:
+					m := fp.Mask()
+					x := *(*uint64)(unsafe.Pointer(&b[lo]))
+					x = x&^m | v<<uint(fp.Bitoff)&m
+					*(*uint64)(unsafe.Pointer(&b[lo])) = x
+				default:
+					todo("", g.position0(n), sz, v)
+				}
+			default:
+				g.renderInitializer(b[lo:hi:hi], fields[fld].Type, l.Initializer)
+			}
 			fld++
-			i++
 		}
 	default:
 		todo("%v: %T", g.position0(n), x)
