@@ -884,6 +884,7 @@ func (t *PointerType) String() string { return fmt.Sprintf("pointer to %v", t.It
 type StructType struct {
 	Fields []Field
 	scope  *Scope
+	layout []FieldProperties
 	//TODO cache layout, size, alignment, struct alignment.
 }
 
@@ -1208,6 +1209,7 @@ func (t *TaggedStructType) String() string { return fmt.Sprintf("struct %s", dic
 type UnionType struct {
 	Fields []Field
 	scope  *Scope
+	layout []FieldProperties
 	//TODO cache size, alignment, struct alignment.
 }
 

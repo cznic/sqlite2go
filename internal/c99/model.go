@@ -9,6 +9,7 @@ import (
 	"runtime"
 
 	"github.com/cznic/ir"
+	"github.com/cznic/mathutil"
 )
 
 // Model describes properties of scalar Types.
@@ -104,11 +105,11 @@ func (m Model) Sizeof(t Type) int64 {
 	case *UnionType:
 		var sz int64
 		for _, v := range m.Layout(x) {
-			if n := v.Size + int64(v.Padding); n > sz {
-				sz = n
+			if v.Size > sz {
+				sz = v.Size
 			}
 		}
-		return sz
+		return roundup(sz, int64(m.Alignof(x)))
 	case nil:
 		panic("internal error")
 	default:
@@ -135,14 +136,20 @@ func (f *FieldProperties) Mask() uint64 {
 }
 
 // Layout computes the memory layout of t.
-func (m Model) Layout(t Type) []FieldProperties {
+func (m Model) Layout(t Type) (r []FieldProperties) {
 	switch x := UnderlyingType(t).(type) {
 	case *StructType:
 		if len(x.Fields) == 0 {
 			return nil
 		}
 
-		r := make([]FieldProperties, len(x.Fields))
+		if x.layout != nil {
+			return x.layout
+		}
+
+		defer func() { x.layout = r }()
+
+		r = make([]FieldProperties, len(x.Fields))
 		var off int64
 		bitoff := 0
 		for i, v := range x.Fields {
@@ -154,14 +161,16 @@ func (m Model) Layout(t Type) []FieldProperties {
 					bitoff = v.Bits
 				default:
 					if v.Bits < 0 {
-						off = m.packBits(bitoff, i-1, off, r)
+						if n := m.packBits(bitoff, i-1, off, r); bitoff != 0 {
+							off = n
+						}
 						r[i] = FieldProperties{Offset: off, Bits: -1}
 						bitoff = 0
 						break
 					}
 
 					n := bitoff + v.Bits
-					if n > 64 {
+					if n > 32 {
 						off = m.packBits(bitoff, i-1, off, r)
 						r[i] = FieldProperties{Offset: off, Bits: v.Bits}
 						bitoff = v.Bits
@@ -198,8 +207,20 @@ func (m Model) Layout(t Type) []FieldProperties {
 				x.Fields[i].PackedType = v.PackedType
 			}
 		}
+		align := 0
+		for i, v := range x.Fields {
+			if r[i].Bits < 0 {
+				continue
+			}
+
+			t := v.Type
+			if v.PackedType != nil {
+				t = v.PackedType
+			}
+			align = mathutil.Max(align, m.StructAlignof(t))
+		}
 		z := off
-		off = roundup(off, int64(m.Alignof(t)))
+		off = roundup(off, int64(align))
 		if off != z {
 			r[len(r)-1].Padding = int(off - z)
 		}
@@ -227,11 +248,6 @@ func (m Model) Layout(t Type) []FieldProperties {
 			if v.Bits != 0 {
 				x.Fields[i].PackedType = v.PackedType
 			}
-		}
-		lf := &r[len(r)-1]
-		a := m.Alignof(t)
-		if sz := roundup(lf.Size, int64(a)); sz != lf.Size {
-			lf.Padding = int(sz - lf.Size)
 		}
 		return r
 	case nil:
@@ -287,6 +303,7 @@ func (m Model) Alignof(t Type) int {
 	case *PointerType:
 		return m[Ptr].Align
 	case *StructType:
+		m.Layout(x)
 		r := 1
 		for _, v := range x.Fields {
 			t := v.Type
@@ -297,7 +314,7 @@ func (m Model) Alignof(t Type) int {
 			if v.Bits > 0 {
 				t = v.PackedType
 			}
-			if a := m.Alignof(t); a > r {
+			if a := m.StructAlignof(t); a > r {
 				r = a
 			}
 		}
@@ -317,6 +334,7 @@ func (m Model) Alignof(t Type) int {
 	case TypeKind:
 		return m[x].Align
 	case *UnionType:
+		m.Layout(x)
 		r := 1
 		for _, v := range x.Fields {
 			t := v.Type
@@ -327,7 +345,7 @@ func (m Model) Alignof(t Type) int {
 			if v.Bits > 0 {
 				t = v.PackedType
 			}
-			if a := m.Alignof(t); a > r {
+			if a := m.StructAlignof(t); a > r {
 				r = a
 			}
 		}
@@ -351,6 +369,7 @@ func (m Model) StructAlignof(t Type) int {
 	case *PointerType:
 		return m[Ptr].StructAlign
 	case *StructType:
+		m.Layout(x)
 		r := 1
 		for _, v := range x.Fields {
 			t := v.Type
@@ -375,6 +394,7 @@ func (m Model) StructAlignof(t Type) int {
 	case TypeKind:
 		return m[x].StructAlign
 	case *UnionType:
+		m.Layout(x)
 		r := 1
 		for _, v := range x.Fields {
 			t := v.Type
@@ -391,7 +411,7 @@ func (m Model) StructAlignof(t Type) int {
 		}
 		return r
 	default:
-		panic(x)
+		panic(fmt.Errorf("%T", x))
 	}
 }
 

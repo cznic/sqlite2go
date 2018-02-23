@@ -926,6 +926,18 @@ func (o Operand) lsh(ctx *context, p Operand) (r Operand) { // [0]6.5.7
 		m = 64
 	}
 	if o.Value == nil || p.Value == nil {
+		if x, y := o.Domain, p.Domain; x != nil && y != nil {
+			switch x.Class() {
+			case interval.Closed:
+				switch y.Class() {
+				case interval.Degenerate:
+					n := uint64(y.A.Lo) % m
+					x.A.Lo <<= n
+					x.B.Lo <<= n
+					return o.normalize(ctx.model)
+				}
+			}
+		}
 		return Operand{Type: o.Type}.normalize(ctx.model)
 	}
 

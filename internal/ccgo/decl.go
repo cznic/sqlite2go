@@ -99,9 +99,35 @@ func (g *gen) defineTaggedStructType(t *c99.TaggedStructType) {
 	default:
 		g.producedStructTags[t.Tag] = struct{}{}
 		g.w("\ntype S%s %s\n", dict.S(t.Tag), g.typ(t.Type))
-		g.w("\n\nfunc init() {")
-		g.w("\nif n := unsafe.Sizeof(S%s{}); n != %d { panic(n) }", dict.S(t.Tag), g.model.Sizeof(t))
-		g.w("\n}\n")
+		if isTesting {
+			g.w("\n\nfunc init() {")
+			st := c99.UnderlyingType(t.Type).(*c99.StructType)
+			fields := st.Fields
+			for i, v := range g.model.Layout(st) {
+				if v.Bits < 0 {
+					continue
+				}
+
+				if v.Bits != 0 && v.Bitoff != 0 {
+					continue
+				}
+
+				if v.Bits != 0 && v.Bitoff == 0 {
+					g.w("\nif n := unsafe.Offsetof(S%s{}.F%d); n != %d { panic(n) }", dict.S(t.Tag), v.Offset, v.Offset)
+					g.w("\nif n := unsafe.Sizeof(S%s{}.F%d); n != %d { panic(n) }", dict.S(t.Tag), v.Offset, g.model.Sizeof(v.PackedType))
+					continue
+				}
+
+				if fields[i].Name == 0 {
+					continue
+				}
+
+				g.w("\nif n := unsafe.Offsetof(S%s{}.%s); n != %d { panic(n) }", dict.S(t.Tag), mangleIdent(fields[i].Name, true), v.Offset)
+				g.w("\nif n := unsafe.Sizeof(S%s{}.%s); n != %d { panic(n) }", dict.S(t.Tag), mangleIdent(fields[i].Name, true), v.Size)
+			}
+			g.w("\nif n := unsafe.Sizeof(S%s{}); n != %d { panic(n) }", dict.S(t.Tag), g.model.Sizeof(t))
+			g.w("\n}\n")
+		}
 	}
 }
 
@@ -112,6 +138,11 @@ func (g *gen) defineTaggedUnionType(t *c99.TaggedUnionType) {
 
 	g.producedStructTags[t.Tag] = struct{}{}
 	g.w("\ntype U%s %s\n", dict.S(t.Tag), g.typ(t.Type))
+	if isTesting {
+		g.w("\n\nfunc init() {")
+		g.w("\nif n := unsafe.Sizeof(U%s{}); n != %d { panic(n) }", dict.S(t.Tag), g.model.Sizeof(t))
+		g.w("\n}\n")
+	}
 }
 
 func (g *gen) tld(n *c99.Declarator) {
@@ -119,6 +150,11 @@ func (g *gen) tld(n *c99.Declarator) {
 	if t.Kind() == c99.Function {
 		g.functionDefinition(n)
 		return
+	}
+
+	switch x := n.Type.(type) {
+	case *c99.TaggedStructType, *c99.TaggedUnionType:
+		g.enqueue(x)
 	}
 
 	g.w("\n\n// %s %s, escapes: %v, %v", g.mangleDeclarator(n), n.Type, g.escaped(n), g.position(n))
@@ -135,7 +171,6 @@ func (g *gen) tld(n *c99.Declarator) {
 
 		switch x := t.(type) {
 		case *c99.StructType:
-
 			g.w("\nvar %s = bss + %d\n", g.mangleDeclarator(n), g.allocBSS(n.Type))
 		case *c99.PointerType:
 			g.w("\nvar %s uintptr\n", g.mangleDeclarator(n))

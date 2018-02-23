@@ -161,6 +161,7 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 		g.initializerListNL(n.InitializerList)
 		if !g.isZeroInitializer(n) {
 			layout := g.model.Layout(t)
+		more:
 			fld := 0
 			fields := x.Fields
 			for l := n.InitializerList; l != nil; l = l.InitializerList {
@@ -169,7 +170,8 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 				}
 				switch {
 				case layout[fld].Bits < 0:
-					// nop
+					fld++
+					goto more
 				case layout[fld].Bits > 0:
 					todo("bit field %v", g.position0(n))
 				}
@@ -257,17 +259,16 @@ func (g *gen) renderInitializer(b []byte, t c99.Type, n *c99.Initializer) {
 		fld := 0
 		fields := x.Fields
 		for l := n.InitializerList; l != nil; l = l.InitializerList {
+			for fields[fld].Bits < 0 || fields[fld].Name == 0 {
+				fld++
+			}
 			if l.Designation != nil {
 				todo("", g.position0(n))
 			}
-		more:
 			fp := layout[fld]
 			lo := layout[fld].Offset
 			hi := lo + layout[fld].Size
 			switch {
-			case fp.Bits < 0 || fields[fld].Name == 0:
-				fld++
-				goto more
 			case fp.Bits > 0:
 				v := uint64(l.Initializer.Expr.Operand.Value.(*ir.Int64Value).Value)
 				switch sz := g.model.Sizeof(fp.PackedType); sz {
@@ -347,6 +348,9 @@ func (g *gen) renderInitializer(b []byte, t c99.Type, n *c99.Initializer) {
 		fld := 0
 		fields := x.Fields
 		for l := n.InitializerList; l != nil; l = l.InitializerList {
+			for fields[fld].Bits < 0 || fields[fld].Name == 0 {
+				fld++
+			}
 			if l.Designation != nil {
 				todo("", g.position0(n))
 			}
@@ -357,8 +361,6 @@ func (g *gen) renderInitializer(b []byte, t c99.Type, n *c99.Initializer) {
 			lo := layout[fld].Offset
 			hi := lo + layout[fld].Size
 			switch {
-			case layout[fld].Bits < 0 || fields[fld].Name == 0:
-				// nop
 			case layout[fld].Bits > 0:
 				v := uint64(l.Initializer.Expr.Operand.Value.(*ir.Int64Value).Value)
 				switch sz := g.model.Sizeof(fp.PackedType); sz {

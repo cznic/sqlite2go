@@ -449,7 +449,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 	case ExprNe: // Expr "!=" Expr
 		lhs := n.Expr.eval(ctx, arr2ptr, fn)
 		rhs := n.Expr2.eval(ctx, arr2ptr, fn)
-		if n.Expr.Case == ExprIdent && n.Expr2.Case == ExprIdent && n.Expr.Token.Val == n.Expr2.Token.Val {
+		if n.Expr.equals(n.Expr2) {
 			n.Operand = Operand{Type: Int, Value: &ir.Int64Value{Value: 0}}.normalize(ctx.model)
 			break
 		}
@@ -462,9 +462,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			lhs.isArithmeticType() && rhs.isArithmeticType():
 
 			n.Operand = lhs.ne(ctx, rhs)
-			// fmt.Printf("TODO465 %v\n", ctx.position(n))
-			// n.Operand = n.Operand.normalize(ctx.model)
-			// n.dumpOperands("· ") //TODO-
 		case
 			// one operand is a pointer and the other is a null
 			// pointer constant.
@@ -675,8 +672,10 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 	case ExprEq: // Expr "==" Expr
 		lhs := n.Expr.eval(ctx, arr2ptr, fn)
 		rhs := n.Expr2.eval(ctx, arr2ptr, fn)
-		if n.Expr.Case == ExprIdent && n.Expr2.Case == ExprIdent && n.Expr.Token.Val == n.Expr2.Token.Val {
-			n.Operand = Operand{Type: Int, Value: &ir.Int64Value{Value: 1}}.normalize(ctx.model)
+		n.Operand.Type = Int
+		n.Operand.Domain = newBoolDomain()
+		if n.Expr.equals(n.Expr2) {
+			n.Operand.Value = &ir.Int64Value{Value: 1}
 			break
 		}
 
@@ -693,7 +692,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			// pointer constant.
 			lhs.isPointerType() && rhs.isNullPtrConst():
 
-			n.Operand = Operand{Type: Int}
 			if n.Expr.Case == ExprAddrof { // &expr == NULL is statically false
 				switch {
 				case n.Expr.IsNonZero():
@@ -707,7 +705,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			// pointer constant.
 			lhs.isNullPtrConst() && rhs.isPointerType():
 
-			n.Operand = Operand{Type: Int}
 			if n.Expr2.Case == ExprAddrof { // NULL == &expr is statically false
 				switch {
 				case n.Expr2.IsNonZero():
@@ -720,7 +717,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			// both operands are pointers to qualified or unqualified versions of compatible types
 			lhs.isPointerType() && rhs.isPointerType() && lhs.Type.IsCompatible(rhs.Type):
 
-			n.Operand = Operand{Type: Int}
 			if n.Expr.Case == ExprAddrof && n.Expr.Expr.Case == ExprIdent &&
 				n.Expr2.Case == ExprAddrof && n.Expr2.Expr.Case == ExprIdent {
 				var val int64
@@ -764,6 +760,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		}
 	case ExprMod: // Expr '%' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).mod(ctx, n, n.Expr2.eval(ctx, arr2ptr, fn)) // [0]6.5.5
+		// fmt.Printf("TODO1215 %v\n", ctx.position(n))
+		// n.Operand = n.Operand.normalize(ctx.model)
+		// n.dumpOperands("· ") //TODO-
 	case ExprAnd: // Expr '&' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).and(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
 		if n.isSideEffectsFree(ctx) {
@@ -899,6 +898,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			lhs.isArithmeticType() && rhs.isArithmeticType():
 
 			n.Operand = n.Expr.eval(ctx, arr2ptr, fn).sub(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
+			if n.Operand.Type.IsIntegerType() && n.Expr.equals(n.Expr2) {
+				n.Operand.Value = &ir.Int64Value{Value: 0}
+			}
 		case
 			// both operands are pointers to qualified or
 			// unqualified versions of compatible object types;
@@ -1931,6 +1933,9 @@ func (n *InitializerList) check(ctx *context, t Type, fn *Declarator) Operand {
 					panic(fmt.Errorf("%v: TODO", ctx.position(n.Initializer)))
 				}
 
+				for x.Fields[field].Bits < 0 {
+					field++
+				}
 				switch {
 				case field < len(x.Fields):
 					r.Values = append(r.Values, n.Initializer.check(ctx, x.Fields[field].Type, fn))
@@ -1961,6 +1966,9 @@ func (n *InitializerList) check(ctx *context, t Type, fn *Declarator) Operand {
 					panic(fmt.Errorf("%v: TODO", ctx.position(n.Initializer)))
 				}
 
+				for x.Fields[field].Bits < 0 {
+					field++
+				}
 				switch {
 				case field < len(x.Fields):
 					r.Values = append(r.Values, n.Initializer.check(ctx, x.Fields[field].Type, fn))
@@ -2496,6 +2504,9 @@ func (n *StructDeclarationList) check(ctx *context) (r []Field) {
 	for ; n != nil; n = n.StructDeclarationList {
 		r = append(r, n.StructDeclaration.check(ctx, &field)...)
 	}
+	for len(r) > 0 && r[len(r)-1].Bits < 0 {
+		r = r[:len(r)-1]
+	}
 	return r
 }
 
@@ -2717,7 +2728,6 @@ func (n *Expr) IsNonZero() bool {
 	switch n.Case {
 	case
 		ExprAdd,        // Expr '+' Expr
-		ExprAddrof,     // '&' Expr
 		ExprAnd,        // Expr '&' Expr
 		ExprCall,       // Expr '(' ArgumentExprListOpt ')'
 		ExprChar,       // CHARCONST
@@ -2746,6 +2756,20 @@ func (n *Expr) IsNonZero() bool {
 		ExprSub:        // Expr '-' Expr
 
 		return false
+	case ExprAddrof: // '&' Expr
+		n = n.Expr
+		for {
+			switch n.Case {
+			case ExprIdent: // IDENTIFIER
+				return true
+			case ExprIndex: // Expr '[' ExprList ']'
+				n = n.Expr
+			case ExprPSelect: // Expr "->" IDENTIFIER
+				return false
+			default:
+				panic(fmt.Errorf("Expr.IsNonZero %s", n.Case))
+			}
+		}
 	case ExprAssign: // Expr '=' Expr
 		return n.Expr.IsNonZero()
 	case ExprCast: // '(' TypeName ')' Expr
@@ -2851,5 +2875,86 @@ func (n *Expr) IsZero() bool {
 		return n.Expr.IsZero() && n.Expr2.IsZero()
 	default:
 		panic(fmt.Errorf("%T.IsZero %v", n, n.Case))
+	}
+}
+
+func (n *ExprList) equals(m *ExprList) bool {
+	if (n.ExprList == nil) != (m.ExprList == nil) {
+		return false
+	}
+
+	for l, k := n, m; l != nil; l, k = l.ExprList, k.ExprList {
+		if (l.ExprList == nil) != (k.ExprList == nil) || !l.Expr.equals(k.Expr) {
+			return false
+		}
+	}
+	return true
+}
+
+func (n *Expr) equals(m *Expr) bool {
+	if n.Case != m.Case || n.Operand.Type != m.Operand.Type || n.Operand.Value != m.Operand.Value {
+		return false
+	}
+
+	switch n.Case {
+	case
+		ExprPSelect, // Expr "->" IDENTIFIER
+		ExprSelect:  // Expr '.' IDENTIFIER
+
+		return n.Expr.equals(m.Expr) && n.Expr.Token.Val == m.Expr.Token.Val
+	case ExprIdent: // IDENTIFIER
+		return n.Token.Val == m.Token.Val
+	case ExprPExprList: // '(' ExprList ')'
+		return n.ExprList.equals(m.ExprList)
+	case ExprInt: // INTCONST
+		return true
+	case // unary
+		ExprCast,  // '(' TypeName ')' Expr
+		ExprDeref: // '*' Expr
+
+		return n.Expr.equals(m.Expr)
+	case ExprIndex: // Expr '[' ExprList ']'
+		return n.Expr.equals(m.Expr) && n.ExprList.equals(m.ExprList)
+	case // binary commutative
+		ExprAdd, // Expr '+' Expr
+		ExprAnd, // Expr '&' Expr
+		ExprEq,  // Expr "==" Expr
+		ExprGe,  // Expr "==" Expr
+		ExprLe,  // Expr "==" Expr
+		ExprLt,  // Expr "==" Expr
+		ExprMul, // Expr '*' Expr
+		ExprNe,  // Expr "==" Expr
+		ExprSub, // Expr '-' Expr
+		ExprXor: // Expr '^' Expr
+
+		return n.Expr.equals(m.Expr) && n.Expr2.equals(m.Expr2) || n.Expr.equals(m.Expr2) && n.Expr2.equals(m.Expr)
+	case // binary
+		ExprDiv, // Expr '/' Expr
+		ExprLsh, // Expr "<<" Expr
+		ExprMod, // Expr '%' Expr
+		ExprRsh: // Expr ">>" Expr
+
+		return n.Expr.equals(m.Expr) && n.Expr2.equals(m.Expr2)
+	case ExprCall: // Expr '(' ArgumentExprListOpt ')'
+		if !n.Expr.equals(m.Expr) {
+			return false
+		}
+
+		if (n.ArgumentExprListOpt == nil) != (m.ArgumentExprListOpt == nil) {
+			return false
+		}
+
+		if n.ArgumentExprListOpt == nil {
+			return true
+		}
+
+		for l, k := n.ArgumentExprListOpt.ArgumentExprList, m.ArgumentExprListOpt.ArgumentExprList; l != nil; l, k = l.ArgumentExprList, k.ArgumentExprList {
+			if (l.ArgumentExprList == nil) != (k.ArgumentExprList == nil) || !l.Expr.equals(k.Expr) {
+				return false
+			}
+		}
+		return true
+	default:
+		panic(fmt.Errorf("%T.Equal %v", n, n.Case))
 	}
 }

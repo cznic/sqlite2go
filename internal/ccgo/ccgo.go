@@ -27,6 +27,10 @@ import (
 	"github.com/cznic/sqlite2go/internal/c99"
 )
 
+var (
+	isTesting bool // Test hook
+)
+
 // Command outputs a Go program generated from in to w.
 //
 // No package or import clause is generated.
@@ -478,8 +482,14 @@ return r
 		}
 		g.w("ds = %sDS(dsInit)\n", crt)
 		g.w("dsInit = []byte{")
-		for _, v := range g.ds {
-			g.w("%d, ", v)
+		if isTesting {
+			g.w("\n")
+		}
+		for i, v := range g.ds {
+			g.w("%#02x, ", v)
+			if isTesting && i&15 == 15 {
+				g.w("// %#x\n", i&^15)
+			}
 		}
 		g.w("}\n")
 	}

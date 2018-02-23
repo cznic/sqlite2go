@@ -93,6 +93,7 @@ func (n *Expr) dumpOperands(s string) {
 			l.Expr.dumpOperands(s + "· ")
 		}
 	case
+		ExprAddrof,
 		ExprCast,
 		ExprCpl,
 		ExprDeref,

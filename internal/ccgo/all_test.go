@@ -69,6 +69,7 @@ func init() {
 	flag.BoolVar(&traceOpt, "to", false, "")
 	flag.BoolVar(&traceTODO, "todo", false, "")
 	flag.BoolVar(&traceWrites, "tw", false, "")
+	isTesting = true
 }
 
 // ============================================================================
@@ -593,7 +594,7 @@ out:
 			"--longlong", // --longlong| --no-longlong: enable | disable long long (enabled by default).
 			// --main | --nomain: enable | disable to generate main function (enabled by default).
 			"--no-math64",          //TODO --math64 | --no-math64: enable | disable 64-bit math ops (enabled by default).
-			"--max-array-dim", "1", //TODO --max-array-dim <num>: limit array dimensions to <num>. (default 3)
+			"--max-array-dim", "2", //TODO --max-array-dim <num>: limit array dimensions to <num>. (default 3)
 			// --max-array-len-per-dim <num>: limit array length per dimension to <num> (default 10).
 			"--max-block-depth", "1", //TODO --max-block-depth <num>: limit depth of nested blocks to <num> (default 5).
 			// --max-block-size <size>: limit the number of non-return statements in a block to <size> (default 4).
