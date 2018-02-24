@@ -6,7 +6,7 @@ package ccgo
 
 //	TCC	cc 51 ccgo 51 build 51 run 51 ok 51
 //	Other	cc 8 ccgo 8 build 8 run 8 ok 8
-//	GCC	cc 932 ccgo 916 build 900 run 900 ok 900
+//	GCC	cc 932 ccgo 916 build 904 run 904 ok 904
 //	Shell	cc 1 ccgo 1 build 1 run 1 ok 1
 
 import (
@@ -576,8 +576,8 @@ out:
 			// --builtin-function-prob <num>: set the probability of choosing a builtin function (default is 20).
 			// --builtins | --no-builtins: enable | disable to generate builtin functions (disabled by default).
 			// --checksum | --no-checksum: enable | disable checksum calculation (enabled by default).
-			"--no-comma-operators",     //TODO --comma-operators | --no-comma-operators: enable | disable comma operators (enabled by default).
-			"--no-compound-assignment", //TODO --compound-assignment | --no-compound-assignment: enable | disable compound assignments (enabled by default).
+			"--comma-operators",     // --comma-operators | --no-comma-operators: enable | disable comma operators (enabled by default).
+			"--compound-assignment", // --compound-assignment | --no-compound-assignment: enable | disable compound assignments (enabled by default).
 			// --concise: generated programs with minimal comments (disabled by default).
 			"--no-const-pointers",   // --const-pointers | --no-const-pointers: enable | disable const pointers (enabled by default).
 			"--no-consts",           // --consts | --no-consts: enable | disable const qualifier (enabled by default).

@@ -226,16 +226,28 @@ func (o *opt) expr(n *ast.Expr) {
 	case *ast.BinaryExpr:
 		o.expr(&x.X)
 		o.expr(&x.Y)
+		switch x.Op {
+		case token.SHL, token.SHR:
+			switch rhs := x.Y.(type) {
+			case *ast.BasicLit:
+				if rhs.Value == "0" {
+					*n = x.X
+					return
+				}
+			}
+		}
 		switch rhs := x.Y.(type) {
 		case *ast.BasicLit:
 			switch x.Op {
 			case token.ADD, token.SUB:
 				if rhs.Value == "0" {
 					*n = x.X
+					return
 				}
 			case token.MUL, token.QUO:
 				if rhs.Value == "1" {
 					*n = x.X
+					return
 				}
 			}
 		}
@@ -245,10 +257,12 @@ func (o *opt) expr(n *ast.Expr) {
 			case token.ADD, token.SUB:
 				if lhs.Value == "0" {
 					*n = x.Y
+					return
 				}
 			case token.MUL, token.QUO:
 				if lhs.Value == "1" {
 					*n = x.Y
+					return
 				}
 			}
 		case *ast.CallExpr:
@@ -262,6 +276,7 @@ func (o *opt) expr(n *ast.Expr) {
 							if rhs.Value == "0" {
 								*n = o.not(lhs.Args[0])
 								o.needBool2int--
+								return
 							}
 						}
 					case token.NEQ:
@@ -270,6 +285,7 @@ func (o *opt) expr(n *ast.Expr) {
 							if rhs.Value == "0" {
 								*n = lhs.Args[0]
 								o.needBool2int--
+								return
 							}
 						}
 					}

@@ -1001,12 +1001,8 @@ func (g *gen) bitField(n *c99.Expr, packType, t c99.Type, width, off int) {
 	case packType.Equal(t):
 		g.value(n, true)
 		bits := int(g.model.Sizeof(packType) * 8)
-		if n := bits - width - off; n != 0 {
-			g.w("<<%d", n)
-		}
-		if n := bits - width; n != 0 {
-			g.w(">>%d", n)
-		}
+		g.w("<<%d", bits-width-off)
+		g.w(">>%d", bits-width)
 	default:
 		g.w("%s(", g.typ(t))
 		g.bitField(n, packType, packType, width, off)
@@ -1363,9 +1359,41 @@ func (g *gen) constant(n *c99.Expr) {
 	}
 } // constant
 
+func (g *gen) packType(n *c99.Expr) (c99.Type, int, int, int) {
+	switch n.Case {
+	case c99.ExprSelect:
+		switch x := c99.UnderlyingType(n.Expr.Operand.Type).(type) {
+		case *c99.StructType:
+			d := x.Field(n.Token2.Val)
+			layout := g.model.Layout(x)
+			f := layout[d.Field]
+			return f.PackedType, int(g.model.Sizeof(n.Operand.Type)) * 8, f.Bits, f.Bitoff
+		case *c99.UnionType:
+			d := x.Field(n.Token2.Val)
+			layout := g.model.Layout(x)
+			f := layout[d.Field]
+			return f.PackedType, int(g.model.Sizeof(n.Operand.Type)) * 8, f.Bits, f.Bitoff
+		default:
+			todo("%v: %T", g.position0(n), x)
+		}
+	default:
+		todo("", g.position0(n), n.Case)
+	}
+	panic("unreachable")
+}
+
 func (g *gen) voidArithmeticAsop(n *c99.Expr) {
+	var packedType c99.Type
+	var bits, fieldBits, bitOff int
+	var mask uint64
 	op, _ := c99.UsualArithmeticConversions(g.model, n.Expr.Operand, n.Expr2.Operand)
 	switch {
+	case n.Expr.Operand.Bits != 0:
+		packedType, bits, fieldBits, bitOff = g.packType(n.Expr)
+		mask = (uint64(1)<<uint(fieldBits) - 1) << uint(bitOff)
+		g.w("{ p := ")
+		g.uintptr(n.Expr, true)
+		g.w("; *(*%[1]s)(unsafe.Pointer(p)) =  *(*%[1]s)(unsafe.Pointer(p)) &^ %#[3]x | (%[1]s((%[2]s(*(*%[1]s)(unsafe.Pointer(p)))<<%[4]d>>%[5]d)", g.typ(packedType), g.typ(op.Type), mask, bits-fieldBits-bitOff, bits-fieldBits)
 	case n.Expr.Declarator != nil:
 		g.w(" *(")
 		g.lvalue(n.Expr)
@@ -1402,8 +1430,13 @@ func (g *gen) voidArithmeticAsop(n *c99.Expr) {
 	default:
 		todo("", g.position0(n), c99.TokSrc(n.Token))
 	}
+	if n.Expr.Operand.Bits != 0 {
+		g.w("(")
+	}
 	g.convert(n.Expr2, op.Type)
 	switch {
+	case n.Expr.Operand.Bits != 0:
+		g.w(")<<%d)&%#x)}", bitOff, mask)
 	case n.Expr.Declarator != nil:
 		g.w(")")
 	default:

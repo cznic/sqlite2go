@@ -246,6 +246,10 @@ func (o Operand) isSigned() bool         { return isSigned[o.Type.Kind()] }
 
 func (o Operand) add(ctx *context, p Operand) (r Operand) {
 	o, p = UsualArithmeticConversions(ctx.model, o, p)
+	if p.IsZero() {
+		return o.normalize(ctx.model)
+	}
+
 	if o.Value == nil || p.Value == nil {
 		return Operand{Type: o.Type}.normalize(ctx.model)
 	}
@@ -434,7 +438,25 @@ func (o Operand) div(ctx *context, n Node, p Operand) (r Operand) {
 		return o.normalize(ctx.model)
 	}
 
-	if o.Value == nil || p.Value == nil {
+	if x, y := o.Domain, p.Domain; x != nil && y != nil {
+		switch x.Class() {
+		case interval.Closed:
+			switch y.Class() {
+			case interval.Degenerate:
+				if x.A.Sign() >= 0 && y.A.Sign() >= 0 {
+					x.A.Lo = int64(uint64(x.A.Lo) / uint64((y.A.Lo)))
+					x.B.Lo = int64(uint64(x.B.Lo) / uint64((y.A.Lo)))
+					if x.A.Lo == x.B.Lo {
+						x.Cls = interval.Degenerate
+						o.Value = &ir.Int64Value{Value: x.A.Lo}
+					}
+					return o.normalize(ctx.model)
+				}
+			}
+		}
+	}
+
+	if o.Value == nil || p.Value == nil { //TODO-
 		o.Value = nil
 		if o.Domain != nil && p.Domain != nil {
 			var z mathutil.Int128
@@ -921,6 +943,10 @@ func (o Operand) lsh(ctx *context, p Operand) (r Operand) { // [0]6.5.7
 	// undefined.
 	o = o.integerPromotion(ctx.model)
 	p = p.integerPromotion(ctx.model)
+	if o.IsZero() {
+		return o.normalize(ctx.model)
+	}
+
 	m := uint64(32)
 	if ctx.model.Sizeof(o.Type) > 4 {
 		m = 64
@@ -1099,6 +1125,19 @@ func (o Operand) mul(ctx *context, p Operand) (r Operand) {
 	}
 
 	if o.Value == nil || p.Value == nil {
+		if x, y := o.Domain, p.Domain; x != nil && y != nil {
+			switch x.Class() {
+			case interval.Closed:
+				switch y.Class() {
+				case interval.Degenerate:
+					if x.A.Sign() >= 0 && y.A.Sign() > 0 {
+						x.A.Lo *= y.A.Lo
+						x.B.Lo *= y.A.Lo
+						return o.normalize(ctx.model)
+					}
+				}
+			}
+		}
 		return Operand{Type: o.Type}
 	}
 
@@ -1353,6 +1392,10 @@ func (o Operand) rsh(ctx *context, p Operand) (r Operand) { // [0]6.5.7
 
 func (o Operand) sub(ctx *context, p Operand) (r Operand) {
 	o, p = UsualArithmeticConversions(ctx.model, o, p)
+	if p.IsZero() {
+		return o.normalize(ctx.model)
+	}
+
 	if o.Value == nil || p.Value == nil {
 		return Operand{Type: o.Type}.normalize(ctx.model)
 	}
