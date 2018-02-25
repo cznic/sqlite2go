@@ -27,6 +27,8 @@ import (
 	"github.com/cznic/sqlite2go/internal/c99"
 )
 
+//TODO do not pass pointers to helpers, use uintptrs everywhere.
+
 var (
 	isTesting bool // Test hook
 )
@@ -47,7 +49,8 @@ func Package(w io.Writer, in []*c99.TranslationUnit) error {
 
 type gen struct {
 	addTypes            map[string]int
-	assignTypes         map[string]int
+	andBitsTypes        map[string]int
+	andTypes            map[string]int
 	bss                 int64
 	divTypes            map[string]int
 	ds                  []byte
@@ -67,6 +70,8 @@ type gen struct {
 	num                 int
 	nums                map[*c99.Declarator]int
 	opaqueStructTags    map[int]struct{}
+	orBitsTypes         map[string]int
+	orTypes             map[string]int
 	out                 io.Writer
 	out0                bytes.Buffer
 	postDecIBitsTypes   map[string]int
@@ -85,12 +90,14 @@ type gen struct {
 	queue               list.List
 	rshTypes            map[string]int
 	setBitsTypes        map[string]int
+	setTypes            map[string]int
 	strings             map[int]int64
 	subTypes            map[string]int
 	tCache              map[tCacheKey]string
 	text                []int
 	ts                  int64
 	units               map[*c99.Declarator]int
+	xorBitsTypes        map[string]int
 	xorTypes            map[string]int
 
 	needAlloca  bool
@@ -105,7 +112,8 @@ type gen struct {
 func newGen(out io.Writer, in []*c99.TranslationUnit) *gen {
 	return &gen{
 		addTypes:            map[string]int{},
-		assignTypes:         map[string]int{},
+		andBitsTypes:        map[string]int{},
+		andTypes:            map[string]int{},
 		divTypes:            map[string]int{},
 		externs:             map[int]*c99.Declarator{},
 		fnTypes:             map[string]int{},
@@ -117,6 +125,8 @@ func newGen(out io.Writer, in []*c99.TranslationUnit) *gen {
 		mulTypes:            map[string]int{},
 		nums:                map[*c99.Declarator]int{},
 		opaqueStructTags:    map[int]struct{}{},
+		orBitsTypes:         map[string]int{},
+		orTypes:             map[string]int{},
 		out:                 out,
 		postDecIBitsTypes:   map[string]int{},
 		postDecTypes:        map[string]int{},
@@ -133,10 +143,12 @@ func newGen(out io.Writer, in []*c99.TranslationUnit) *gen {
 		producedStructTags:  map[int]struct{}{},
 		rshTypes:            map[string]int{},
 		setBitsTypes:        map[string]int{},
+		setTypes:            map[string]int{},
 		strings:             map[int]int64{},
 		subTypes:            map[string]int{},
 		tCache:              map[tCacheKey]string{},
 		units:               map[*c99.Declarator]int{},
+		xorBitsTypes:        map[string]int{},
 		xorTypes:            map[string]int{},
 	}
 }
@@ -270,12 +282,12 @@ func main() {
 	}
 
 	a = a[:0]
-	for k := range g.assignTypes {
+	for k := range g.setTypes {
 		a = append(a, k)
 	}
 	sort.Strings(a)
 	for _, k := range a {
-		g.w("\n\nfunc set%d(l *%[2]s, r %[2]s) %[2]s { *l = r; return r }", g.assignTypes[k], k)
+		g.w("\n\nfunc set%d(l *%[2]s, r %[2]s) %[2]s { *l = r; return r }", g.setTypes[k], k)
 	}
 	a = a[:0]
 	for k := range g.postIncTypes {
@@ -387,8 +399,8 @@ return r
 	sort.Strings(a)
 	for _, k := range a {
 		a := strings.Split(k, "|")
-		g.w("\n\nfunc setb%d(n uintptr,m %[3]s, off uint, v %[2]s) {", g.setBitsTypes[k], a[0], a[1])
-		g.w("*(*%[1]s)(unsafe.Pointer(n)) = (*(*%[1]s)(unsafe.Pointer(n)))&^m|%[1]s(v)<<off&m }", a[1])
+		g.w("\n\nfunc set%db(n uintptr,m %[3]s, off uint, v %[2]s) %[2]s {", g.setBitsTypes[k], a[0], a[1])
+		g.w("*(*%[1]s)(unsafe.Pointer(n)) = (*(*%[1]s)(unsafe.Pointer(n)))&^m|%[1]s(v)<<off&m; return v }", a[1])
 	}
 	a = a[:0]
 	for k := range g.preIncTypes {
@@ -397,6 +409,67 @@ return r
 	sort.Strings(a)
 	for _, k := range a {
 		g.w("\n\nfunc preinc%d(n *%[2]s) %[2]s { *n++; return *n }", g.preIncTypes[k], k)
+	}
+	a = a[:0]
+	for k := range g.andTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		g.w("\n\nfunc and%d(n *%[2]s, m %[2]s) %[2]s { *n &= m; return *n }", g.andTypes[k], k)
+	}
+	a = a[:0]
+	for k := range g.orBitsTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		a := strings.Split(k, "|") // 0: op type, 1: pack type, 2: pack type bits
+		g.w(`
+	
+func or%db(p uintptr, w, off uint, v %[2]s) %[2]s {
+	r := *(*%[2]s)(unsafe.Pointer(p))<<(%[4]s-w-off)>>(%[4]s-w) | v
+	*(*%[3]s)(unsafe.Pointer(p)) = (*(*%[3]s)(unsafe.Pointer(p)))&^(1<<(w+off)-1)|%[3]s(r)<<off&(1<<(w+off)-1)
+	return r
+}`, g.orBitsTypes[k], a[0], a[1], a[2])
+	}
+	a = a[:0]
+	for k := range g.xorBitsTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		a := strings.Split(k, "|") // 0: op type, 1: pack type, 2: pack type bits
+		g.w(`
+	
+func xor%db(p uintptr, w, off uint, v %[2]s) %[2]s {
+	r := *(*%[2]s)(unsafe.Pointer(p))<<(%[4]s-w-off)>>(%[4]s-w) ^ v
+	*(*%[3]s)(unsafe.Pointer(p)) = (*(*%[3]s)(unsafe.Pointer(p)))&^(1<<(w+off)-1)|%[3]s(r)<<off&(1<<(w+off)-1)
+	return r
+}`, g.xorBitsTypes[k], a[0], a[1], a[2])
+	}
+	a = a[:0]
+	for k := range g.andBitsTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		a := strings.Split(k, "|") // 0: op type, 1: pack type, 2: pack type bits
+		g.w(`
+	
+func and%db(p uintptr, w, off uint, v %[2]s) %[2]s {
+	r := *(*%[2]s)(unsafe.Pointer(p))<<(%[4]s-w-off)>>(%[4]s-w) & v
+	*(*%[3]s)(unsafe.Pointer(p)) = (*(*%[3]s)(unsafe.Pointer(p)))&^(1<<(w+off)-1)|%[3]s(r)<<off&(1<<(w+off)-1)
+	return r
+}`, g.andBitsTypes[k], a[0], a[1], a[2])
+	}
+	a = a[:0]
+	for k := range g.orTypes {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		g.w("\n\nfunc or%d(n *%[2]s, m %[2]s) %[2]s { *n |= m; return *n }", g.orTypes[k], k)
 	}
 	a = a[:0]
 	for k := range g.xorTypes {
@@ -660,18 +733,11 @@ func (g *gen) allocString(s int) int64 {
 	return r
 }
 
-func (g *gen) registerType(m map[string]int, t c99.Type) int {
+func (g *gen) registerType(m map[string]int, t c99.Type, more ...string) int {
 	s := g.typ(t)
-	if id := m[s]; id != 0 {
-		return id
+	if len(more) != 0 {
+		s += "|" + strings.Join(more, "|")
 	}
-
-	m[s] = len(m) + 1
-	return len(m)
-}
-
-func (g *gen) registerBitType(m map[string]int, field, packed c99.Type) int {
-	s := g.typ(field) + "|" + g.typ(packed)
 	if id := m[s]; id != 0 {
 		return id
 	}

@@ -325,7 +325,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			panic("TODO")
 		}
 	case ExprNot: // '!' Expr
-		n.Operand = Operand{Type: Int}
+		n.Operand = Operand{Type: Int, Domain: newBoolDomain()}
 		a := n.Expr.eval(ctx, arr2ptr, fn)
 		if a.IsZero() { //TODO n.Expr.IsZero everywhere
 			n.Operand.Value = &ir.Int64Value{Value: 1}
@@ -388,7 +388,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 				ULongLong,
 				UShort:
 
-				//dbg("", ctx.position(n), t, op)
 				n.Operand = op.ConvertTo(ctx.model, t)
 			default:
 				panic(x)
@@ -449,7 +448,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 	case ExprNe: // Expr "!=" Expr
 		lhs := n.Expr.eval(ctx, arr2ptr, fn)
 		rhs := n.Expr2.eval(ctx, arr2ptr, fn)
-		if n.Expr.equals(n.Expr2) {
+		if n.Expr.Equals(n.Expr2) {
 			n.Operand = Operand{Type: Int, Value: &ir.Int64Value{Value: 0}}
 			break
 		}
@@ -462,9 +461,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			lhs.isArithmeticType() && rhs.isArithmeticType():
 
 			n.Operand = lhs.ne(ctx, rhs)
-			// fmt.Printf("TODO541 %v\n", ctx.position(n))
-			// n.Operand = n.Operand.normalize(ctx.model)
-			// n.dumpOperands("· ") //TODO-
 		case
 			// one operand is a pointer and the other is a null
 			// pointer constant.
@@ -491,7 +487,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			}
 		case
 			// both operands are pointers to qualified or unqualified versions of compatible types
-			lhs.isPointerType() && rhs.isPointerType() && lhs.Type.IsCompatible(rhs.Type):
+			lhs.isPointerType() && rhs.isPointerType() && (lhs.Type.IsCompatible(rhs.Type) || ctx.tweaks.EnablePointerCompatibility):
 
 			n.Operand = Operand{Type: Int}
 			if n.Expr.Case == ExprAddrof && n.Expr.Expr.Case == ExprIdent &&
@@ -511,19 +507,19 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		n.Operand = n.Expr.Operand
 	case ExprLAnd: // Expr "&&" Expr
 		n.Operand = Operand{Type: Int, Domain: newBoolDomain()}
-		a := n.Expr.eval(ctx, arr2ptr, fn)
-		if a.IsZero() {
+		n.Expr.eval(ctx, arr2ptr, fn)
+		if n.Expr.IsZero() {
 			n.Operand.Value = &ir.Int64Value{Value: 0}
 			break
 		}
 
-		b := n.Expr2.eval(ctx, arr2ptr, fn)
-		if b.IsZero() {
+		n.Expr2.eval(ctx, arr2ptr, fn)
+		if n.Expr2.IsZero() {
 			n.Operand.Value = &ir.Int64Value{Value: 0}
 			break
 		}
 
-		if a.IsNonZero() && b.IsNonZero() {
+		if n.Expr.IsNonZero() && n.Expr2.IsNonZero() {
 			n.Operand.Value = &ir.Int64Value{Value: 1}
 			break
 		}
@@ -669,7 +665,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		n.Operand = n.Expr.Operand
 	case ExprLe: // Expr "<=" Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).le(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
-		if n.Expr.equals(n.Expr2) {
+		if n.Expr.Equals(n.Expr2) {
 			n.Operand = Operand{Type: Int, Value: &ir.Int64Value{Value: 1}}
 		}
 	case ExprEq: // Expr "==" Expr
@@ -677,7 +673,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		rhs := n.Expr2.eval(ctx, arr2ptr, fn)
 		n.Operand.Type = Int
 		n.Operand.Domain = newBoolDomain()
-		if n.Expr.equals(n.Expr2) {
+		if n.Expr.Equals(n.Expr2) {
 			n.Operand.Value = &ir.Int64Value{Value: 1}
 			break
 		}
@@ -714,7 +710,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			}
 		case
 			// both operands are pointers to qualified or unqualified versions of compatible types
-			lhs.isPointerType() && rhs.isPointerType() && lhs.Type.IsCompatible(rhs.Type):
+			lhs.isPointerType() && rhs.isPointerType() && (lhs.Type.IsCompatible(rhs.Type) || ctx.tweaks.EnablePointerCompatibility):
 
 			if n.Expr.Case == ExprAddrof && n.Expr.Expr.Case == ExprIdent &&
 				n.Expr2.Case == ExprAddrof && n.Expr2.Expr.Case == ExprIdent {
@@ -729,7 +725,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		}
 	case ExprGe: // Expr ">=" Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).ge(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
-		if n.Expr.equals(n.Expr2) {
+		if n.Expr.Equals(n.Expr2) {
 			n.Operand = Operand{Type: Int, Value: &ir.Int64Value{Value: 1}}
 		}
 	case ExprRsh: // Expr ">>" Expr
@@ -745,23 +741,26 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		n.Operand = n.Expr.Operand
 	case ExprLOr: // Expr "||" Expr
 		n.Operand = Operand{Type: Int, Domain: newBoolDomain()}
-		a := n.Expr.eval(ctx, arr2ptr, fn)
-		if a.IsNonZero() {
+		n.Expr.eval(ctx, arr2ptr, fn)
+		if n.Expr.IsNonZero() {
 			n.Operand.Value = &ir.Int64Value{Value: 1}
 			break
 		}
 
-		b := n.Expr2.eval(ctx, arr2ptr, fn)
-		if b.IsNonZero() {
+		n.Expr2.eval(ctx, arr2ptr, fn)
+		if n.Expr2.IsNonZero() {
 			n.Operand.Value = &ir.Int64Value{Value: 1}
 			break
 		}
 
-		if a.IsZero() && b.IsZero() {
+		if n.Expr.IsZero() && n.Expr2.IsZero() {
 			n.Operand.Value = &ir.Int64Value{Value: 0}
 		}
 	case ExprMod: // Expr '%' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).mod(ctx, n, n.Expr2.eval(ctx, arr2ptr, fn)) // [0]6.5.5
+		// fmt.Printf("TODO535 %v\n", ctx.position(n))
+		// n.Operand = n.Operand.normalize(ctx.model)
+		// n.dumpOperands("· ") //TODO-
 	case ExprAnd: // Expr '&' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).and(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
 		if n.isSideEffectsFree() {
@@ -897,13 +896,13 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			lhs.isArithmeticType() && rhs.isArithmeticType():
 
 			n.Operand = n.Expr.eval(ctx, arr2ptr, fn).sub(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
-			if n.Operand.Type.IsIntegerType() && n.Expr.equals(n.Expr2) {
+			if n.Operand.Type.IsIntegerType() && n.Expr.Equals(n.Expr2) {
 				n.Operand.Value = &ir.Int64Value{Value: 0}
 			}
 		case
 			// both operands are pointers to qualified or
 			// unqualified versions of compatible object types;
-			lhs.isPointerType() && rhs.isPointerType() && lhs.Type.IsCompatible(rhs.Type):
+			lhs.isPointerType() && rhs.isPointerType() && (lhs.Type.IsCompatible(rhs.Type) || ctx.tweaks.EnablePointerCompatibility):
 
 			n.Operand = Operand{Type: ctx.ptrDiff()}
 		case
@@ -986,7 +985,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).div(ctx, n, n.Expr2.eval(ctx, arr2ptr, fn)) // [0]6.5.5
 	case ExprLt: // Expr '<' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).lt(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
-		if n.Expr.equals(n.Expr2) {
+		if n.Expr.Equals(n.Expr2) {
 			n.Operand = Operand{Type: Int, Value: &ir.Int64Value{Value: 0}}
 		}
 	case ExprAssign: // Expr '=' Expr
@@ -999,9 +998,11 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			}
 		}
 		n.Operand.Type.assign(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
+		n.Operand.Value = n.Expr2.Operand.Value
+		n.Operand.Domain = n.Expr2.Operand.Domain
 	case ExprGt: // Expr '>' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).gt(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
-		if n.Expr.equals(n.Expr2) {
+		if n.Expr.Equals(n.Expr2) {
 			n.Operand = Operand{Type: Int, Value: &ir.Int64Value{Value: 0}}
 		}
 	case ExprCond: // Expr '?' ExprList ':' Expr
@@ -1037,7 +1038,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		case
 			// both operands are pointers to qualified or
 			// unqualified versions of compatible types;
-			a.isPointerType() && b.isPointerType() && a.Type.IsCompatible(b.Type):
+			a.isPointerType() && b.isPointerType() && (a.Type.IsCompatible(b.Type) || ctx.tweaks.EnablePointerCompatibility):
 
 			n.Operand = Operand{Type: a.Type}
 		case
@@ -1095,7 +1096,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		}
 	case ExprXor: // Expr '^' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).xor(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
-		if n.Expr.equals(n.Expr2) {
+		if n.Expr.Equals(n.Expr2) {
 			n.Operand.Value = &ir.Int64Value{Value: 0}
 		}
 	case ExprOr: // Expr '|' Expr
@@ -2195,7 +2196,7 @@ func (n *DirectDeclarator) check(ctx *context, t Type, sc []int, fn *Declarator)
 		var variadic bool
 		names := n.IdentifierListOpt.check()
 		if len(names) != 0 {
-			panic(fmt.Errorf("%v", ctx.position(n)))
+			panic(fmt.Errorf("K&R C %v", ctx.position(n)))
 		}
 		t := &FunctionType{
 			Params:   params,
@@ -2737,6 +2738,7 @@ func (n *Expr) IsNonZero() bool {
 	case
 		ExprAdd,        // Expr '+' Expr
 		ExprAnd,        // Expr '&' Expr
+		ExprAndAssign,  // Expr "&=" Expr
 		ExprCall,       // Expr '(' ArgumentExprListOpt ')'
 		ExprChar,       // CHARCONST
 		ExprDeref,      // '*' Expr
@@ -2754,8 +2756,10 @@ func (n *Expr) IsNonZero() bool {
 		ExprMod,        // Expr '%' Expr
 		ExprMul,        // Expr '*' Expr
 		ExprPSelect,    // Expr "->" IDENTIFIER
+		ExprPostDec,    // Expr "--"
 		ExprPostInc,    // Expr "++"
 		ExprPreDec,     // "--" Expr
+		ExprPreInc,     // Expr "++"
 		ExprRsh,        // Expr ">>" Expr
 		ExprSelect,     // Expr '.' IDENTIFIER
 		ExprSizeofExpr, // "sizeof" Expr
@@ -2796,6 +2800,8 @@ func (n *Expr) IsNonZero() bool {
 		return n.Expr.IsZero()
 	case ExprOr: // Expr '|' Expr
 		return n.Expr.IsNonZero() || n.Expr2.IsNonZero()
+	case ExprOrAssign: // Expr "|=" Expr
+		return n.Expr.IsNonZero() || n.Expr2.IsNonZero()
 	case ExprPExprList: // '(' ExprList ')'
 		return n.ExprList.IsNonZero()
 	case ExprUnaryMinus: // '-' Expr
@@ -2803,6 +2809,8 @@ func (n *Expr) IsNonZero() bool {
 	case ExprUnaryPlus: // '+' Expr
 		return n.Expr.IsNonZero()
 	case ExprXor: // Expr '^' Expr
+		return n.Expr.IsNonZero() && n.Expr2.IsZero() || n.Expr.IsZero() && n.Expr2.IsNonZero()
+	case ExprXorAssign: // Expr "^=" Expr
 		return n.Expr.IsNonZero() && n.Expr2.IsZero() || n.Expr.IsZero() && n.Expr2.IsNonZero()
 	default:
 		panic(fmt.Errorf("%T.IsNonZero %v", n, n.Case))
@@ -2841,8 +2849,10 @@ func (n *Expr) IsZero() bool {
 		ExprLsh,        // Expr "<<" Expr
 		ExprLt,         // Expr '<' Expr
 		ExprPSelect,    // Expr "->" IDENTIFIER
+		ExprPostDec,    // "--" Expr
 		ExprPostInc,    // Expr "++"
 		ExprPreDec,     // "--" Expr
+		ExprPreInc,     // Expr "++"
 		ExprRsh,        // Expr ">>" Expr
 		ExprSelect,     // Expr '.' IDENTIFIER
 		ExprSizeofExpr, // "sizeof" Expr
@@ -2852,6 +2862,8 @@ func (n *Expr) IsZero() bool {
 
 		return false
 	case ExprAnd: // Expr '&' Expr
+		return n.Expr.IsZero() || n.Expr2.IsZero()
+	case ExprAndAssign: // Expr "&=" Expr
 		return n.Expr.IsZero() || n.Expr2.IsZero()
 	case ExprAssign: // Expr '=' Expr
 		return n.Expr.IsZero()
@@ -2873,6 +2885,8 @@ func (n *Expr) IsZero() bool {
 		return n.Expr.IsNonZero()
 	case ExprOr: // Expr '|' Expr
 		return n.Expr.IsZero() && n.Expr2.IsZero()
+	case ExprOrAssign: // Expr "|=" Expr
+		return n.Expr.IsZero() && n.Expr2.IsZero()
 	case ExprPExprList: // '(' ExprList ')'
 		return n.ExprList.IsZero()
 	case ExprUnaryMinus: // '-' Expr
@@ -2880,7 +2894,9 @@ func (n *Expr) IsZero() bool {
 	case ExprUnaryPlus: // '+' Expr
 		return n.Expr.IsZero()
 	case ExprXor: // Expr '^' Expr
-		return n.Expr.IsZero() && n.Expr2.IsZero()
+		return n.Expr.IsZero() && n.Expr2.IsZero() || n.Expr.Equals(n.Expr2)
+	case ExprXorAssign: // Expr "^=" Expr
+		return n.Expr.IsZero() && n.Expr2.IsZero() || n.Expr.Equals(n.Expr2)
 	default:
 		panic(fmt.Errorf("%T.IsZero %v", n, n.Case))
 	}
@@ -2892,7 +2908,7 @@ func (n *ExprList) equals(m *ExprList) bool {
 	}
 
 	for l, k := n, m; l != nil; l, k = l.ExprList, k.ExprList {
-		if (l.ExprList == nil) != (k.ExprList == nil) || !l.Expr.equals(k.Expr) {
+		if (l.ExprList == nil) != (k.ExprList == nil) || !l.Expr.Equals(k.Expr) {
 			return false
 		}
 	}
@@ -2903,10 +2919,10 @@ func (n *ExprList) equals2(m *Expr) bool {
 	for n.ExprList != nil {
 		n = n.ExprList
 	}
-	return n.Expr.equals(m)
+	return n.Expr.Equals(m)
 }
 
-func (n *Expr) equals(m *Expr) bool {
+func (n *Expr) Equals(m *Expr) bool {
 	if n.Operand.Type != m.Operand.Type || n.Operand.Value != m.Operand.Value || !n.isSideEffectsFree() || !m.isSideEffectsFree() {
 		return false
 	}
@@ -2926,7 +2942,7 @@ func (n *Expr) equals(m *Expr) bool {
 		ExprPSelect, // Expr "->" IDENTIFIER
 		ExprSelect:  // Expr '.' IDENTIFIER
 
-		return n.Expr.equals(m.Expr) && n.Token.Val == m.Expr.Token.Val && n.Expr.Token2.Val == m.Expr.Token2.Val
+		return n.Expr.Equals(m.Expr) && n.Token.Val == m.Expr.Token.Val && n.Expr.Token2.Val == m.Expr.Token2.Val
 	case ExprIdent: // IDENTIFIER
 		return n.Token.Val == m.Token.Val
 	case ExprPExprList: // '(' ExprList ')'
@@ -2937,9 +2953,9 @@ func (n *Expr) equals(m *Expr) bool {
 		ExprCast,  // '(' TypeName ')' Expr
 		ExprDeref: // '*' Expr
 
-		return n.Expr.equals(m.Expr)
+		return n.Expr.Equals(m.Expr)
 	case ExprIndex: // Expr '[' ExprList ']'
-		return n.Expr.equals(m.Expr) && n.ExprList.equals(m.ExprList)
+		return n.Expr.Equals(m.Expr) && n.ExprList.equals(m.ExprList)
 	case // binary commutative
 		ExprAdd, // Expr '+' Expr
 		ExprAnd, // Expr '&' Expr
@@ -2952,16 +2968,16 @@ func (n *Expr) equals(m *Expr) bool {
 		ExprSub, // Expr '-' Expr
 		ExprXor: // Expr '^' Expr
 
-		return n.Expr.equals(m.Expr) && n.Expr2.equals(m.Expr2) || n.Expr.equals(m.Expr2) && n.Expr2.equals(m.Expr)
+		return n.Expr.Equals(m.Expr) && n.Expr2.Equals(m.Expr2) || n.Expr.Equals(m.Expr2) && n.Expr2.Equals(m.Expr)
 	case // binary
 		ExprDiv, // Expr '/' Expr
 		ExprLsh, // Expr "<<" Expr
 		ExprMod, // Expr '%' Expr
 		ExprRsh: // Expr ">>" Expr
 
-		return n.Expr.equals(m.Expr) && n.Expr2.equals(m.Expr2)
+		return n.Expr.Equals(m.Expr) && n.Expr2.Equals(m.Expr2)
 	case ExprCall: // Expr '(' ArgumentExprListOpt ')'
-		if !n.Expr.equals(m.Expr) {
+		if !n.Expr.Equals(m.Expr) {
 			return false
 		}
 
@@ -2974,7 +2990,7 @@ func (n *Expr) equals(m *Expr) bool {
 		}
 
 		for l, k := n.ArgumentExprListOpt.ArgumentExprList, m.ArgumentExprListOpt.ArgumentExprList; l != nil; l, k = l.ArgumentExprList, k.ArgumentExprList {
-			if (l.ArgumentExprList == nil) != (k.ArgumentExprList == nil) || !l.Expr.equals(k.Expr) {
+			if (l.ArgumentExprList == nil) != (k.ArgumentExprList == nil) || !l.Expr.Equals(k.Expr) {
 				return false
 			}
 		}

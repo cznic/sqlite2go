@@ -86,7 +86,14 @@ func printError(w io.Writer, pref string, err error) {
 }
 
 func (n *Expr) dumpOperands(s string) {
-	fmt.Printf("%s%v %v\n", s, n.Case, n.Operand)
+	z := ""
+	switch {
+	case n.IsZero():
+		z = ".Z"
+	case n.IsNonZero():
+		z = ".NZ"
+	}
+	fmt.Printf("%s%v%v %v\n", s, n.Case, z, n.Operand)
 	switch n.Case {
 	case ExprPExprList:
 		for l := n.ExprList; l != nil; l = l.ExprList {
@@ -107,6 +114,7 @@ func (n *Expr) dumpOperands(s string) {
 	case
 		ExprAdd,
 		ExprAnd,
+		ExprAssign,
 		ExprDiv,
 		ExprEq,
 		ExprGe,

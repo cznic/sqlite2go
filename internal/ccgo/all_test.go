@@ -6,7 +6,7 @@ package ccgo
 
 //	TCC	cc 51 ccgo 51 build 51 run 51 ok 51
 //	Other	cc 8 ccgo 8 build 8 run 8 ok 8
-//	GCC	cc 932 ccgo 916 build 904 run 904 ok 904
+//	GCC	cc 950 ccgo 924 build 913 run 913 ok 913
 //	Shell	cc 1 ccgo 1 build 1 run 1 ok 1
 
 import (
@@ -146,6 +146,7 @@ func test(t *testing.T, clean bool, cc, ccgo, build, run *int, def, imp, inc2, d
 		EnableAnonymousStructFields: true,
 		EnableEmptyStructs:          true,
 		EnableImplicitBuiltins:      true,
+		EnableImplicitDeclarations:  true,
 		EnableOmitFuncDeclSpec:      true,
 		EnablePointerCompatibility:  true, // CSmith transparent_crc_bytes
 		EnableReturnExprInVoidFunc:  true,
@@ -388,6 +389,7 @@ func TestGCC(t *testing.T) {
 		"pr23467.c":       {}, // __attribute__ ((aligned (8)))
 		"pushpop_macro.c": {}, // #pragma push_macro("_")
 
+		"921016-1.c":  {}, //TODO bits, arithmetic precision
 		"bitfld-1.c":  {}, //TODO bits, arithmetic precision
 		"bitfld-3.c":  {}, //TODO bits, arithmetic precision
 		"pr32244-1.c": {}, //TODO bits, arithmetic precision
@@ -579,10 +581,10 @@ out:
 			"--comma-operators",     // --comma-operators | --no-comma-operators: enable | disable comma operators (enabled by default).
 			"--compound-assignment", // --compound-assignment | --no-compound-assignment: enable | disable compound assignments (enabled by default).
 			// --concise: generated programs with minimal comments (disabled by default).
-			"--no-const-pointers",   // --const-pointers | --no-const-pointers: enable | disable const pointers (enabled by default).
-			"--no-consts",           // --consts | --no-consts: enable | disable const qualifier (enabled by default).
-			"--divs",                // --divs | --no-divs: enable | disable divisions (enabled by default).
-			"--no-embedded-assigns", //TODO --embedded-assigns | --no-embedded-assigns: enable | disable embedded assignments as sub-expressions (enabled by default).
+			"--no-const-pointers", // --const-pointers | --no-const-pointers: enable | disable const pointers (enabled by default).
+			"--no-consts",         // --consts | --no-consts: enable | disable const qualifier (enabled by default).
+			"--divs",              // --divs | --no-divs: enable | disable divisions (enabled by default).
+			"--embedded-assigns",  // --embedded-assigns | --no-embedded-assigns: enable | disable embedded assignments as sub-expressions (enabled by default).
 			// --enable-builtin-kinds k1,k2 | --disable-builtin-kinds k1,k2: enable | disable certain kinds of builtin functions.
 			"--no-float", //TODO --float | --no-float: enable | disable float (disabled by default).
 			// --help or -h: print this information.
@@ -605,8 +607,8 @@ out:
 			// --max-union-fields <num>: limit the number of union fields to <num> (default 5).
 			"--muls", // --muls | --no-muls: enable | disable multiplications (enabled by default).
 			// --output <filename> or -o <filename>: specify the output file name.
-			"--no-packed-struct", // --packed-struct | --no-packed-struct: enable | disable packed structs by adding #pragma pack(1) before struct definition (disabled by default).
-			// --paranoid | --no-paranoid: enable | disable pointer-related assertions (disabled by default).
+			"--no-packed-struct",   // --packed-struct | --no-packed-struct: enable | disable packed structs by adding #pragma pack(1) before struct definition (disabled by default).
+			"--paranoid",           // --paranoid | --no-paranoid: enable | disable pointer-related assertions (disabled by default).
 			"--pointers",           // --pointers | --no-pointers: enable | disable pointers (enabled by default).
 			"--post-decr-operator", // --post-decr-operator | --no-post-decr-operator: enable | disable post -- operator (enabled by default).
 			"--post-incr-operator", // --post-incr-operator | --no-post-incr-operator: enable | disable post ++ operator (enabled by default).

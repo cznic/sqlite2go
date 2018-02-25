@@ -251,7 +251,30 @@ func (o Operand) add(ctx *context, p Operand) (r Operand) {
 	}
 
 	if o.Value == nil || p.Value == nil {
-		return Operand{Type: o.Type}.normalize(ctx.model)
+		if x, y := o.Domain, p.Domain; x != nil && y != nil {
+			if x.Class() > y.Class() {
+				x, y = y, x
+			}
+			switch x.Class() {
+			case interval.Degenerate:
+				switch y.Class() {
+				case interval.Closed:
+					y := *y
+					y.A, _ = y.A.Add(x.A)
+					y.B, _ = y.B.Add(x.A)
+					return Operand{Type: o.Type, Domain: &y}.normalize(ctx.model)
+				}
+			case interval.Closed:
+				x := *x
+				x.A, _ = x.A.Add(y.A)
+				x.B, _ = x.B.Add(y.B)
+				return Operand{Type: o.Type, Domain: &x}.normalize(ctx.model)
+			}
+		}
+
+		o.Value = nil
+		o.Domain = domain(o.Type, ctx.model)
+		return o.normalize(ctx.model)
 	}
 
 	switch x := o.Value.(type) {
@@ -443,14 +466,25 @@ func (o Operand) div(ctx *context, n Node, p Operand) (r Operand) {
 		case interval.Closed:
 			switch y.Class() {
 			case interval.Degenerate:
-				if x.A.Sign() >= 0 && y.A.Sign() >= 0 {
-					x.A.Lo = int64(uint64(x.A.Lo) / uint64((y.A.Lo)))
-					x.B.Lo = int64(uint64(x.B.Lo) / uint64((y.A.Lo)))
-					if x.A.Lo == x.B.Lo {
-						x.Cls = interval.Degenerate
-						o.Value = &ir.Int64Value{Value: x.A.Lo}
+				if x.A.Sign() >= 0 {
+					switch {
+					case y.A.Sign() > 0:
+						x.A.Lo = int64(uint64(x.A.Lo) / uint64((y.A.Lo)))
+						x.B.Lo = int64(uint64(x.B.Lo) / uint64((y.A.Lo)))
+						if x.A.Lo == x.B.Lo {
+							x.Cls = interval.Degenerate
+							o.Value = &ir.Int64Value{Value: x.A.Lo}
+						}
+						return o.normalize(ctx.model)
+					case y.A.Sign() < 0:
+						x.A.Lo = int64(uint64(x.A.Lo) / uint64(-(y.A.Lo)))
+						x.B.Lo = int64(uint64(x.B.Lo) / uint64(-(y.A.Lo)))
+						if x.A.Lo == x.B.Lo {
+							x.Cls = interval.Degenerate
+							o.Value = &ir.Int64Value{Value: x.A.Lo}
+						}
+						return o.normalize(ctx.model)
 					}
-					return o.normalize(ctx.model)
 				}
 			}
 		}
@@ -804,6 +838,10 @@ func (o Operand) IsNonZero() bool {
 	switch x := o.Value.(type) {
 	case nil:
 		return false
+	case *ir.Float32Value:
+		return x.Value != 0
+	case *ir.Float64Value:
+		return x.Value != 0
 	case *ir.Int64Value:
 		return x.Value != 0
 	case *ir.StringValue:
@@ -820,11 +858,11 @@ func (o Operand) IsZero() bool {
 	switch x := o.Value.(type) {
 	case nil:
 		return false
-	case *ir.Int64Value:
-		return x.Value == 0
 	case *ir.Float32Value:
 		return x.Value == 0
 	case *ir.Float64Value:
+		return x.Value == 0
+	case *ir.Int64Value:
 		return x.Value == 0
 	case *ir.StringValue:
 		return false
@@ -1185,7 +1223,7 @@ func (o Operand) ne(ctx *context, p Operand) (r Operand) {
 	return r.normalize(ctx.model)
 }
 
-func convertInt64(n int64, t Type, m Model) int64 {
+func ConvertInt64(n int64, t Type, m Model) int64 {
 	signed := !t.IsUnsigned()
 	switch sz := m[t.Kind()].Size; sz {
 	case 1:
@@ -1237,43 +1275,13 @@ func convertDomain(d *interval.Int128, t Type, m Model) *interval.Int128 {
 		return d
 	}
 
-	switch d.Class() {
-	case interval.Closed:
-		switch {
-		case t.IsUnsigned():
-			if d.A.Sign() < 0 {
-				return td
-			}
-
-			return interval.Intersection(d, td).(*interval.Int128)
-		default:
-			return td
-		}
-	case interval.Degenerate:
-		switch {
-		case t.IsUnsigned():
-			if d.A.Sign() < 0 {
-				return td
-			}
-
-			return interval.Intersection(d, td).(*interval.Int128)
-		default:
-			if d.A.Cmp(td.B) > 0 {
-				return td
-			}
-
-			panic(fmt.Errorf("%v -> %v %v", d, td, t))
-		}
-	default:
-		panic(fmt.Errorf("convertDomain %v -> %v %v", d, td, t))
-
-	}
+	return td
 }
 
 func (o Operand) normalize(m Model) (r Operand) {
 	switch x := o.Value.(type) {
 	case *ir.Int64Value:
-		x.Value = convertInt64(x.Value, o.Type, m)
+		x.Value = ConvertInt64(x.Value, o.Type, m)
 		var a mathutil.Int128
 		switch {
 		case o.isSigned():
@@ -1284,11 +1292,15 @@ func (o Operand) normalize(m Model) (r Operand) {
 		o.Domain = &interval.Int128{Cls: interval.Degenerate, A: a, B: a}
 	case nil:
 		if o.Type.IsIntegerType() {
-			d := domain(o.Type, m)
-			if e := o.Domain; e != nil {
-				d = interval.Intersection(d, e).(*interval.Int128)
+			td := domain(o.Type, m)
+			switch d := o.Domain; {
+			case d == nil:
+				o.Domain = td
+			default:
+				if !isSubset(d, td) {
+					o.Domain = td
+				}
 			}
-			o.Domain = d
 		}
 	case
 		*ir.AddressValue,
@@ -1394,6 +1406,21 @@ func (o Operand) sub(ctx *context, p Operand) (r Operand) {
 	o, p = UsualArithmeticConversions(ctx.model, o, p)
 	if p.IsZero() {
 		return o.normalize(ctx.model)
+	}
+
+	if y := p.Domain; o.IsZero() && y != nil {
+		switch y.Class() {
+		case interval.Closed:
+			y.A, _ = y.A.Neg()
+			y.B, _ = y.B.Neg()
+			if y.A.Cmp(y.B) > 0 {
+				y.A, y.B = y.B, y.A
+			}
+		case interval.Degenerate:
+			y.A, _ = y.A.Neg()
+			p.Value.(*ir.Int64Value).Value = y.A.Lo
+		}
+		return p.normalize(ctx.model)
 	}
 
 	if o.Value == nil || p.Value == nil {

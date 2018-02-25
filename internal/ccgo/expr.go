@@ -5,6 +5,7 @@
 package ccgo
 
 import (
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -84,12 +85,16 @@ func (g *gen) void(n *c99.Expr) {
 	case c99.ExprCall: // Expr '(' ArgumentExprListOpt ')'
 		g.value(n, false)
 	case c99.ExprAssign: // Expr '=' Expr
+		if n.Expr.Equals(n.Expr2) {
+			return
+		}
+
 		op := n.Expr.Operand
 		if n.Expr.Operand.Bits != 0 {
-			g.w("setb%d(", g.registerBitType(g.setBitsTypes, op.Type, op.PackedType))
+			g.w("set%db(", g.registerType(g.setBitsTypes, op.Type, g.typ(op.PackedType)))
 			g.uintptr(n.Expr, true)
-			g.w(", %#x, %d, ", (1<<uint(op.Bits)-1)<<uint(op.Bitoff), n.Expr.Operand.Bitoff)
-			g.convert(n.Expr2, n.Expr.Operand.Type)
+			g.w(", %#x, %d, ", (1<<uint(op.Bits)-1)<<uint(op.Bitoff), op.Bitoff)
+			g.convert(n.Expr2, op.Type)
 			g.w(")")
 			return
 		}
@@ -267,12 +272,30 @@ func (g *gen) void(n *c99.Expr) {
 			}
 		}
 	case c99.ExprLAnd: // Expr "&&" Expr
+		if n.Expr.IsZero() && g.voidCanIgnore(n.Expr) {
+			return
+		}
+
+		if n.Expr2.IsZero() {
+			g.void(n.Expr)
+			return
+		}
+
 		g.w("if ")
 		g.value(n.Expr, false)
 		g.w(" != 0 {")
 		g.void(n.Expr2)
 		g.w("}")
 	case c99.ExprLOr: // Expr "||" Expr
+		if n.Expr.IsNonZero() && g.voidCanIgnore(n.Expr) {
+			return
+		}
+
+		if n.Expr2.IsNonZero() {
+			g.void(n.Expr)
+			return
+		}
+
 		g.w("if ")
 		g.value(n.Expr, false)
 		g.w(" == 0 {")
@@ -702,7 +725,7 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 			if n.Expr.Operand.Bits != 0 {
 				switch {
 				case n.Operand.Type.IsUnsigned():
-					g.w(" preincu%d(", g.registerBitType(g.preIncUBitsTypes, n.Operand.Type, n.Operand.PackedType))
+					g.w(" preincu%d(", g.registerType(g.preIncUBitsTypes, n.Operand.Type, g.typ(n.Operand.PackedType)))
 					g.uintptr(n.Expr, true)
 					g.w(", %d, %d)", n.Expr.Operand.Bits, n.Expr.Operand.Bitoff)
 				default:
@@ -733,7 +756,7 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 			if n.Expr.Operand.Bits != 0 {
 				switch {
 				case n.Operand.Type.IsUnsigned():
-					g.w(" postincu%d(", g.registerBitType(g.postIncUBitsTypes, n.Operand.Type, n.Operand.PackedType))
+					g.w(" postincu%d(", g.registerType(g.postIncUBitsTypes, n.Operand.Type, g.typ(n.Operand.PackedType)))
 					g.uintptr(n.Expr, true)
 					g.w(", %d, %d)", n.Expr.Operand.Bits, n.Expr.Operand.Bitoff)
 				default:
@@ -764,7 +787,7 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 			if n.Expr.Operand.Bits != 0 {
 				switch {
 				case n.Operand.Type.IsUnsigned():
-					g.w(" predecu%d(", g.registerBitType(g.preDecUBitsTypes, n.Operand.Type, n.Operand.PackedType))
+					g.w(" predecu%d(", g.registerType(g.preDecUBitsTypes, n.Operand.Type, g.typ(n.Operand.PackedType)))
 					g.uintptr(n.Expr, true)
 					g.w(", %d, %d)", n.Expr.Operand.Bits, n.Expr.Operand.Bitoff)
 				default:
@@ -795,11 +818,11 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 			if op.Bits != 0 {
 				switch {
 				case n.Operand.Type.IsUnsigned():
-					g.w(" postdecu%d(", g.registerBitType(g.postDecUBitsTypes, n.Operand.Type, n.Operand.PackedType))
+					g.w(" postdecu%d(", g.registerType(g.postDecUBitsTypes, n.Operand.Type, g.typ(n.Operand.PackedType)))
 					g.uintptr(n.Expr, true)
 					g.w(", %#x, %d)", 1<<uint(op.Bits)-1, op.Bitoff)
 				default:
-					g.w(" postdeci%d(", g.registerBitType(g.postDecIBitsTypes, n.Operand.Type, n.Operand.PackedType))
+					g.w(" postdeci%d(", g.registerType(g.postDecIBitsTypes, n.Operand.Type, g.typ(n.Operand.PackedType)))
 					g.uintptr(n.Expr, true)
 					g.w(", %#x, %#x, %d)", int64(1)<<uint(op.Bits+op.Bitoff-1), 1<<uint(op.Bits)-1, op.Bitoff)
 				}
@@ -877,15 +900,72 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 		default:
 			todo("%v: %T", g.position0(n), x)
 		}
+	case c99.ExprOrAssign: // Expr "|=" Expr
+		switch x := c99.UnderlyingType(n.Expr.Operand.Type).(type) {
+		case c99.TypeKind:
+			if x.IsIntegerType() {
+				switch op := n.Expr.Operand; {
+				case op.Bits != 0:
+					g.w("or%db(", g.registerType(g.orBitsTypes, op.Type, g.typ(op.PackedType), fmt.Sprint(g.model.Sizeof(op.PackedType)*8)))
+					g.uintptr(n.Expr, true)
+					g.w(", %d, %d, ", op.Bits, op.Bitoff)
+					g.convert(n.Expr2, n.Operand.Type)
+					g.w(")")
+				default:
+					g.w(" or%d(", g.registerType(g.orTypes, x))
+					g.lvalue(n.Expr)
+					g.w(", ")
+					g.convert(n.Expr2, n.Operand.Type)
+					g.w(")")
+				}
+				return
+			}
+			todo("", g.position0(n), x)
+		default:
+			todo("%v: %T", g.position0(n), x)
+		}
+	case c99.ExprAndAssign: // Expr "&=" Expr
+		switch x := c99.UnderlyingType(n.Expr.Operand.Type).(type) {
+		case c99.TypeKind:
+			if x.IsIntegerType() {
+				switch op := n.Expr.Operand; {
+				case op.Bits != 0:
+					g.w("and%db(", g.registerType(g.andBitsTypes, op.Type, g.typ(op.PackedType), fmt.Sprint(g.model.Sizeof(op.PackedType)*8)))
+					g.uintptr(n.Expr, true)
+					g.w(", %d, %d, ", op.Bits, op.Bitoff)
+					g.convert(n.Expr2, n.Operand.Type)
+					g.w(")")
+				default:
+					g.w(" and%d(", g.registerType(g.andTypes, x))
+					g.lvalue(n.Expr)
+					g.w(", ")
+					g.convert(n.Expr2, n.Operand.Type)
+					g.w(")")
+				}
+				return
+			}
+			todo("", g.position0(n), x)
+		default:
+			todo("%v: %T", g.position0(n), x)
+		}
 	case c99.ExprXorAssign: // Expr "^=" Expr
 		switch x := c99.UnderlyingType(n.Expr.Operand.Type).(type) {
 		case c99.TypeKind:
-			if x.IsArithmeticType() {
-				g.w(" xor%d(", g.registerType(g.xorTypes, x))
-				g.lvalue(n.Expr)
-				g.w(", ")
-				g.convert(n.Expr2, n.Operand.Type)
-				g.w(")")
+			if x.IsIntegerType() {
+				switch op := n.Expr.Operand; {
+				case op.Bits != 0:
+					g.w("xor%db(", g.registerType(g.xorBitsTypes, op.Type, g.typ(op.PackedType), fmt.Sprint(g.model.Sizeof(op.PackedType)*8)))
+					g.uintptr(n.Expr, true)
+					g.w(", %d, %d, ", op.Bits, op.Bitoff)
+					g.convert(n.Expr2, n.Operand.Type)
+					g.w(")")
+				default:
+					g.w(" xor%d(", g.registerType(g.xorTypes, x))
+					g.lvalue(n.Expr)
+					g.w(", ")
+					g.convert(n.Expr2, n.Operand.Type)
+					g.w(")")
+				}
 				return
 			}
 			todo("", g.position0(n), x)
@@ -893,21 +973,20 @@ func (g *gen) value(n *c99.Expr, ignoreBits bool) {
 			todo("%v: %T", g.position0(n), x)
 		}
 	case c99.ExprPExprList: // '(' ExprList ')'
-		var e *c99.Expr
+		var e, last *c99.Expr
 		i := 0
 		for l := n.ExprList; l != nil; l = l.ExprList {
+			last = l.Expr
 			if !g.voidCanIgnore(l.Expr) {
 				e = l.Expr
 				i++
 			}
 		}
-		_ = e //TODO-
-		switch i {
-		//TODO string-opt-5.c
-		//TODO case 0:
-		//TODO 	panic("internal error")
-		//TODO case 1:
-		//TODO 	g.value(e)
+		switch {
+		case i == 0:
+			g.value(last, ignoreBits)
+		case i == 1 && e == last:
+			g.value(e, ignoreBits)
 		default:
 			g.w("func() %v {", g.typ(n.Operand.Type))
 			for l := n.ExprList; l != nil; l = l.ExprList {
@@ -1001,8 +1080,7 @@ func (g *gen) bitField(n *c99.Expr, packType, t c99.Type, width, off int) {
 	case packType.Equal(t):
 		g.value(n, true)
 		bits := int(g.model.Sizeof(packType) * 8)
-		g.w("<<%d", bits-width-off)
-		g.w(">>%d", bits-width)
+		g.w("<<%d>>%d", bits-width-off, bits-width)
 	default:
 		g.w("%s(", g.typ(t))
 		g.bitField(n, packType, packType, width, off)
@@ -1340,11 +1418,12 @@ func (g *gen) constant(n *c99.Expr) {
 			return
 		}
 
-		v := interface{}(x.Value)
-		if n.Operand.Type.IsUnsigned() {
-			v = uint64(x.Value)
+		switch {
+		case n.Operand.Type.IsUnsigned():
+			g.w(f, uint64(c99.ConvertInt64(x.Value, n.Operand.Type, g.model)))
+		default:
+			g.w(f, c99.ConvertInt64(x.Value, n.Operand.Type, g.model))
 		}
-		g.w(f, v)
 	case *ir.StringValue:
 		g.w(" ts+%d %s", g.allocString(int(x.StringID)), strComment(x))
 	case *ir.AddressValue:
@@ -1393,7 +1472,7 @@ func (g *gen) voidArithmeticAsop(n *c99.Expr) {
 		mask = (uint64(1)<<uint(fieldBits) - 1) << uint(bitOff)
 		g.w("{ p := ")
 		g.uintptr(n.Expr, true)
-		g.w("; *(*%[1]s)(unsafe.Pointer(p)) =  *(*%[1]s)(unsafe.Pointer(p)) &^ %#[3]x | (%[1]s((%[2]s(*(*%[1]s)(unsafe.Pointer(p)))<<%[4]d>>%[5]d)", g.typ(packedType), g.typ(op.Type), mask, bits-fieldBits-bitOff, bits-fieldBits)
+		g.w("; *(*%[1]s)(unsafe.Pointer(p)) =  *(*%[1]s)(unsafe.Pointer(p)) &^ %#[3]x | (%[1]s(((%[2]s(*(*%[1]s)(unsafe.Pointer(p)))<<%[4]d>>%[5]d)", g.typ(packedType), g.typ(op.Type), mask, bits-fieldBits-bitOff, bits-fieldBits)
 	case n.Expr.Declarator != nil:
 		g.w(" *(")
 		g.lvalue(n.Expr)
@@ -1436,7 +1515,7 @@ func (g *gen) voidArithmeticAsop(n *c99.Expr) {
 	g.convert(n.Expr2, op.Type)
 	switch {
 	case n.Expr.Operand.Bits != 0:
-		g.w(")<<%d)&%#x)}", bitOff, mask)
+		g.w("))<<%d)&%#x)}", bitOff, mask)
 	case n.Expr.Declarator != nil:
 		g.w(")")
 	default:
@@ -1445,11 +1524,20 @@ func (g *gen) voidArithmeticAsop(n *c99.Expr) {
 }
 
 func (g *gen) assignmentValue(n *c99.Expr) {
-	g.w(" set%d(", g.registerType(g.assignTypes, n.Operand.Type))
-	g.lvalue(n.Expr)
-	g.w(", ")
-	g.convert(n.Expr2, n.Operand.Type)
-	g.w(")")
+	switch op := n.Expr.Operand; {
+	case op.Bits != 0:
+		g.w("set%db(", g.registerType(g.setBitsTypes, op.Type, g.typ(op.PackedType)))
+		g.uintptr(n.Expr, true)
+		g.w(", %#x, %d, ", (1<<uint(op.Bits)-1)<<uint(op.Bitoff), op.Bitoff)
+		g.convert(n.Expr2, op.Type)
+		g.w(")")
+	default:
+		g.w(" set%d(", g.registerType(g.setTypes, n.Operand.Type))
+		g.lvalue(n.Expr)
+		g.w(", ")
+		g.convert(n.Expr2, n.Operand.Type)
+		g.w(")")
+	}
 }
 
 func (g *gen) binop(n *c99.Expr) {
