@@ -48,29 +48,23 @@ func Package(w io.Writer, in []*c99.TranslationUnit) error {
 }
 
 type gen struct {
-	addTypes            map[string]int
-	andBitsTypes        map[string]int
-	andTypes            map[string]int
 	bss                 int64
-	divTypes            map[string]int
 	ds                  []byte
 	errs                scanner.ErrorList
 	externs             map[int]*c99.Declarator
 	fnTypes             map[string]int
 	fpTypes             map[string]int
 	fset                *token.FileSet
+	helpers             map[string]int
 	in                  []*c99.TranslationUnit
 	internalNames       map[int]struct{}          //TODO-?
 	internals           []map[int]*c99.Declarator //TODO-?
-	modTypes            map[string]int
 	model               c99.Model
-	mulTypes            map[string]int
 	needBool2int        int
 	nextLabel           int
 	num                 int
 	nums                map[*c99.Declarator]int
 	opaqueStructTags    map[int]struct{}
-	orBitsTypes         map[string]int
 	orTypes             map[string]int
 	out                 io.Writer
 	out0                bytes.Buffer
@@ -89,15 +83,12 @@ type gen struct {
 	producedStructTags  map[int]struct{}
 	queue               list.List
 	rshTypes            map[string]int
-	setBitsTypes        map[string]int
-	setTypes            map[string]int
 	strings             map[int]int64
 	subTypes            map[string]int
 	tCache              map[tCacheKey]string
 	text                []int
 	ts                  int64
 	units               map[*c99.Declarator]int
-	xorBitsTypes        map[string]int
 	xorTypes            map[string]int
 
 	needAlloca  bool
@@ -111,21 +102,15 @@ type gen struct {
 
 func newGen(out io.Writer, in []*c99.TranslationUnit) *gen {
 	return &gen{
-		addTypes:            map[string]int{},
-		andBitsTypes:        map[string]int{},
-		andTypes:            map[string]int{},
-		divTypes:            map[string]int{},
 		externs:             map[int]*c99.Declarator{},
 		fnTypes:             map[string]int{},
 		fpTypes:             map[string]int{},
+		helpers:             map[string]int{},
 		in:                  in,
 		internalNames:       map[int]struct{}{},
 		internals:           make([]map[int]*c99.Declarator, len(in)),
-		modTypes:            map[string]int{},
-		mulTypes:            map[string]int{},
 		nums:                map[*c99.Declarator]int{},
 		opaqueStructTags:    map[int]struct{}{},
-		orBitsTypes:         map[string]int{},
 		orTypes:             map[string]int{},
 		out:                 out,
 		postDecIBitsTypes:   map[string]int{},
@@ -142,13 +127,10 @@ func newGen(out io.Writer, in []*c99.TranslationUnit) *gen {
 		producedNamedTypes:  map[int]struct{}{},
 		producedStructTags:  map[int]struct{}{},
 		rshTypes:            map[string]int{},
-		setBitsTypes:        map[string]int{},
-		setTypes:            map[string]int{},
 		strings:             map[int]int64{},
 		subTypes:            map[string]int{},
 		tCache:              map[tCacheKey]string{},
 		units:               map[*c99.Declarator]int{},
-		xorBitsTypes:        map[string]int{},
 		xorTypes:            map[string]int{},
 	}
 }
@@ -282,14 +264,6 @@ func main() {
 	}
 
 	a = a[:0]
-	for k := range g.setTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\n\nfunc set%d(l *%[2]s, r %[2]s) %[2]s { *l = r; return r }", g.setTypes[k], k)
-	}
-	a = a[:0]
 	for k := range g.postIncTypes {
 		a = append(a, k)
 	}
@@ -393,75 +367,12 @@ return r
 }`, a[0], a[1])
 	}
 	a = a[:0]
-	for k := range g.setBitsTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		a := strings.Split(k, "|")
-		g.w("\n\nfunc set%db(n uintptr,m %[3]s, off uint, v %[2]s) %[2]s {", g.setBitsTypes[k], a[0], a[1])
-		g.w("*(*%[1]s)(unsafe.Pointer(n)) = (*(*%[1]s)(unsafe.Pointer(n)))&^m|%[1]s(v)<<off&m; return v }", a[1])
-	}
-	a = a[:0]
 	for k := range g.preIncTypes {
 		a = append(a, k)
 	}
 	sort.Strings(a)
 	for _, k := range a {
 		g.w("\n\nfunc preinc%d(n *%[2]s) %[2]s { *n++; return *n }", g.preIncTypes[k], k)
-	}
-	a = a[:0]
-	for k := range g.andTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\n\nfunc and%d(n *%[2]s, m %[2]s) %[2]s { *n &= m; return *n }", g.andTypes[k], k)
-	}
-	a = a[:0]
-	for k := range g.orBitsTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		a := strings.Split(k, "|") // 0: op type, 1: pack type, 2: pack type bits
-		g.w(`
-	
-func or%db(p uintptr, w, off uint, v %[2]s) %[2]s {
-	r := *(*%[2]s)(unsafe.Pointer(p))<<(%[4]s-w-off)>>(%[4]s-w) | v
-	*(*%[3]s)(unsafe.Pointer(p)) = (*(*%[3]s)(unsafe.Pointer(p)))&^(1<<(w+off)-1)|%[3]s(r)<<off&(1<<(w+off)-1)
-	return r
-}`, g.orBitsTypes[k], a[0], a[1], a[2])
-	}
-	a = a[:0]
-	for k := range g.xorBitsTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		a := strings.Split(k, "|") // 0: op type, 1: pack type, 2: pack type bits
-		g.w(`
-	
-func xor%db(p uintptr, w, off uint, v %[2]s) %[2]s {
-	r := *(*%[2]s)(unsafe.Pointer(p))<<(%[4]s-w-off)>>(%[4]s-w) ^ v
-	*(*%[3]s)(unsafe.Pointer(p)) = (*(*%[3]s)(unsafe.Pointer(p)))&^(1<<(w+off)-1)|%[3]s(r)<<off&(1<<(w+off)-1)
-	return r
-}`, g.xorBitsTypes[k], a[0], a[1], a[2])
-	}
-	a = a[:0]
-	for k := range g.andBitsTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		a := strings.Split(k, "|") // 0: op type, 1: pack type, 2: pack type bits
-		g.w(`
-	
-func and%db(p uintptr, w, off uint, v %[2]s) %[2]s {
-	r := *(*%[2]s)(unsafe.Pointer(p))<<(%[4]s-w-off)>>(%[4]s-w) & v
-	*(*%[3]s)(unsafe.Pointer(p)) = (*(*%[3]s)(unsafe.Pointer(p)))&^(1<<(w+off)-1)|%[3]s(r)<<off&(1<<(w+off)-1)
-	return r
-}`, g.andBitsTypes[k], a[0], a[1], a[2])
 	}
 	a = a[:0]
 	for k := range g.orTypes {
@@ -488,44 +399,12 @@ func and%db(p uintptr, w, off uint, v %[2]s) %[2]s {
 		g.w("\n\nfunc rsh%d(n *%[2]s, m int) %[2]s { *n >>= uint(m); return *n }", g.rshTypes[k], k)
 	}
 	a = a[:0]
-	for k := range g.mulTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\n\nfunc mul%d(n *%[2]s, m %[2]s) %[2]s { *n *= m; return *n }", g.mulTypes[k], k)
-	}
-	a = a[:0]
-	for k := range g.modTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\n\nfunc mod%d(n *%[2]s, m %[2]s) %[2]s { *n %%= m; return *n }", g.modTypes[k], k)
-	}
-	a = a[:0]
-	for k := range g.divTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\n\nfunc div%d(n *%[2]s, m %[2]s) %[2]s { *n /= m; return *n }", g.divTypes[k], k)
-	}
-	a = a[:0]
 	for k := range g.subTypes {
 		a = append(a, k)
 	}
 	sort.Strings(a)
 	for _, k := range a {
 		g.w("\n\nfunc sub%d(n *%[2]s, m %[2]s) %[2]s { *n -= m; return *n }", g.subTypes[k], k)
-	}
-	a = a[:0]
-	for k := range g.addTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\n\nfunc add%d(n *%[2]s, m %[2]s) %[2]s { *n += m; return *n }", g.addTypes[k], k)
 	}
 	a = a[:0]
 	for k := range g.fpTypes {
@@ -544,6 +423,7 @@ func and%db(p uintptr, w, off uint, v %[2]s) %[2]s {
 		g.w("\n\nfunc fn%d(f uintptr) %[2]s { return *(*%[2]s)(unsafe.Pointer(&f)) }", g.fnTypes[k], k)
 	}
 
+	g.genHelpers()
 	g.w("\n\nvar (\n")
 	if g.bss != 0 {
 		g.w("bss = %sBSS(&bssInit[0])\n", crt)
@@ -733,7 +613,7 @@ func (g *gen) allocString(s int) int64 {
 	return r
 }
 
-func (g *gen) registerType(m map[string]int, t c99.Type, more ...string) int {
+func (g *gen) registerType(m map[string]int, t c99.Type, more ...string) int { //TODO-
 	s := g.typ(t)
 	if len(more) != 0 {
 		s += "|" + strings.Join(more, "|")
@@ -752,4 +632,81 @@ func (g *gen) shiftMod(t c99.Type) int {
 	}
 
 	return 32
+}
+
+func (g *gen) registerHelper(a ...interface{}) int {
+	b := make([]string, len(a))
+	for i, v := range a {
+		b[i] = fmt.Sprint(v)
+	}
+	k := strings.Join(b, "$")
+	if id := g.helpers[k]; id != 0 {
+		return id
+	}
+
+	id := len(g.helpers) + 1
+	g.helpers[k] = id
+	return id
+}
+
+func (g *gen) genHelpers() {
+	a := make([]string, 0, len(g.helpers))
+	for k := range g.helpers {
+		a = append(a, k)
+	}
+	sort.Strings(a)
+	for _, k := range a {
+		a := strings.Split(k, "$")
+		switch a[0] {
+		case "add%d", "and%d", "div%d", "mod%d", "mul%d":
+			g.asop(g.helpers[k], a)
+		case "and%db", "or%db", "xor%db":
+			g.bitAsop(g.helpers[k], a)
+		case "set%d":
+			g.set(g.helpers[k], a)
+		case "set%db":
+			g.bitSet(g.helpers[k], a)
+		default:
+			todo("%q", a)
+		}
+	}
+}
+
+// eg.: [0: "add%d" 1: op "" 2: operand type "uint32"]
+func (g *gen) asop(k int, a []string) {
+	g.w(`
+
+func `+a[0]+`(p uintptr, v %[3]s) %[3]s {
+	*(*%[3]s)(unsafe.Pointer(p)) %[2]s= v
+	return *(*%[3]s)(unsafe.Pointer(p))
+}`, k, a[1], a[2])
+}
+
+// eg.: [0: "or%db" 1: op "|" 2: operand type "uint32" 3: pack type "uint32" 4: pack size "32" 5: bits "3" 6: bitoff "14"]
+func (g *gen) bitAsop(k int, a []string) {
+	g.w(`
+
+func `+a[0]+`(p uintptr, v %[3]s) %[3]s {
+	r := %[3]s(*(*%[4]s)(unsafe.Pointer(p))<<(%[5]s-%[6]s-%[7]s)>>(%[5]s-%[7]s)) %[2]s v
+	*(*%[4]s)(unsafe.Pointer(p)) = ((*(*%[4]s)(unsafe.Pointer(p))) &^ ((1<<%[6]s - 1) << %[7]s)) | (%[4]s(r) << %[7]s & ((1<<%[6]s - 1) << %[7]s))
+	return r
+}
+`, k, a[1], a[2], a[3], a[4], a[5], a[6])
+
+}
+
+// eg.: [0: "set%db" 1: op "=" 2: operand type "uint32" 3: pack type "uint32" 4: pack size "32" 5: bits "3" 6: bitoff "14"]
+func (g *gen) bitSet(k int, a []string) {
+	g.w(`
+
+func `+a[0]+`(p uintptr, v %[3]s) %[3]s {
+	*(*%[4]s)(unsafe.Pointer(p)) = ((*(*%[4]s)(unsafe.Pointer(p))) &^ ((1<<%[6]s - 1) << %[7]s)) | (%[4]s(v) << %[7]s & ((1<<%[6]s - 1) << %[7]s))
+	return v
+}
+`, k, a[1], a[2], a[3], a[4], a[5], a[6])
+}
+
+// eg.: [0: "set%d" 1: op "" 2: operand type "uint32"]
+func (g *gen) set(k int, a []string) {
+	g.w("\n\nfunc "+a[0]+"(p uintptr, v %[3]s) %[3]s { *(*%[3]s)(unsafe.Pointer(p)) = v; return v }", k, a[1], a[2])
 }

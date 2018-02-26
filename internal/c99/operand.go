@@ -371,8 +371,9 @@ func (o Operand) ConvertTo(m Model, t Type) (r Operand) {
 	}
 
 	if o.isIntegerType() {
+		v := *o.Value.(*ir.Int64Value)
 		if t.IsIntegerType() {
-			return Operand{Type: t, Value: o.Value}.normalize(m)
+			return Operand{Type: t, Value: &v}.normalize(m)
 		}
 
 		if t.IsPointerType() {
@@ -389,14 +390,14 @@ func (o Operand) ConvertTo(m Model, t Type) (r Operand) {
 				return Operand{Type: t, Value: Null}
 			}
 
-			return Operand{Type: t, Value: o.Value}
+			return Operand{Type: t, Value: &v}.normalize(m)
 		}
 
 		switch t.Kind() {
 		case Double, LongDouble:
-			return Operand{Type: t, Value: &ir.Float64Value{Value: float64(o.Value.(*ir.Int64Value).Value)}}
+			return Operand{Type: t, Value: &ir.Float64Value{Value: float64(o.Value.(*ir.Int64Value).Value)}}.normalize(m)
 		case Float:
-			return Operand{Type: t, Value: &ir.Float32Value{Value: float32(o.Value.(*ir.Int64Value).Value)}}
+			return Operand{Type: t, Value: &ir.Float32Value{Value: float32(o.Value.(*ir.Int64Value).Value)}}.normalize(m)
 		default:
 			panic(t)
 		}
@@ -410,9 +411,10 @@ func (o Operand) ConvertTo(m Model, t Type) (r Operand) {
 		case TypeKind:
 			switch x {
 			case Float:
-				return Operand{Type: t, Value: &ir.Float32Value{Value: float32(o.Value.(*ir.Float64Value).Value)}}
+				return Operand{Type: t, Value: &ir.Float32Value{Value: float32(o.Value.(*ir.Float64Value).Value)}}.normalize(m)
 			case LongDouble:
-				return Operand{Type: t, Value: o.Value}
+				v := *o.Value.(*ir.Float64Value)
+				return Operand{Type: t, Value: &v}.normalize(m)
 			default:
 				panic(x)
 			}
@@ -423,12 +425,12 @@ func (o Operand) ConvertTo(m Model, t Type) (r Operand) {
 
 	if o.isPointerType() && t.IsPointerType() {
 		o.Type = t
-		return o
+		return o.normalize(m)
 	}
 
 	if o.isPointerType() && t.IsIntegerType() {
 		o.Type = t
-		return o
+		return o.normalize(m)
 	}
 
 	panic(fmt.Errorf("%T(%v) -> %T(%v)", o.Type, o, t, t))
@@ -1281,7 +1283,12 @@ func convertDomain(d *interval.Int128, t Type, m Model) *interval.Int128 {
 func (o Operand) normalize(m Model) (r Operand) {
 	switch x := o.Value.(type) {
 	case *ir.Int64Value:
-		x.Value = ConvertInt64(x.Value, o.Type, m)
+		if v := ConvertInt64(x.Value, o.Type, m); v != x.Value {
+			n := *x
+			n.Value = v
+			x = &n
+			o.Value = x
+		}
 		var a mathutil.Int128
 		switch {
 		case o.isSigned():

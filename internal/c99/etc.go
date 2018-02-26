@@ -85,6 +85,12 @@ func printError(w io.Writer, pref string, err error) {
 	}
 }
 
+func (n *ExprList) dumpOperands(s string) {
+	for l := n; l != nil; l = l.ExprList {
+		l.Expr.dumpOperands(s + "· ")
+	}
+}
+
 func (n *Expr) dumpOperands(s string) {
 	z := ""
 	switch {
@@ -95,10 +101,6 @@ func (n *Expr) dumpOperands(s string) {
 	}
 	fmt.Printf("%s%v%v %v\n", s, n.Case, z, n.Operand)
 	switch n.Case {
-	case ExprPExprList:
-		for l := n.ExprList; l != nil; l = l.ExprList {
-			l.Expr.dumpOperands(s + "· ")
-		}
 	case
 		ExprAddrof,
 		ExprCast,
@@ -107,8 +109,14 @@ func (n *Expr) dumpOperands(s string) {
 		ExprIndex,
 		ExprNot,
 		ExprPSelect,
+		ExprPostDec,
+		ExprPostInc,
+		ExprPreDec,
+		ExprPreInc,
 		ExprSelect,
-		ExprUnaryMinus:
+		ExprSizeofExpr,
+		ExprUnaryMinus,
+		ExprUnaryPlus:
 
 		n.Expr.dumpOperands(s + "· ")
 	case
@@ -134,12 +142,19 @@ func (n *Expr) dumpOperands(s string) {
 
 		n.Expr.dumpOperands(s + "· ")
 		n.Expr2.dumpOperands(s + "· ")
+	case ExprPExprList:
+		n.ExprList.dumpOperands(s + "· ")
+	case ExprCond:
+		n.Expr.dumpOperands(s + "· ")
+		n.ExprList.dumpOperands(s + "· ")
+		n.Expr2.dumpOperands(s + "· ")
 	case
 		ExprCall,
 		ExprChar,
 		ExprFloat,
 		ExprIdent,
-		ExprInt:
+		ExprInt,
+		ExprSizeofType:
 
 		// nop
 	default:
