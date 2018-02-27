@@ -52,8 +52,6 @@ type gen struct {
 	ds                  []byte
 	errs                scanner.ErrorList
 	externs             map[int]*c99.Declarator
-	fnTypes             map[string]int
-	fpTypes             map[string]int
 	fset                *token.FileSet
 	helpers             map[string]int
 	in                  []*c99.TranslationUnit
@@ -65,31 +63,18 @@ type gen struct {
 	num                 int
 	nums                map[*c99.Declarator]int
 	opaqueStructTags    map[int]struct{}
-	orTypes             map[string]int
 	out                 io.Writer
 	out0                bytes.Buffer
-	postDecIBitsTypes   map[string]int
-	postDecTypes        map[string]int
-	postDecUBitsTypes   map[string]int
-	postIncTypes        map[string]int
-	postIncUBitsTypes   map[string]int
-	preDecTypes         map[string]int
-	preDecUBitsTypes    map[string]int
-	preIncTypes         map[string]int
-	preIncUBitsTypes    map[string]int
 	producedDeclarators map[*c99.Declarator]struct{}
 	producedEnumTags    map[int]struct{}
 	producedNamedTypes  map[int]struct{}
 	producedStructTags  map[int]struct{}
 	queue               list.List
-	rshTypes            map[string]int
 	strings             map[int]int64
-	subTypes            map[string]int
 	tCache              map[tCacheKey]string
 	text                []int
 	ts                  int64
 	units               map[*c99.Declarator]int
-	xorTypes            map[string]int
 
 	needAlloca  bool
 	needNZ32    bool //TODO -> crt
@@ -103,35 +88,20 @@ type gen struct {
 func newGen(out io.Writer, in []*c99.TranslationUnit) *gen {
 	return &gen{
 		externs:             map[int]*c99.Declarator{},
-		fnTypes:             map[string]int{},
-		fpTypes:             map[string]int{},
 		helpers:             map[string]int{},
 		in:                  in,
 		internalNames:       map[int]struct{}{},
 		internals:           make([]map[int]*c99.Declarator, len(in)),
 		nums:                map[*c99.Declarator]int{},
 		opaqueStructTags:    map[int]struct{}{},
-		orTypes:             map[string]int{},
 		out:                 out,
-		postDecIBitsTypes:   map[string]int{},
-		postDecTypes:        map[string]int{},
-		postDecUBitsTypes:   map[string]int{},
-		postIncTypes:        map[string]int{},
-		postIncUBitsTypes:   map[string]int{},
-		preDecTypes:         map[string]int{},
-		preDecUBitsTypes:    map[string]int{},
-		preIncTypes:         map[string]int{},
-		preIncUBitsTypes:    map[string]int{},
 		producedDeclarators: map[*c99.Declarator]struct{}{},
 		producedEnumTags:    map[int]struct{}{},
 		producedNamedTypes:  map[int]struct{}{},
 		producedStructTags:  map[int]struct{}{},
-		rshTypes:            map[string]int{},
 		strings:             map[int]int64{},
-		subTypes:            map[string]int{},
 		tCache:              map[tCacheKey]string{},
 		units:               map[*c99.Declarator]int{},
-		xorTypes:            map[string]int{},
 	}
 }
 
@@ -263,167 +233,8 @@ func main() {
 		g.w("\n\nfunc alloca(p *[]uintptr, n int) uintptr { r := %sMustMalloc(n); *p = append(*p, r); return r }", crt)
 	}
 
-	a = a[:0]
-	for k := range g.postIncTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\n\nfunc postinc%d(n *%[2]s) %[2]s { r := *n; *n++; return r }", g.postIncTypes[k], k)
-	}
-	a = a[:0]
-	for k := range g.preDecTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\n\nfunc predec%d(n *%[2]s) %[2]s { *n--; return *n }", g.preDecTypes[k], k)
-	}
-	a = a[:0]
-	for k := range g.postDecTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\n\nfunc postdec%d(n *%[2]s) %[2]s { r := *n; *n--; return r }", g.postDecTypes[k], k)
-	}
-	a = a[:0]
-	for k := range g.postDecUBitsTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		a := strings.Split(k, "|")
-		g.w("\n\nfunc postdecu%d(n uintptr, m %[2]s, off uint) %[2]s {", g.postDecUBitsTypes[k], a[0])
-		g.w(`
-pf := *(*%[2]s)(unsafe.Pointer(n))
-r := %[1]s(pf)&m>>off
-*(*%[2]s)(unsafe.Pointer(n)) = pf&^%[2]s(m)|%[2]s((r-1)<<off&m)
-return r
-}`, a[0], a[1])
-	}
-	a = a[:0]
-	for k := range g.postDecIBitsTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		a := strings.Split(k, "|")
-		g.w("\n\nfunc postdeci%d(n uintptr, s, m %[2]s, off uint) %[2]s {", g.postDecIBitsTypes[k], a[0])
-		g.w(`
-pf := *(*%[2]s)(unsafe.Pointer(n))
-r := %[1]s(pf)&m
-if r&s != 0 {
-	r |= ^m
-}
-r >>= off
-*(*%[2]s)(unsafe.Pointer(n)) = pf&^%[2]s(m)|%[2]s((r-1)<<off&m)
-return r
-}`, a[0], a[1])
-	}
-	a = a[:0]
-	for k := range g.postIncUBitsTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		a := strings.Split(k, "|")
-		g.w("\n\nfunc postincu%d(n uintptr, m %[2]s, off uint) %[2]s {", g.postIncUBitsTypes[k], a[0])
-		g.w(`
-pf := *(*%[2]s)(unsafe.Pointer(n))
-r := %[1]s(pf)&m>>off
-*(*%[2]s)(unsafe.Pointer(n)) = pf&^%[2]s(m)|%[2]s((r+1)<<off&m)
-return r
-}`, a[0], a[1])
-	}
-	a = a[:0]
-	for k := range g.preDecUBitsTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		a := strings.Split(k, "|")
-		g.w("\n\nfunc predecu%d(n uintptr, m %[2]s, off uint) %[2]s {", g.preDecUBitsTypes[k], a[0])
-		g.w(`
-pf := *(*%[2]s)(unsafe.Pointer(n))
-r := %[1]s(pf)&m>>off-1
-*(*%[2]s)(unsafe.Pointer(n)) = pf&^%[2]s(m)|%[2]s(r<<off&m)
-return r
-}`, a[0], a[1])
-	}
-	a = a[:0]
-	for k := range g.preIncUBitsTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		a := strings.Split(k, "|")
-		g.w("\n\nfunc preincu%d(n uintptr, m %[2]s, off uint) %[2]s {", g.preIncUBitsTypes[k], a[0])
-		g.w(`
-pf := *(*%[2]s)(unsafe.Pointer(n))
-r := %[1]s(pf)&m>>off+1
-*(*%[2]s)(unsafe.Pointer(n)) = pf&^%[2]s(m)|%[2]s(r<<off&m)
-return r
-}`, a[0], a[1])
-	}
-	a = a[:0]
-	for k := range g.preIncTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\n\nfunc preinc%d(n *%[2]s) %[2]s { *n++; return *n }", g.preIncTypes[k], k)
-	}
-	a = a[:0]
-	for k := range g.orTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\n\nfunc or%d(n *%[2]s, m %[2]s) %[2]s { *n |= m; return *n }", g.orTypes[k], k)
-	}
-	a = a[:0]
-	for k := range g.xorTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\n\nfunc xor%d(n *%[2]s, m %[2]s) %[2]s { *n ^= m; return *n }", g.xorTypes[k], k)
-	}
-	a = a[:0]
-	for k := range g.rshTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\n\nfunc rsh%d(n *%[2]s, m int) %[2]s { *n >>= uint(m); return *n }", g.rshTypes[k], k)
-	}
-	a = a[:0]
-	for k := range g.subTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\n\nfunc sub%d(n *%[2]s, m %[2]s) %[2]s { *n -= m; return *n }", g.subTypes[k], k)
-	}
-	a = a[:0]
-	for k := range g.fpTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\n\nfunc fp%d(f %[2]s) uintptr { return *(*uintptr)(unsafe.Pointer(&f)) }", g.fpTypes[k], k)
-	}
-	a = a[:0]
-	for k := range g.fnTypes {
-		a = append(a, k)
-	}
-	sort.Strings(a)
-	for _, k := range a {
-		g.w("\n\nfunc fn%d(f uintptr) %[2]s { return *(*%[2]s)(unsafe.Pointer(&f)) }", g.fnTypes[k], k)
-	}
-
 	g.genHelpers()
+
 	g.w("\n\nvar (\n")
 	if g.bss != 0 {
 		g.w("bss = %sBSS(&bssInit[0])\n", crt)
@@ -613,19 +424,6 @@ func (g *gen) allocString(s int) int64 {
 	return r
 }
 
-func (g *gen) registerType(m map[string]int, t c99.Type, more ...string) int { //TODO-
-	s := g.typ(t)
-	if len(more) != 0 {
-		s += "|" + strings.Join(more, "|")
-	}
-	if id := m[s]; id != 0 {
-		return id
-	}
-
-	m[s] = len(m) + 1
-	return len(m)
-}
-
 func (g *gen) shiftMod(t c99.Type) int {
 	if g.model.Sizeof(t) > 4 {
 		return 64
@@ -634,19 +432,19 @@ func (g *gen) shiftMod(t c99.Type) int {
 	return 32
 }
 
-func (g *gen) registerHelper(a ...interface{}) int {
+func (g *gen) registerHelper(a ...interface{}) string {
 	b := make([]string, len(a))
 	for i, v := range a {
 		b[i] = fmt.Sprint(v)
 	}
 	k := strings.Join(b, "$")
 	if id := g.helpers[k]; id != 0 {
-		return id
+		return fmt.Sprintf(b[0], id)
 	}
 
 	id := len(g.helpers) + 1
 	g.helpers[k] = id
-	return id
+	return fmt.Sprintf(b[0], id)
 }
 
 func (g *gen) genHelpers() {
@@ -656,57 +454,59 @@ func (g *gen) genHelpers() {
 	}
 	sort.Strings(a)
 	for _, k := range a {
+		g.w("\n\n")
+		id := g.helpers[k]
 		a := strings.Split(k, "$")
 		switch a[0] {
-		case "add%d", "and%d", "div%d", "mod%d", "mul%d":
-			g.asop(g.helpers[k], a)
+		case "add%d", "and%d", "div%d", "mod%d", "mul%d", "or%d", "sub%d", "xor%d":
+			// eg.: [0: "add%d" 1: op "+" 2: operand type "uint32"]
+			g.w("func "+a[0]+"(p *%[3]s, v %[3]s) %[3]s { *p %[2]s= v; return *p }", id, a[1], a[2])
 		case "and%db", "or%db", "xor%db":
-			g.bitAsop(g.helpers[k], a)
-		case "set%d":
-			g.set(g.helpers[k], a)
+			// eg.: [0: "or%db" 1: op "|" 2: operand type "int32" 3: pack type "uint8" 4: op size "32" 5: bits "3" 6: bitoff "2"]
+			g.w(`func `+a[0]+`(p *%[4]s, v %[3]s) %[3]s {
+r := (%[3]s(*p)<<(%[5]s-%[6]s-%[7]s)>>(%[5]s-%[6]s)) %[2]s v
+*p = (*p &^ ((1<<%[6]s - 1) << %[7]s)) | (%[4]s(r) << %[7]s & ((1<<%[6]s - 1) << %[7]s))
+return r
+}`, id, a[1], a[2], a[3], a[4], a[5], a[6])
+		case "set%d": // eg.: [0: "set%d" 1: op "" 2: operand type "uint32"]
+			g.w("func "+a[0]+"(p *%[3]s, v %[3]s) %[3]s { *p = v; return v }", id, a[1], a[2])
 		case "set%db":
-			g.bitSet(g.helpers[k], a)
+			// eg.: [0: "set%db" 1: op "=" 2: operand type "uint32" 3: pack type "uint8" 4: op size "32" 5: bits "3" 6: bitoff "2"]
+			g.w(`func `+a[0]+`(p *%[4]s, v %[3]s) %[3]s {
+	*p = (*p &^ ((1<<%[6]s - 1) << %[7]s)) | (%[4]s(v) << %[7]s & ((1<<%[6]s - 1) << %[7]s))
+	return v
+}
+`, id, a[1], a[2], a[3], a[4], a[5], a[6])
+		case "rsh%d":
+			// eg.: [0: "rsh%d" 1: op ">>" 2: operand type "uint32" 3: mod "32"]
+			g.w("func "+a[0]+"(p *%[3]s, v %[3]s) %[3]s {	*p %[2]s= (v %% %[4]s);	return *p }", id, a[1], a[2], a[3])
+		case "fn%d":
+			// eg.: [0: "fn%d" 1: type "func()"]
+			g.w("func "+a[0]+"(p uintptr) %[2]s { return *(*%[2]s)(unsafe.Pointer(&p)) }", id, a[1])
+		case "fp%d":
+			g.w("func "+a[0]+"(f %[2]s) uintptr { return *(*uintptr)(unsafe.Pointer(&f)) }", id, a[1])
+		case "postinc%d":
+			// eg.: [0: "postinc%d" 1: operand type "int32" 2: delta "1"]
+			g.w("func "+a[0]+"(p *%[2]s) %[2]s { r := *p; *p += %[3]s; return r }", id, a[1], a[2])
+		case "preinc%d":
+			// eg.: [0: "preinc%d" 1: operand type "int32" 2: delta "1"]
+			g.w("func "+a[0]+"(p *%[2]s) %[2]s { *p += %[3]s; return *p }", id, a[1], a[2])
+		case "postinc%db":
+			// eg.: [0: "postinc%db" 1: delta "1" 2: operand type "int32" 3: pack type "uint8" 4: op size "32" 5: bits "3" 6: bitoff "2"]
+			g.w(`func `+a[0]+`(p *%[4]s) %[3]s {
+r := %[3]s(*p)<<(%[5]s-%[6]s-%[7]s)>>(%[5]s-%[6]s)
+*p = (*p &^ ((1<<%[6]s - 1) << %[7]s)) | (%[4]s(r+%[2]s) << %[7]s & ((1<<%[6]s - 1) << %[7]s))
+return r
+}`, id, a[1], a[2], a[3], a[4], a[5], a[6])
+		case "preinc%db":
+			// eg.: [0: "preinc%db" 1: delta "1" 2: operand type "int32" 3: pack type "uint8" 4: op size "32" 5: bits "3" 6: bitoff "2"]
+			g.w(`func `+a[0]+`(p *%[4]s) %[3]s {
+r := (%[3]s(*p)<<(%[5]s-%[6]s-%[7]s)>>(%[5]s-%[6]s)) + %[2]s
+*p = (*p &^ ((1<<%[6]s - 1) << %[7]s)) | (%[4]s(r) << %[7]s & ((1<<%[6]s - 1) << %[7]s))
+return r
+}`, id, a[1], a[2], a[3], a[4], a[5], a[6])
 		default:
 			todo("%q", a)
 		}
 	}
-}
-
-// eg.: [0: "add%d" 1: op "" 2: operand type "uint32"]
-func (g *gen) asop(k int, a []string) {
-	g.w(`
-
-func `+a[0]+`(p uintptr, v %[3]s) %[3]s {
-	*(*%[3]s)(unsafe.Pointer(p)) %[2]s= v
-	return *(*%[3]s)(unsafe.Pointer(p))
-}`, k, a[1], a[2])
-}
-
-// eg.: [0: "or%db" 1: op "|" 2: operand type "uint32" 3: pack type "uint32" 4: pack size "32" 5: bits "3" 6: bitoff "14"]
-func (g *gen) bitAsop(k int, a []string) {
-	g.w(`
-
-func `+a[0]+`(p uintptr, v %[3]s) %[3]s {
-	r := %[3]s(*(*%[4]s)(unsafe.Pointer(p))<<(%[5]s-%[6]s-%[7]s)>>(%[5]s-%[7]s)) %[2]s v
-	*(*%[4]s)(unsafe.Pointer(p)) = ((*(*%[4]s)(unsafe.Pointer(p))) &^ ((1<<%[6]s - 1) << %[7]s)) | (%[4]s(r) << %[7]s & ((1<<%[6]s - 1) << %[7]s))
-	return r
-}
-`, k, a[1], a[2], a[3], a[4], a[5], a[6])
-
-}
-
-// eg.: [0: "set%db" 1: op "=" 2: operand type "uint32" 3: pack type "uint32" 4: pack size "32" 5: bits "3" 6: bitoff "14"]
-func (g *gen) bitSet(k int, a []string) {
-	g.w(`
-
-func `+a[0]+`(p uintptr, v %[3]s) %[3]s {
-	*(*%[4]s)(unsafe.Pointer(p)) = ((*(*%[4]s)(unsafe.Pointer(p))) &^ ((1<<%[6]s - 1) << %[7]s)) | (%[4]s(v) << %[7]s & ((1<<%[6]s - 1) << %[7]s))
-	return v
-}
-`, k, a[1], a[2], a[3], a[4], a[5], a[6])
-}
-
-// eg.: [0: "set%d" 1: op "" 2: operand type "uint32"]
-func (g *gen) set(k int, a []string) {
-	g.w("\n\nfunc "+a[0]+"(p uintptr, v %[3]s) %[3]s { *(*%[3]s)(unsafe.Pointer(p)) = v; return v }", k, a[1], a[2])
 }
