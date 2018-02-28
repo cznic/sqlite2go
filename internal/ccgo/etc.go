@@ -130,27 +130,6 @@ func todo(msg string, args ...interface{}) {
 	panic(fmt.Errorf("\n\n%v:%d: TODO\n\n%s", f, l, fmt.Sprintf(msg, args...))) //TODOOK
 }
 
-func packedType(packed, t c99.Type) c99.Type {
-	if t.IsUnsigned() {
-		return packed
-	}
-	switch packed.Kind() {
-	case c99.UChar:
-		return c99.SChar
-	case c99.UShort:
-		return c99.Short
-	case c99.UInt:
-		return c99.Int
-	case c99.ULong:
-		return c99.Long
-	case c99.ULongLong:
-		return c99.LongLong
-	default:
-		todo("", packed.Kind())
-	}
-	panic("unreachable")
-}
-
 func isFnPtr(t c99.Type, out *c99.Type) bool {
 	switch x := c99.UnderlyingType(t).(type) {
 	case *c99.PointerType:

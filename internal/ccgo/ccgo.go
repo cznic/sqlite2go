@@ -76,13 +76,10 @@ type gen struct {
 	ts                  int64
 	units               map[*c99.Declarator]int
 
-	needAlloca  bool
-	needNZ32    bool //TODO -> crt
-	needNZ64    bool //TODO -> crt
-	needPostDec bool
-	needPostInc bool
-	needPreDec  bool
-	needPreInc  bool
+	needAlloca bool
+	needNZ32   bool //TODO -> crt
+	needNZ64   bool //TODO -> crt
+	needPreInc bool
 }
 
 func newGen(out io.Writer, in []*c99.TranslationUnit) *gen {
@@ -217,17 +214,8 @@ func main() {
 		}
 	}
 
-	if g.needPostInc {
-		g.w("\n\nfunc postinc(p *uintptr, n uintptr) uintptr { r := *p; *p += n; return r }")
-	}
-	if g.needPostDec {
-		g.w("\n\nfunc postdec(p *uintptr, n uintptr) uintptr { r := *p; *p -= n; return r }")
-	}
 	if g.needPreInc {
 		g.w("\n\nfunc preinc(p *uintptr, n uintptr) uintptr { *p += n; return *p }")
-	}
-	if g.needPreDec {
-		g.w("\n\nfunc predec(p *uintptr, n uintptr) uintptr { *p -= n; return *p }")
 	}
 	if g.needAlloca {
 		g.w("\n\nfunc alloca(p *[]uintptr, n int) uintptr { r := %sMustMalloc(n); *p = append(*p, r); return r }", crt)
@@ -383,33 +371,10 @@ func (g gen) escaped(n *c99.Declarator) bool {
 		*c99.TaggedUnionType,
 		*c99.UnionType:
 
-		return n.IsTLD() || n.DeclarationSpecifier.IsStatic() || g.hasBitFields(n.Type)
+		return n.IsTLD() || n.DeclarationSpecifier.IsStatic()
 	default:
 		return false
 	}
-}
-
-func (g *gen) hasBitFields(t c99.Type) bool {
-	t = c99.UnderlyingType(t)
-	if k := t.Kind(); k != c99.Struct && k != c99.Union {
-		return false
-	}
-
-	switch x := t.(type) {
-	case *c99.StructType:
-		for _, v := range x.Fields {
-			if v.Bits != 0 {
-				return true
-			}
-		}
-	case *c99.UnionType:
-		for _, v := range x.Fields {
-			if v.Bits != 0 {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func (g *gen) allocString(s int) int64 {
@@ -454,57 +419,53 @@ func (g *gen) genHelpers() {
 	}
 	sort.Strings(a)
 	for _, k := range a {
-		g.w("\n\n")
-		id := g.helpers[k]
 		a := strings.Split(k, "$")
+		g.w("\n\nfunc "+a[0], g.helpers[k])
 		switch a[0] {
 		case "add%d", "and%d", "div%d", "mod%d", "mul%d", "or%d", "sub%d", "xor%d":
 			// eg.: [0: "add%d" 1: op "+" 2: operand type "uint32"]
-			g.w("func "+a[0]+"(p *%[3]s, v %[3]s) %[3]s { *p %[2]s= v; return *p }", id, a[1], a[2])
+			g.w("(p *%[2]s, v %[2]s) %[2]s { *p %[1]s= v; return *p }", a[1], a[2])
 		case "and%db", "or%db", "xor%db":
 			// eg.: [0: "or%db" 1: op "|" 2: operand type "int32" 3: pack type "uint8" 4: op size "32" 5: bits "3" 6: bitoff "2"]
-			g.w(`func `+a[0]+`(p *%[4]s, v %[3]s) %[3]s {
-r := (%[3]s(*p)<<(%[5]s-%[6]s-%[7]s)>>(%[5]s-%[6]s)) %[2]s v
-*p = (*p &^ ((1<<%[6]s - 1) << %[7]s)) | (%[4]s(r) << %[7]s & ((1<<%[6]s - 1) << %[7]s))
+			g.w(`(p *%[3]s, v %[2]s) %[2]s {
+r := (%[2]s(*p>>%[6]s)<<(%[4]s-%[5]s)>>(%[4]s-%[5]s)) %[1]s v
+*p = (*p &^ ((1<<%[5]s - 1) << %[6]s)) | (%[3]s(r) << %[6]s & ((1<<%[5]s - 1) << %[6]s))
 return r
-}`, id, a[1], a[2], a[3], a[4], a[5], a[6])
+}`, a[1], a[2], a[3], a[4], a[5], a[6])
 		case "set%d": // eg.: [0: "set%d" 1: op "" 2: operand type "uint32"]
-			g.w("func "+a[0]+"(p *%[3]s, v %[3]s) %[3]s { *p = v; return v }", id, a[1], a[2])
+			g.w("(p *%[2]s, v %[2]s) %[2]s { *p = v; return v }", a[1], a[2])
 		case "set%db":
-			// eg.: [0: "set%db" 1: op "=" 2: operand type "uint32" 3: pack type "uint8" 4: op size "32" 5: bits "3" 6: bitoff "2"]
-			g.w(`func `+a[0]+`(p *%[4]s, v %[3]s) %[3]s {
-	*p = (*p &^ ((1<<%[6]s - 1) << %[7]s)) | (%[4]s(v) << %[7]s & ((1<<%[6]s - 1) << %[7]s))
-	return v
-}
-`, id, a[1], a[2], a[3], a[4], a[5], a[6])
+			// eg.: [0: "set%db" 1: ignored 2: operand type "uint32" 3: pack type "uint8" 4: ignored 5: bits "3" 6: bitoff "2"]
+			g.w("(p *%[3]s, v %[2]s) %[2]s { *p = (*p &^ ((1<<%[5]s - 1) << %[6]s)) | (%[3]s(v) << %[6]s & ((1<<%[5]s - 1) << %[6]s)); return v }",
+				"", a[2], a[3], "", a[5], a[6])
 		case "rsh%d":
 			// eg.: [0: "rsh%d" 1: op ">>" 2: operand type "uint32" 3: mod "32"]
-			g.w("func "+a[0]+"(p *%[3]s, v %[3]s) %[3]s {	*p %[2]s= (v %% %[4]s);	return *p }", id, a[1], a[2], a[3])
+			g.w("(p *%[2]s, v %[2]s) %[2]s { *p %[1]s= (v %% %[3]s); return *p }", a[1], a[2], a[3])
 		case "fn%d":
-			// eg.: [0: "fn%d" 1: type "func()"]
-			g.w("func "+a[0]+"(p uintptr) %[2]s { return *(*%[2]s)(unsafe.Pointer(&p)) }", id, a[1])
+			// eg.: [0: "fn%d" 1: type "unc()"]
+			g.w("(p uintptr) %[1]s { return *(*%[1]s)(unsafe.Pointer(&p)) }", a[1])
 		case "fp%d":
-			g.w("func "+a[0]+"(f %[2]s) uintptr { return *(*uintptr)(unsafe.Pointer(&f)) }", id, a[1])
+			g.w("(f %[1]s) uintptr { return *(*uintptr)(unsafe.Pointer(&f)) }", a[1])
 		case "postinc%d":
 			// eg.: [0: "postinc%d" 1: operand type "int32" 2: delta "1"]
-			g.w("func "+a[0]+"(p *%[2]s) %[2]s { r := *p; *p += %[3]s; return r }", id, a[1], a[2])
+			g.w("(p *%[1]s) %[1]s { r := *p; *p += %[2]s; return r }", a[1], a[2])
 		case "preinc%d":
 			// eg.: [0: "preinc%d" 1: operand type "int32" 2: delta "1"]
-			g.w("func "+a[0]+"(p *%[2]s) %[2]s { *p += %[3]s; return *p }", id, a[1], a[2])
+			g.w("(p *%[1]s) %[1]s { *p += %[2]s; return *p }", a[1], a[2])
 		case "postinc%db":
 			// eg.: [0: "postinc%db" 1: delta "1" 2: operand type "int32" 3: pack type "uint8" 4: op size "32" 5: bits "3" 6: bitoff "2"]
-			g.w(`func `+a[0]+`(p *%[4]s) %[3]s {
-r := %[3]s(*p)<<(%[5]s-%[6]s-%[7]s)>>(%[5]s-%[6]s)
-*p = (*p &^ ((1<<%[6]s - 1) << %[7]s)) | (%[4]s(r+%[2]s) << %[7]s & ((1<<%[6]s - 1) << %[7]s))
+			g.w(`(p *%[3]s) %[2]s {
+r := %[2]s(*p>>%[6]s)<<(%[4]s-%[5]s)>>(%[4]s-%[5]s)
+*p = (*p &^ ((1<<%[5]s - 1) << %[6]s)) | (%[3]s(r+%[1]s) << %[6]s & ((1<<%[5]s - 1) << %[6]s))
 return r
-}`, id, a[1], a[2], a[3], a[4], a[5], a[6])
+}`, a[1], a[2], a[3], a[4], a[5], a[6])
 		case "preinc%db":
 			// eg.: [0: "preinc%db" 1: delta "1" 2: operand type "int32" 3: pack type "uint8" 4: op size "32" 5: bits "3" 6: bitoff "2"]
-			g.w(`func `+a[0]+`(p *%[4]s) %[3]s {
-r := (%[3]s(*p)<<(%[5]s-%[6]s-%[7]s)>>(%[5]s-%[6]s)) + %[2]s
-*p = (*p &^ ((1<<%[6]s - 1) << %[7]s)) | (%[4]s(r) << %[7]s & ((1<<%[6]s - 1) << %[7]s))
+			g.w(`(p *%[3]s) %[2]s {
+r := (%[2]s(*p>>%[7])<<(%[4]s-%[5]s)>>(%[4]s-%[5]s)) + %[1]s
+*p = (*p &^ ((1<<%[5]s - 1) << %[6]s)) | (%[3]s(r) << %[6]s & ((1<<%[5]s - 1) << %[6]s))
 return r
-}`, id, a[1], a[2], a[3], a[4], a[5], a[6])
+}`, a[1], a[2], a[3], a[4], a[5], a[6])
 		default:
 			todo("%q", a)
 		}
