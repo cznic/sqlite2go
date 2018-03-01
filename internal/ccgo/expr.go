@@ -5,6 +5,7 @@
 package ccgo
 
 import (
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -353,20 +354,8 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 
 	defer g.w(")")
 
-	if n.Operand.Value != nil {
-		switch {
-		case g.voidCanIgnore(n):
-			g.constant(n)
-		default:
-			g.w("func() %v {", g.typ(n.Operand.Type))
-			g.void(n)
-			g.w("; return ")
-			op := n.Operand //TODO unhack
-			n.Operand = n.Operand.ConvertTo(g.model, n.Operand.Type)
-			g.constant(n)
-			n.Operand = op
-			g.w(" }()")
-		}
+	if n.Operand.Value != nil && g.voidCanIgnore(n) {
+		g.constant(n)
 		return
 	}
 
@@ -769,14 +758,14 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 			g.w(")")
 		case c99.TypeKind:
 			if op := n.Expr.Operand; op.Bits != 0 {
-				g.w("%s(&", g.registerHelper("preinc%db", c99.ConvertInt64(-1, x, g.model), g.typ(op.Type), g.typ(op.PackedType), g.model.Sizeof(op.Type)*8, op.Bits, op.Bitoff))
+				g.w("%s(&", g.registerHelper("preinc%db", g.convertInt64(-1, x), g.typ(op.Type), g.typ(op.PackedType), g.model.Sizeof(op.Type)*8, op.Bits, op.Bitoff))
 				g.value(n.Expr, true)
 				g.w(")")
 				return
 			}
 
 			if x.IsArithmeticType() {
-				g.w("%s(", g.registerHelper("preinc%d", g.typ(x), c99.ConvertInt64(-1, x, g.model)))
+				g.w("%s(", g.registerHelper("preinc%d", g.typ(x), g.convertInt64(-1, x)))
 				g.lvalue(n.Expr)
 				g.w(")")
 				return
@@ -794,14 +783,14 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 		case c99.TypeKind:
 			op := n.Expr.Operand
 			if op.Bits != 0 {
-				g.w("%s(&", g.registerHelper("postinc%db", c99.ConvertInt64(-1, x, g.model), g.typ(op.Type), g.typ(op.PackedType), g.model.Sizeof(op.Type)*8, op.Bits, op.Bitoff))
+				g.w("%s(&", g.registerHelper("postinc%db", g.convertInt64(-1, x), g.typ(op.Type), g.typ(op.PackedType), g.model.Sizeof(op.Type)*8, op.Bits, op.Bitoff))
 				g.value(n.Expr, true)
 				g.w(")")
 				return
 			}
 
 			if x.IsArithmeticType() {
-				g.w("%s(", g.registerHelper("postinc%d", g.typ(x), c99.ConvertInt64(-1, x, g.model)))
+				g.w("%s(", g.registerHelper("postinc%d", g.typ(x), g.convertInt64(-1, x)))
 				g.lvalue(n.Expr)
 				g.w(")")
 				return
@@ -1657,4 +1646,14 @@ func (g *gen) int64ToUintptr(n int64) uint64 {
 		return uint64(n)
 	}
 	panic("unreachable")
+}
+
+func (g *gen) convertInt64(n int64, t c99.Type) string {
+	v := c99.ConvertInt64(n, t, g.model)
+	switch {
+	case t.IsUnsigned():
+		return fmt.Sprint(uint64(v))
+	default:
+		return fmt.Sprint(v)
+	}
 }

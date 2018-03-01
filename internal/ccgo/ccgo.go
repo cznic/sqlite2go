@@ -430,14 +430,14 @@ func (g *gen) genHelpers() {
 			g.w(`(p *%[3]s, v %[2]s) %[2]s {
 r := (%[2]s(*p>>%[6]s)<<(%[4]s-%[5]s)>>(%[4]s-%[5]s)) %[1]s v
 *p = (*p &^ ((1<<%[5]s - 1) << %[6]s)) | (%[3]s(r) << %[6]s & ((1<<%[5]s - 1) << %[6]s))
-return r
+return r<<(%[4]s-%[5]s)>>(%[4]s-%[5]s)
 }`, a[1], a[2], a[3], a[4], a[5], a[6])
 		case "set%d": // eg.: [0: "set%d" 1: op "" 2: operand type "uint32"]
 			g.w("(p *%[2]s, v %[2]s) %[2]s { *p = v; return v }", a[1], a[2])
 		case "set%db":
-			// eg.: [0: "set%db" 1: ignored 2: operand type "uint32" 3: pack type "uint8" 4: ignored 5: bits "3" 6: bitoff "2"]
-			g.w("(p *%[3]s, v %[2]s) %[2]s { *p = (*p &^ ((1<<%[5]s - 1) << %[6]s)) | (%[3]s(v) << %[6]s & ((1<<%[5]s - 1) << %[6]s)); return v }",
-				"", a[2], a[3], "", a[5], a[6])
+			// eg.: [0: "set%db" 1: ignored 2: operand type "uint32" 3: pack type "uint8" 4: op size 5: bits "3" 6: bitoff "2"]
+			g.w("(p *%[3]s, v %[2]s) %[2]s { *p = (*p &^ ((1<<%[5]s - 1) << %[6]s)) | (%[3]s(v) << %[6]s & ((1<<%[5]s - 1) << %[6]s)); return v<<(%[4]s-%[5]s)>>(%[4]s-%[5]s)}",
+				"", a[2], a[3], a[4], a[5], a[6])
 		case "rsh%d":
 			// eg.: [0: "rsh%d" 1: op ">>" 2: operand type "uint32" 3: mod "32"]
 			g.w("(p *%[2]s, v %[2]s) %[2]s { *p %[1]s= (v %% %[3]s); return *p }", a[1], a[2], a[3])
@@ -464,7 +464,7 @@ return r
 			g.w(`(p *%[3]s) %[2]s {
 r := (%[2]s(*p>>%[7])<<(%[4]s-%[5]s)>>(%[4]s-%[5]s)) + %[1]s
 *p = (*p &^ ((1<<%[5]s - 1) << %[6]s)) | (%[3]s(r) << %[6]s & ((1<<%[5]s - 1) << %[6]s))
-return r
+return r<<(%[4]s-%[5]s)>>(%[4]s-%[5]s)
 }`, a[1], a[2], a[3], a[4], a[5], a[6])
 		default:
 			todo("%q", a)
