@@ -122,6 +122,7 @@ func (n *Expr) dumpOperands(s string) {
 	case
 		ExprAdd,
 		ExprAnd,
+		ExprAndAssign,
 		ExprAssign,
 		ExprDiv,
 		ExprEq,
@@ -136,9 +137,11 @@ func (n *Expr) dumpOperands(s string) {
 		ExprMul,
 		ExprNe,
 		ExprOr,
+		ExprOrAssign,
 		ExprRsh,
 		ExprSub,
-		ExprXor:
+		ExprXor,
+		ExprXorAssign:
 
 		n.Expr.dumpOperands(s + "· ")
 		n.Expr2.dumpOperands(s + "· ")
@@ -154,7 +157,8 @@ func (n *Expr) dumpOperands(s string) {
 		ExprFloat,
 		ExprIdent,
 		ExprInt,
-		ExprSizeofType:
+		ExprSizeofType,
+		ExprString:
 
 		// nop
 	default:

@@ -461,9 +461,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			lhs.isArithmeticType() && rhs.isArithmeticType():
 
 			n.Operand = lhs.ne(ctx, rhs)
-			// fmt.Printf("TODO100 %v\n", ctx.position(n))
-			// n.Operand = n.Operand.normalize(ctx.model)
-			// n.dumpOperands("· ") //TODO-
 		case
 			// one operand is a pointer and the other is a null
 			// pointer constant.
@@ -848,19 +845,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 				ops[i] = v.ConvertTo(ctx.model, ops[i].Type)
 			}
 		}
-		if o := n.ArgumentExprListOpt; o != nil {
-			i := 0
-			for l := o.ArgumentExprList; l != nil; l = l.ArgumentExprList {
-				if i >= len(ops) {
-					break
-				}
-
-				if op := ops[i]; op.Value != nil {
-					l.Expr.Operand = op
-				}
-				i++
-			}
-		}
 	case ExprMul: // Expr '*' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).mul(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
 	case ExprAdd: // Expr '+' Expr
@@ -997,6 +981,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			}
 		}
 		n.Operand.Type.assign(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
+		// fmt.Printf("TODO1000 %v\n", ctx.position(n))
+		// n.Operand = n.Operand.normalize(ctx.model)
+		// n.dumpOperands("· ") //TODO-
 	case ExprGt: // Expr '>' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).gt(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
 		if n.Expr.Equals(n.Expr2) {

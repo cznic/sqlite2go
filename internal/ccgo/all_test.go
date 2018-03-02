@@ -586,7 +586,7 @@ out:
 			"--divs",              // --divs | --no-divs: enable | disable divisions (enabled by default).
 			"--embedded-assigns",  // --embedded-assigns | --no-embedded-assigns: enable | disable embedded assignments as sub-expressions (enabled by default).
 			// --enable-builtin-kinds k1,k2 | --disable-builtin-kinds k1,k2: enable | disable certain kinds of builtin functions.
-			"--no-float", //TODO --float | --no-float: enable | disable float (disabled by default).
+			"--float", // --float | --no-float: enable | disable float (disabled by default).
 			// --help or -h: print this information.
 			// --inline-function | --no-inline-function: enable | disable inline attributes on generated functions.
 			// --inline-function-prob <num>: set the probability of each function being marked as inline (default is 50).
@@ -596,13 +596,13 @@ out:
 			"--longlong", // --longlong| --no-longlong: enable | disable long long (enabled by default).
 			// --main | --nomain: enable | disable to generate main function (enabled by default).
 			"--math64",             // --math64 | --no-math64: enable | disable 64-bit math ops (enabled by default).
-			"--max-array-dim", "3", // --max-array-dim <num>: limit array dimensions to <num>. (default 3)
+			"--max-array-dim", "2", //TODO --max-array-dim <num>: limit array dimensions to <num>. (default 3)
 			// --max-array-len-per-dim <num>: limit array length per dimension to <num> (default 10).
 			"--max-block-depth", "2", //TODO --max-block-depth <num>: limit depth of nested blocks to <num> (default 5).
 			// --max-block-size <size>: limit the number of non-return statements in a block to <size> (default 4).
-			"--max-expr-complexity", "3", //TODO --max-expr-complexity <num>: limit expression complexities to <num> (default 10).
+			"--max-expr-complexity", "2", //TODO --max-expr-complexity <num>: limit expression complexities to <num> (default 10).
 			// --max-funcs <num>: limit the number of functions (besides main) to <num>  (default 10).
-			"--max-pointer-depth", "2", // --max-pointer-depth <depth>: limit the indirect depth of pointers to <depth> (default 2).
+			"--max-pointer-depth", "2", //TODO --max-pointer-depth <depth>: limit the indirect depth of pointers to <depth> (default 2).
 			// --max-struct-fields <num>: limit the number of struct fields to <num> (default 10).
 			// --max-union-fields <num>: limit the number of union fields to <num> (default 5).
 			"--muls", // --muls | --no-muls: enable | disable multiplications (enabled by default).

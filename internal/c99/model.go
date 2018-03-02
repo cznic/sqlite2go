@@ -81,6 +81,8 @@ func (m Model) Sizeof(t Type) int64 {
 			panic("TODO")
 		}
 		return m.Sizeof(x.Item) * x.Size.Value.(*ir.Int64Value).Value
+	case *EnumType:
+		return m.Sizeof(x.Enums[0].Operand.Type)
 	case *NamedType:
 		return m.Sizeof(x.Type)
 	case *PointerType:

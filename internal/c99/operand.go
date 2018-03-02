@@ -11,9 +11,7 @@ import (
 	"math"
 	"math/bits"
 
-	"github.com/cznic/interval"
 	"github.com/cznic/ir"
-	"github.com/cznic/mathutil"
 )
 
 var (
@@ -368,9 +366,11 @@ func (o Operand) ConvertTo(m Model, t Type) (r Operand) {
 	}
 
 	if o.Type.Kind() == Double {
+		v := o.Value.(*ir.Float64Value).Value
 		if t.IsIntegerType() {
-			return Operand{Type: t, Value: &ir.Int64Value{Value: int64(o.Value.(*ir.Float64Value).Value)}}.normalize(m)
+			return Operand{Type: t, Value: &ir.Int64Value{Value: ConvertFloat64(v, t, m)}}.normalize(m)
 		}
+
 		switch x := t.(type) {
 		case TypeKind:
 			switch x {
@@ -574,6 +574,7 @@ func (o Operand) integerPromotion(m Model) Operand {
 			switch x {
 			case
 				Double,
+				Float,
 				Int,
 				Long,
 				LongLong,
@@ -830,6 +831,74 @@ func (o Operand) ne(ctx *context, p Operand) (r Operand) {
 	return r.normalize(ctx.model)
 }
 
+func ConvertFloat64(v float64, t Type, m Model) int64 {
+	if !t.IsIntegerType() {
+		panic(fmt.Errorf("ConvertFloat64: %T", t))
+	}
+
+	switch sz := m.Sizeof(t); {
+	case t.IsUnsigned():
+		switch sz {
+		case 1:
+			if v > math.Nextafter(math.MaxUint8, 0) {
+				return math.MaxUint8
+			}
+
+			if v <= 0 {
+				return 0
+			}
+		case 2:
+			if v > math.Nextafter(math.MaxUint16, 0) {
+				return math.MaxUint16
+			}
+
+			if v <= 0 {
+				return 0
+			}
+		case 4:
+			if v > math.Nextafter(math.MaxUint32, 0) {
+				return math.MaxUint32
+			}
+
+			if v <= 0 {
+				return 0
+			}
+		case 8:
+			if v > math.Nextafter(math.MaxUint64, 0) {
+				return -1 // int64(math,MaxUint64)
+			}
+
+			if v <= 0 {
+				return 0
+			}
+		default:
+			panic(sz)
+		}
+	default:
+		switch sz {
+		case 1:
+			if v > math.Nextafter(math.MaxInt8, 0) {
+				return math.MaxInt8
+			}
+		case 2:
+			if v > math.Nextafter(math.MaxInt16, 0) {
+				return math.MaxInt16
+			}
+		case 4:
+			if v > math.Nextafter(math.MaxInt32, 0) {
+				return math.MaxInt32
+			}
+		case 8:
+			if v > math.Nextafter(math.MaxInt64, 0) {
+				return math.MaxInt64
+			}
+		default:
+			panic(sz)
+		}
+	}
+	return int64(v)
+}
+
 func ConvertInt64(n int64, t Type, m Model) int64 {
 	signed := !t.IsUnsigned()
 	switch sz := m[t.Kind()].Size; sz {
@@ -875,16 +944,6 @@ func ConvertInt64(n int64, t Type, m Model) int64 {
 		panic(fmt.Errorf("TODO %v", sz))
 	}
 }
-
-func convertDomain(d *interval.Int128, t Type, m Model) *interval.Int128 {
-	td := domain(t, m)
-	if isSubset(d, td) {
-		return d
-	}
-
-	return td
-}
-
 func (o Operand) normalize(m Model) (r Operand) {
 	switch x := o.Value.(type) {
 	case *ir.Int64Value:
@@ -1015,67 +1074,5 @@ func (o Operand) xor(ctx *context, p Operand) (r Operand) {
 		return Operand{Type: o.Type, Value: &ir.Int64Value{Value: x.Value ^ p.Value.(*ir.Int64Value).Value}}.normalize(ctx.model)
 	default:
 		panic(fmt.Errorf("TODO %T", x))
-	}
-}
-
-func domain(t Type, m Model) *interval.Int128 {
-	var a, b mathutil.Int128
-	if t.IsIntegerType() {
-		sz := m[t.Kind()].Size
-		switch {
-		case t.IsUnsigned():
-			switch sz {
-			case 1:
-				b.SetUint64(math.MaxUint8)
-			case 2:
-				b.SetUint64(math.MaxUint16)
-			case 4:
-				b.SetUint64(math.MaxUint32)
-			case 8:
-				b.SetUint64(math.MaxUint64)
-			default:
-				panic("internal error")
-			}
-		default:
-			switch sz {
-			case 1:
-				a.SetInt64(math.MinInt8)
-				b.SetInt64(math.MaxInt8)
-			case 2:
-				a.SetInt64(math.MinInt16)
-				b.SetInt64(math.MaxInt16)
-			case 4:
-				a.SetInt64(math.MinInt32)
-				b.SetInt64(math.MaxInt32)
-			case 8:
-				a.SetInt64(math.MinInt64)
-				b.SetInt64(math.MaxInt64)
-			default:
-				panic("internal error")
-			}
-		}
-		return &interval.Int128{Cls: interval.Closed, A: a, B: b}
-	}
-	return nil
-}
-
-func isSubset(x, y *interval.Int128) bool {
-	switch x.Cls {
-	case interval.Closed:
-		switch y.Cls {
-		case interval.Closed:
-			return x.A.Cmp(y.A) >= 0 && x.B.Cmp(y.B) <= 0
-		default:
-			panic(y.Cls)
-		}
-	case interval.Degenerate:
-		switch y.Cls {
-		case interval.Closed:
-			return x.A.Cmp(y.A) >= 0 && x.A.Cmp(y.B) <= 0
-		default:
-			panic(y.Cls)
-		}
-	default:
-		panic(x.Cls)
 	}
 }

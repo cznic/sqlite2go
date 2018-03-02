@@ -418,7 +418,7 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 				n.Expr.Declarator = x
 				n.Expr.Operand.Type = &c99.PointerType{Item: x.Type}
 			default:
-				todo("%v: %T", g.position0(n), x)
+				todo("%v: %T %q", g.position0(n), x, dict.S(n.Expr.Token.Val))
 			}
 		}
 		var ft0 c99.Type
@@ -1281,19 +1281,15 @@ func (g *gen) constant(n *c99.Expr) {
 			g.w("math.Inf(-1)")
 			return
 		}
+
 		switch u := c99.UnderlyingType(n.Operand.Type).(type) {
 		case c99.TypeKind:
+			if u.IsIntegerType() {
+				g.w(" %v", c99.ConvertFloat64(x.Value, u, g.model))
+				return
+			}
+
 			switch u {
-			case c99.Char, c99.SChar:
-				g.w(" %v", int8(x.Value))
-			case c99.Int:
-				g.w(" %v", int32(x.Value))
-			case c99.Short:
-				g.w(" %v", int16(x.Value))
-			case c99.UInt:
-				g.w(" %v", uint32(x.Value))
-			case c99.UShort:
-				g.w(" %v", uint16(x.Value))
 			case
 				c99.Double,
 				c99.LongDouble:
@@ -1312,7 +1308,7 @@ func (g *gen) constant(n *c99.Expr) {
 					g.w(" nz32")
 					g.needNZ32 = true
 				default:
-					g.w(" %v", x.Value)
+					g.w(" %v", float32(x.Value))
 				}
 				return
 			default:
@@ -1596,8 +1592,10 @@ func (g *gen) convert(n *c99.Expr, t c99.Type) {
 			todo("", g.position0(n))
 		case n.Operand.Type.IsIntegerType():
 			if n.Operand.Value != nil && g.voidCanIgnore(n) {
+				t0 := n.Operand.Type
 				n.Operand.Type = t
 				g.constant(n)
+				n.Operand.Type = t0
 				return
 			}
 
@@ -1623,15 +1621,60 @@ func (g *gen) convert(n *c99.Expr, t c99.Type) {
 	}
 
 	if c99.UnderlyingType(t).IsArithmeticType() {
+		if n.Operand.Value == nil && t.IsIntegerType() {
+			switch n.Operand.Type.Kind() {
+			case c99.Float:
+				switch sz := g.model.Sizeof(t); {
+				case t.IsUnsigned():
+					switch sz {
+					case 1:
+						g.w("%s(", g.registerHelper("float2int%d", g.typ(t), math.MaxUint8))
+						g.value(n, false)
+						g.w(")")
+					case 2:
+						g.w("%s(", g.registerHelper("float2int%d", g.typ(t), math.MaxUint16))
+						g.value(n, false)
+						g.w(")")
+					case 4:
+						g.w("%s(", g.registerHelper("float2int%d", g.typ(t), uint32(math.MaxUint32)))
+						g.value(n, false)
+						g.w(")")
+					case 8:
+						g.w("%s(", g.registerHelper("float2int%d", g.typ(t), uint64(math.MaxUint64)))
+						g.value(n, false)
+						g.w(")")
+					default:
+						todo("", g.position0(n))
+					}
+					return
+				}
+			}
+		}
+
 		g.w(" %s(", g.typ(t))
+
+		defer g.w(")")
+
 		switch {
 		case n.Operand.Value != nil && g.voidCanIgnore(n):
+			if n.Operand.Type.Kind() == c99.Double && t.IsIntegerType() {
+				v := c99.ConvertFloat64(n.Operand.Value.(*ir.Float64Value).Value, t, g.model)
+				switch {
+				case t.IsUnsigned():
+					g.w("%v", uint64(v))
+				default:
+					g.w("%v", v)
+				}
+				return
+			}
+
+			t0 := n.Operand.Type
 			n.Operand.Type = t
 			g.constant(n)
+			n.Operand.Type = t0
 		default:
 			g.value(n, false)
 		}
-		g.w(")")
 		return
 	}
 
