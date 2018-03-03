@@ -271,11 +271,6 @@ func (g *gen) void(n *c99.Expr) {
 			return
 		}
 
-		if n.Expr2.IsZero() {
-			g.void(n.Expr)
-			return
-		}
-
 		g.w("if ")
 		g.value(n.Expr, false)
 		g.w(" != 0 {")
@@ -283,11 +278,6 @@ func (g *gen) void(n *c99.Expr) {
 		g.w("}")
 	case c99.ExprLOr: // Expr "||" Expr
 		if n.Expr.IsNonZero() && g.voidCanIgnore(n.Expr) {
-			return
-		}
-
-		if n.Expr2.IsNonZero() {
-			g.void(n.Expr)
 			return
 		}
 
@@ -434,6 +424,9 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 				switch {
 				case i < len(ft.Params) || ft.Variadic:
 					g.w(", ")
+					if i >= len(n.CallArgs) { //TODO-
+						todo("", g.position0(l.Expr), i, n.CallArgs)
+					}
 					if t := n.CallArgs[i].Type; t != nil {
 						g.convert(l.Expr, t)
 						break
@@ -624,20 +617,6 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 		}
 
 		g.needBool2int++
-		if n.Expr.IsZero() {
-			g.w(" bool2int(")
-			g.value(n.Expr, false)
-			g.w(" != 0)")
-			break
-		}
-
-		if n.Expr.Case == c99.ExprIdent && n.Expr2.Case == c99.ExprIdent && n.Expr.Token.Val == n.Expr2.Token.Val {
-			g.w(" bool2int(")
-			g.value(n.Expr, false)
-			g.w(" != 0)")
-			break
-		}
-
 		g.w(" bool2int((")
 		g.value(n.Expr, false)
 		g.w(" != 0) && (")
@@ -650,13 +629,6 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 		}
 
 		g.needBool2int++
-		if n.Expr.IsNonZero() {
-			g.w(" bool2int(")
-			g.value(n.Expr, false)
-			g.w(" != 0)")
-			break
-		}
-
 		g.w(" bool2int((")
 		g.value(n.Expr, false)
 		g.w(" != 0) || (")
@@ -931,32 +903,17 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 			todo("%v: %T", g.position0(n), x)
 		}
 	case c99.ExprPExprList: // '(' ExprList ')'
-		var e, last *c99.Expr
-		i := 0
-		for l := n.ExprList; l != nil; l = l.ExprList {
-			last = l.Expr
-			if !g.voidCanIgnore(l.Expr) {
-				e = l.Expr
-				i++
-			}
-		}
-		switch {
-		case i == 0:
-			g.value(last, packedField)
-		case i == 1 && e == last:
-			g.value(e, packedField)
+		switch l := g.pexprList(n.ExprList); {
+		case len(l) == 1:
+			g.value(l[0], false)
 		default:
 			g.w("func() %v {", g.typ(n.Operand.Type))
-			for l := n.ExprList; l != nil; l = l.ExprList {
-				switch {
-				case l.ExprList == nil:
-					g.w("return ")
-					g.convert(l.Expr, n.Operand.Type)
-				default:
-					g.void(l.Expr)
-				}
+			for _, v := range l[:len(l)-1] {
+				g.void(v)
 				g.w(";")
 			}
+			g.w("return ")
+			g.convert(l[len(l)-1], n.Operand.Type)
 			g.w("}()")
 		}
 	case c99.ExprMulAssign: // Expr "*=" Expr
@@ -1031,6 +988,15 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 	default:
 		todo("", g.position0(n), n.Case, n.Operand) // value
 	}
+}
+
+func (g *gen) pexprList(n *c99.ExprList) (r []*c99.Expr) { //TODO use
+	for l := n; l != nil; l = l.ExprList {
+		if e := l.Expr; l.ExprList == nil || !g.voidCanIgnore(e) {
+			r = append(r, e)
+		}
+	}
+	return r
 }
 
 func (g *gen) bitField(n *c99.Expr) {
@@ -1515,8 +1481,20 @@ func (g *gen) relop(n *c99.Expr) {
 }
 
 func (g *gen) convert(n *c99.Expr, t c99.Type) {
-	if n.Case == c99.ExprPExprList && isSingleExpression(n.ExprList) {
-		g.convert(n.ExprList.Expr, t)
+	if n.Case == c99.ExprPExprList {
+		switch l := g.pexprList(n.ExprList); {
+		case len(l) == 1:
+			g.convert(l[0], t)
+		default:
+			g.w("func() %v {", g.typ(t))
+			for _, v := range l[:len(l)-1] {
+				g.void(v)
+				g.w(";")
+			}
+			g.w("return ")
+			g.convert(l[len(l)-1], t)
+			g.w("}()")
+		}
 		return
 	}
 
@@ -1624,29 +1602,15 @@ func (g *gen) convert(n *c99.Expr, t c99.Type) {
 		if n.Operand.Value == nil && t.IsIntegerType() {
 			switch n.Operand.Type.Kind() {
 			case c99.Float:
-				switch sz := g.model.Sizeof(t); {
+				switch {
 				case t.IsUnsigned():
-					switch sz {
-					case 1:
-						g.w("%s(", g.registerHelper("float2int%d", g.typ(t), math.MaxUint8))
-						g.value(n, false)
-						g.w(")")
-					case 2:
-						g.w("%s(", g.registerHelper("float2int%d", g.typ(t), math.MaxUint16))
-						g.value(n, false)
-						g.w(")")
-					case 4:
-						g.w("%s(", g.registerHelper("float2int%d", g.typ(t), uint32(math.MaxUint32)))
-						g.value(n, false)
-						g.w(")")
+					switch g.model.Sizeof(t) {
 					case 8:
-						g.w("%s(", g.registerHelper("float2int%d", g.typ(t), uint64(math.MaxUint64)))
+						g.w("%s(", g.registerHelper("float2int%d", g.typ(t), math.Nextafter32(math.MaxUint64, 0)))
 						g.value(n, false)
 						g.w(")")
-					default:
-						todo("", g.position0(n))
+						return
 					}
-					return
 				}
 			}
 		}

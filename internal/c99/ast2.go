@@ -508,6 +508,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 	case ExprLAnd: // Expr "&&" Expr
 		n.Operand = Operand{Type: Int}
 		n.Expr.eval(ctx, arr2ptr, fn)
+		n.Expr2.eval(ctx, arr2ptr, fn)
 		if n.Expr.IsZero() {
 			n.Operand.Value = &ir.Int64Value{Value: 0}
 			break
@@ -741,6 +742,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 	case ExprLOr: // Expr "||" Expr
 		n.Operand = Operand{Type: Int}
 		n.Expr.eval(ctx, arr2ptr, fn)
+		n.Expr2.eval(ctx, arr2ptr, fn)
 		if n.Expr.IsNonZero() {
 			n.Operand.Value = &ir.Int64Value{Value: 1}
 			break
@@ -981,9 +983,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			}
 		}
 		n.Operand.Type.assign(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
-		// fmt.Printf("TODO1000 %v\n", ctx.position(n))
-		// n.Operand = n.Operand.normalize(ctx.model)
-		// n.dumpOperands("· ") //TODO-
 	case ExprGt: // Expr '>' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).gt(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
 		if n.Expr.Equals(n.Expr2) {
@@ -1685,6 +1684,9 @@ func (n *SelectionStmt) check(ctx *context, fn *Declarator, seq *int, sc []int, 
 		if !n.ExprList.eval(ctx, true, fn).isScalarType() {
 			panic("TODO")
 		}
+		// fmt.Printf("TODO1687 %v\n", ctx.position(n))
+		// n.Operand = n.Operand.normalize(ctx.model)
+		// n.ExprList.dumpOperands("· ") //TODO-
 		n.Stmt.check(ctx, fn, seq, sc, inSwitch, inLoop)
 		n.Stmt2.check(ctx, fn, seq, sc, inSwitch, inLoop)
 	case SelectionStmtIf: // "if" '(' ExprList ')' Stmt
@@ -2935,7 +2937,8 @@ func (n *Expr) Equals(m *Expr) bool {
 		return true
 	case // unary
 		ExprCast,  // '(' TypeName ')' Expr
-		ExprDeref: // '*' Expr
+		ExprDeref, // '*' Expr
+		ExprNot:   // '!' Expr
 
 		return n.Expr.Equals(m.Expr)
 	case ExprIndex: // Expr '[' ExprList ']'
@@ -2949,15 +2952,19 @@ func (n *Expr) Equals(m *Expr) bool {
 		ExprLt,  // Expr "==" Expr
 		ExprMul, // Expr '*' Expr
 		ExprNe,  // Expr "==" Expr
+		ExprOr,  // Expr '|' Expr
 		ExprSub, // Expr '-' Expr
 		ExprXor: // Expr '^' Expr
 
 		return n.Expr.Equals(m.Expr) && n.Expr2.Equals(m.Expr2) || n.Expr.Equals(m.Expr2) && n.Expr2.Equals(m.Expr)
 	case // binary
-		ExprDiv, // Expr '/' Expr
-		ExprLsh, // Expr "<<" Expr
-		ExprMod, // Expr '%' Expr
-		ExprRsh: // Expr ">>" Expr
+		ExprDiv,  // Expr '/' Expr
+		ExprGt,   // Expr '>' Expr
+		ExprLAnd, // Expr "&&" Expr
+		ExprLOr,  // Expr "||" Expr
+		ExprLsh,  // Expr "<<" Expr
+		ExprMod,  // Expr '%' Expr
+		ExprRsh:  // Expr ">>" Expr
 
 		return n.Expr.Equals(m.Expr) && n.Expr2.Equals(m.Expr2)
 	case ExprCall: // Expr '(' ArgumentExprListOpt ')'

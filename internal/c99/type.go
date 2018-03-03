@@ -252,6 +252,7 @@ func (t TypeKind) Equal(u Type) bool {
 		case
 			Char,
 			Double,
+			Float,
 			Int,
 			Long,
 			LongLong,
@@ -1345,6 +1346,7 @@ func (t *UnionType) Equal(u Type) bool {
 		switch x {
 		case
 			Int,
+			UInt,
 			ULongLong,
 			Void:
 

@@ -880,17 +880,33 @@ func ConvertFloat64(v float64, t Type, m Model) int64 {
 			if v > math.Nextafter(math.MaxInt8, 0) {
 				return math.MaxInt8
 			}
+
+			if v < math.Nextafter(math.MinInt8, 0) {
+				return math.MinInt8
+			}
 		case 2:
 			if v > math.Nextafter(math.MaxInt16, 0) {
 				return math.MaxInt16
+			}
+
+			if v < math.Nextafter(math.MinInt16, 0) {
+				return math.MinInt16
 			}
 		case 4:
 			if v > math.Nextafter(math.MaxInt32, 0) {
 				return math.MaxInt32
 			}
+
+			if v < math.Nextafter(math.MinInt32, 0) {
+				return math.MinInt32
+			}
 		case 8:
 			if v > math.Nextafter(math.MaxInt64, 0) {
 				return math.MaxInt64
+			}
+
+			if v < math.Nextafter(math.MinInt64, 0) {
+				return math.MinInt64
 			}
 		default:
 			panic(sz)

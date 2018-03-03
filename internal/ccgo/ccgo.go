@@ -468,7 +468,7 @@ return r<<(%[4]s-%[5]s)>>(%[4]s-%[5]s)
 }`, a[1], a[2], a[3], a[4], a[5], a[6])
 		case "float2int%d":
 			// eg.: [0: "float2int%d" 1: type "uint64" 2: max "18446744073709551615"]
-			g.w("(f float32) %[1]s { if f > %[2]s { return 0 }; return %[1]s(f)}", a[1], a[2])
+			g.w("(f float32) %[1]s { if f > %[2]s { return 0 }; return %[1]s(f) }", a[1], a[2])
 		default:
 			todo("%q", a)
 		}
