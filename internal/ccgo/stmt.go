@@ -89,7 +89,7 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases ma
 	}
 	if len(free) != 0 || alloca {
 		g.w("\ndefer func() {")
-		g.w("if err := recover(); err != nil { panic(err) } ")
+		g.w("if err := recover(); err != nil { panic(err) }\n\n")
 		for _, v := range free {
 			g.w("\n%sFree(%s)", crt, g.mangleDeclarator(v))
 		}

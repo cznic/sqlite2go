@@ -232,6 +232,10 @@ func (m Model) Layout(t Type) (r []FieldProperties) {
 			return nil
 		}
 
+		if x.layout != nil {
+			return x.layout
+		}
+
 		r := make([]FieldProperties, len(x.Fields))
 		for i, v := range x.Fields {
 			switch {

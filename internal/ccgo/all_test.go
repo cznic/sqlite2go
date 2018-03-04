@@ -5,7 +5,7 @@
 package ccgo
 
 //	TCC	cc 51 ccgo 51 build 51 run 51 ok 51
-//	Other	cc 8 ccgo 8 build 8 run 8 ok 8
+//	Other	cc 9 ccgo 9 build 9 run 9 ok 9
 //	GCC	cc 951 ccgo 925 build 914 run 914 ok 914
 //	Shell	cc 1 ccgo 1 build 1 run 1 ok 1
 
@@ -571,64 +571,15 @@ out:
 		default:
 		}
 
-		out, err := exec.Command(csmith, "-o", mainC,
-			"--argc",      // --argc | --no-argc: genereate main function with/without argv and argc being passed (enabled by default).
-			"--arrays",    // --arrays | --no-arrays: enable | disable arrays (enabled by default).
-			"--bitfields", // --bitfields | --no-bitfields: enable | disable full-bitfields structs (disabled by default).
-			// --builtin-function-prob <num>: set the probability of choosing a builtin function (default is 20).
-			// --builtins | --no-builtins: enable | disable to generate builtin functions (disabled by default).
-			// --checksum | --no-checksum: enable | disable checksum calculation (enabled by default).
-			"--comma-operators",     // --comma-operators | --no-comma-operators: enable | disable comma operators (enabled by default).
-			"--compound-assignment", // --compound-assignment | --no-compound-assignment: enable | disable compound assignments (enabled by default).
-			// --concise: generated programs with minimal comments (disabled by default).
-			"--no-const-pointers", // --const-pointers | --no-const-pointers: enable | disable const pointers (enabled by default).
-			"--no-consts",         // --consts | --no-consts: enable | disable const qualifier (enabled by default).
-			"--divs",              // --divs | --no-divs: enable | disable divisions (enabled by default).
-			"--embedded-assigns",  // --embedded-assigns | --no-embedded-assigns: enable | disable embedded assignments as sub-expressions (enabled by default).
-			// --enable-builtin-kinds k1,k2 | --disable-builtin-kinds k1,k2: enable | disable certain kinds of builtin functions.
-			"--no-float", //TODO --float | --no-float: enable | disable float (disabled by default).
-			// --help or -h: print this information.
-			// --inline-function | --no-inline-function: enable | disable inline attributes on generated functions.
-			// --inline-function-prob <num>: set the probability of each function being marked as inline (default is 50).
-			"--int8",  // --int8 | --no-int8: enable | disable int8_t (enabled by default).
-			"--jumps", // --jumps | --no-jumps: enable | disable jumps (enabled by default).
-			// --lang-cpp : generate C++ code (C by default).
-			"--longlong", // --longlong| --no-longlong: enable | disable long long (enabled by default).
-			// --main | --nomain: enable | disable to generate main function (enabled by default).
-			"--math64",             // --math64 | --no-math64: enable | disable 64-bit math ops (enabled by default).
-			"--max-array-dim", "3", // --max-array-dim <num>: limit array dimensions to <num>. (default 3)
-			// --max-array-len-per-dim <num>: limit array length per dimension to <num> (default 10).
-			"--max-block-depth", "5", // --max-block-depth <num>: limit depth of nested blocks to <num> (default 5).
-			// --max-block-size <size>: limit the number of non-return statements in a block to <size> (default 4).
-			"--max-expr-complexity", "10", // --max-expr-complexity <num>: limit expression complexities to <num> (default 10).
-			// --max-funcs <num>: limit the number of functions (besides main) to <num>  (default 10).
-			"--max-pointer-depth", "2", // --max-pointer-depth <depth>: limit the indirect depth of pointers to <depth> (default 2).
-			// --max-struct-fields <num>: limit the number of struct fields to <num> (default 10).
-			// --max-union-fields <num>: limit the number of union fields to <num> (default 5).
-			"--muls", // --muls | --no-muls: enable | disable multiplications (enabled by default).
-			// --output <filename> or -o <filename>: specify the output file name.
-			"--no-packed-struct",   // --packed-struct | --no-packed-struct: enable | disable packed structs by adding #pragma pack(1) before struct definition (disabled by default).
-			"--paranoid",           // --paranoid | --no-paranoid: enable | disable pointer-related assertions (disabled by default).
-			"--pointers",           // --pointers | --no-pointers: enable | disable pointers (enabled by default).
-			"--post-decr-operator", // --post-decr-operator | --no-post-decr-operator: enable | disable post -- operator (enabled by default).
-			"--post-incr-operator", // --post-incr-operator | --no-post-incr-operator: enable | disable post ++ operator (enabled by default).
-			"--pre-decr-operator",  // --pre-decr-operator | --no-pre-decr-operator: enable | disable pre -- operator (enabled by default).
-			"--pre-incr-operator",  // --pre-incr-operator | --no-pre-incr-operator: enable | disable pre ++ operator (enabled by default).
-			// --quiet: generate programs with less comments (disabled by default).
-			"--safe-math", // --safe-math | --no-safe-math: Emit safe math wrapper functions (enabled by default).
-			// --seed <seed> or -s <seed>: use <seed> instead of a random seed generated by Csmith.
-			"--structs",             // --structs | --no-structs: enable | disable to generate structs (enable by default).
-			"--uint8",               // --uint8 | --no-uint8: enable | disable uint8_t (enabled by default).
-			"--unary-plus-operator", // --unary-plus-operator | --no-unary-plus-operator: enable | disable + operator (enabled by default).
-			"--unions",              // --unions | --no-unions: enable | disable to generate unions (enable by default).
-			// --version or -v: print the version of Csmith.
+		out, err := exec.Command(
+			csmith,
+			"-o", mainC,
+			"--bitfields",            // --bitfields | --no-bitfields: enable | disable full-bitfields structs (disabled by default).
+			"--no-const-pointers",    // --const-pointers | --no-const-pointers: enable | disable const pointers (enabled by default).
+			"--no-consts",            // --consts | --no-consts: enable | disable const qualifier (enabled by default).
+			"--paranoid",             // --paranoid | --no-paranoid: enable | disable pointer-related assertions (disabled by default).
 			"--no-volatile-pointers", // --volatile-pointers | --no-volatile-pointers: enable | disable volatile pointers (enabled by default).
 			"--no-volatiles",         // --volatiles | --no-volatiles: enable | disable volatiles (enabled by default).
-
-			//-----------------------------------------------------
-			// -hh: describe extra options probably useful only for Csmith developers.
-
-			// "--step-hash-by-stmt", // dump the checksum after each statement. It is applied to all functions unless --monitor-funcs is specified."
 		).Output()
 		if err != nil {
 			t.Fatalf("%v\n%s", err, out)

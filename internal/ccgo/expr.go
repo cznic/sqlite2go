@@ -23,54 +23,41 @@ func (g *gen) exprListOpt(n *c99.ExprListOpt, void bool) {
 }
 
 func (g *gen) exprList(n *c99.ExprList, void bool) {
-	switch {
+	switch l := g.pexprList(n); {
 	case void:
-		for ; n != nil; n = n.ExprList {
-			g.void(n.Expr)
+		for _, v := range l {
+			g.void(v)
 			g.w(";")
 		}
 	default:
-		if isSingleExpression(n) {
-			g.value(n.Expr, false)
-			break
+		g.w("func() %v {", g.typ(n.Operand.Type))
+		for _, v := range l[:len(l)-1] {
+			g.void(v)
+			g.w(";")
 		}
-
-		todo("", g.position0(n))
+		g.w("return ")
+		g.value(l[len(l)-1], false)
+		g.w("}()")
 	}
 }
 
 func (g *gen) exprList2(n *c99.ExprList, t c99.Type) {
-	if isSingleExpression(n) {
-		g.convert(n.Expr, t)
-		return
-	}
-
-	i := 0
-	for l := n.ExprList; l != nil; l = l.ExprList {
-		if !g.voidCanIgnore(l.Expr) {
-			i++
-		}
-	}
-	switch i {
-	case 0:
-		var e *c99.Expr
-		for l := n.ExprList; l != nil; l = l.ExprList {
-			e = l.Expr
-		}
-		g.convert(e, t)
-	case 1:
-		todo("", g.position0(n))
+	switch l := g.pexprList(n); {
+	case len(l) == 1:
+		g.convert(l[0], t)
 	default:
-		todo("", g.position0(n))
+		g.w("func() %v {", g.typ(t))
+		for _, v := range l[:len(l)-1] {
+			g.void(v)
+			g.w(";")
+		}
+		g.w("return ")
+		g.convert(l[len(l)-1], t)
+		g.w("}()")
 	}
 }
 
 func (g *gen) void(n *c99.Expr) {
-	if n.Case == c99.ExprPExprList && isSingleExpression(n.ExprList) {
-		g.void(n.ExprList.Expr)
-		return
-	}
-
 	if n.Case == c99.ExprCast && n.Expr.Case == c99.ExprIdent && !isVaList(n.Expr.Operand.Type) {
 		g.enqueue(n.Expr.Declarator)
 		return
@@ -335,11 +322,6 @@ func (g *gen) lvalue(n *c99.Expr) {
 }
 
 func (g *gen) value(n *c99.Expr, packedField bool) {
-	if n.Case == c99.ExprPExprList && isSingleExpression(n.ExprList) {
-		g.value(n.ExprList.Expr, false)
-		return
-	}
-
 	g.w("(")
 
 	defer g.w(")")
@@ -636,22 +618,19 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 		g.w(" != 0))")
 	case c99.ExprCond: // Expr '?' ExprList ':' Expr
 		t := n.Operand.Type
-		t0 := t
 		switch {
-		case !g.voidCanIgnore(n.Expr):
-			fallthrough
+		case n.Expr.IsZero() && g.voidCanIgnore(n.Expr):
+			g.value(n.Expr2, false)
+		case n.Expr.IsNonZero() && g.voidCanIgnore(n.Expr):
+			g.exprList(n.ExprList, false)
 		default:
 			g.w(" func() %s { if ", g.typ(t))
 			g.value(n.Expr, false)
 			g.w(" != 0 { return ")
-			g.exprList2(n.ExprList, t0)
+			g.exprList2(n.ExprList, t)
 			g.w(" }\n\nreturn ")
-			g.convert(n.Expr2, t0)
+			g.convert(n.Expr2, t)
 			g.w(" }()")
-		case n.Expr.IsZero():
-			g.value(n.Expr2, false)
-		case n.Expr.IsNonZero():
-			g.exprList(n.ExprList, false)
 		}
 	case c99.ExprCast: // '(' TypeName ')' Expr
 		t := n.TypeName.Type
@@ -1019,16 +998,25 @@ func (g *gen) indexOff(n *c99.ExprList, it c99.Type) {
 }
 
 func (g *gen) uintptr(n *c99.Expr, packedField bool) {
-	if n.Case == c99.ExprPExprList && isSingleExpression(n.ExprList) {
-		g.uintptr(n.ExprList.Expr, packedField)
-		return
-	}
-
 	g.w("(")
 
 	defer g.w(")")
 
 	switch n.Case {
+	case c99.ExprPExprList: // '(' ExprList ')'
+		switch l := g.pexprList(n.ExprList); {
+		case len(l) == 1:
+			g.uintptr(l[0], false)
+		default:
+			g.w("func() uintptr {")
+			for _, v := range l[:len(l)-1] {
+				g.void(v)
+				g.w(";")
+			}
+			g.w("return ")
+			g.uintptr(l[len(l)-1], packedField)
+			g.w("}()")
+		}
 	case c99.ExprIdent: // IDENTIFIER
 		d := g.normalizeDeclarator(n.Declarator)
 		g.enqueue(d)
@@ -1109,10 +1097,6 @@ func (g *gen) uintptr(n *c99.Expr, packedField bool) {
 }
 
 func (g *gen) voidCanIgnore(n *c99.Expr) bool {
-	if n.Case == c99.ExprPExprList && isSingleExpression(n.ExprList) {
-		return g.voidCanIgnore(n.ExprList.Expr)
-	}
-
 	switch n.Case {
 	case
 		c99.ExprChar,       // CHARCONST
@@ -1202,7 +1186,7 @@ func (g *gen) voidCanIgnore(n *c99.Expr) bool {
 }
 
 func (g *gen) voidCanIgnoreExprList(n *c99.ExprList) bool {
-	if isSingleExpression(n) {
+	if n.ExprList == nil {
 		return g.voidCanIgnore(n.Expr)
 	}
 

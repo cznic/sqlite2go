@@ -2937,6 +2937,7 @@ func (n *Expr) Equals(m *Expr) bool {
 		return true
 	case // unary
 		ExprCast,  // '(' TypeName ')' Expr
+		ExprCpl,   // '~' Expr
 		ExprDeref, // '*' Expr
 		ExprNot:   // '!' Expr
 
