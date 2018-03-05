@@ -6,7 +6,7 @@ package ccgo
 
 //	TCC	cc 51 ccgo 51 build 51 run 51 ok 51
 //	Other	cc 9 ccgo 9 build 9 run 9 ok 9
-//	GCC	cc 951 ccgo 925 build 914 run 914 ok 914
+//	GCC	cc 951 ccgo 925 build 915 run 915 ok 915
 //	Shell	cc 1 ccgo 1 build 1 run 1 ok 1
 
 import (
@@ -475,9 +475,18 @@ func TestSQLiteShell(t *testing.T) {
 
 	var cc, ccgo, build, run, ok int
 	root := filepath.FromSlash("../../_sqlite/sqlite-amalgamation-3210000")
-	if out, err := test(t, false, &cc, &ccgo, &build, &run, "",
+	if out, err := test(t, false, &cc, &ccgo, &build, &run,
 		`
-		import "math"
+#define HAVE_FDATASYNC 1
+#define HAVE_ISNAN 1
+#define HAVE_LOCALTIME_R 1
+/* #define HAVE_MALLOC_USABLE_SIZE 1 */
+#define HAVE_USLEEP 1
+#define SQLITE_DEBUG 1
+#define SQLITE_MEMDEBUG 1
+		`,
+		`
+import "math"
 `,
 		"",
 		dir,

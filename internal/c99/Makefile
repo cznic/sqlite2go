@@ -34,8 +34,12 @@ edit:
 
 editor: ast.go parser.go scanner.go trigraphs.go stringer.go
 	gofmt -l -s -w *.go
+	GOOS=linux GOARCH=386 go build
+	GOOS=linux GOARCH=amd64 go build
+	GOOS=windows GOARCH=386 go build
+	GOOS=windows GOARCH=amd64 go build
 	go test -i
-	go test -short 2>&1 | tee log
+	go test -short 2>&1 | tee -a log
 	go install
 
 internalError:

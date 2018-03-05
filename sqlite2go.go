@@ -157,7 +157,7 @@ func main() {
 	inc := []string{"@", ccir.LibcIncludePath}
 	sysInc := []string{ccir.LibcIncludePath}
 	repo := findRepo()
-	predefSource := c99.NewStringSource("<predefine>", fmt.Sprintf(inject, runtime.GOARCH, runtime.GOOS, strings.Join(opts.D, "\n")))
+	predefSource := c99.NewStringSource("<predefine>", fmt.Sprintf(inject, env("GOARCH", runtime.GOARCH), env("GOOS", runtime.GOOS), strings.Join(opts.D, "\n")))
 	sqliteSource := c99.NewFileSource(filepath.Join(repo, filepath.FromSlash("_sqlite/sqlite-amalgamation-3210000/sqlite3.c")))
 	sqlite, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, sqliteSource)
 	if err != nil {
@@ -198,6 +198,14 @@ import (
 		}
 		exit(1, "not yet implemented")
 	}
+}
+
+func env(key, val string) string {
+	if s := os.Getenv(key); s != "" {
+		return s
+	}
+
+	return val
 }
 
 func findRepo() string {

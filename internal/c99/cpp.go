@@ -362,7 +362,7 @@ func (c *cpp) parse(src ...Source) (tokenReader, error) {
 					encBuf = append(encBuf, encBuf1[:n]...)
 				}
 				id := dict.ID(encBuf)
-				if id > math.MaxUint32 {
+				if int64(id) > math.MaxUint32 {
 					panic("internal error 4")
 				}
 
