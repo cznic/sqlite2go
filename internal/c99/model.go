@@ -24,11 +24,33 @@ type ModelItem struct {
 
 func newModel() (m Model, err error) {
 	switch arch := runtime.GOARCH; arch {
-	case "386", "arm", "armbe", "mips", "mipsle", "ppc", "ppc64le", "s390", "s390x", "sparc":
-		panic("TODO")
-	case "amd64p32", "mips64p32", "mips64p32le":
-		panic("TODO")
-	case "amd64", "arm64", "arm64be", "mips64", "mips64le", "ppc64", "sparc64":
+	case "386":
+		return Model{
+			Bool:      {1, 1, 1},
+			Char:      {1, 1, 1},
+			Int:       {4, 4, 4},
+			Long:      {4, 4, 4},
+			LongLong:  {8, 8, 4},
+			SChar:     {1, 1, 1},
+			Short:     {2, 2, 2},
+			UChar:     {1, 1, 1},
+			UInt:      {4, 4, 4},
+			ULong:     {4, 4, 4},
+			ULongLong: {8, 8, 4},
+			UShort:    {2, 2, 2},
+
+			Float:      {4, 4, 4},
+			Double:     {8, 8, 4},
+			LongDouble: {8, 8, 4},
+
+			FloatComplex:      {8, 8, 4},
+			DoubleComplex:     {8, 8, 4},
+			LongDoubleComplex: {8, 8, 4},
+
+			Void: {1, 1, 1},
+			Ptr:  {4, 4, 4},
+		}, nil
+	case "amd64":
 		return Model{
 			Bool:      {1, 1, 1},
 			Char:      {1, 1, 1},

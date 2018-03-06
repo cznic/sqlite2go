@@ -662,7 +662,8 @@ func TestParseSQLite(t *testing.T) {
 	}
 
 	ctx, err := newContext(token.NewFileSet(), &Tweaks{
-		EnableEmptyStructs: true,
+		EnableAnonymousStructFields: true,
+		EnableEmptyStructs:          true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -756,7 +757,10 @@ func TestFunc(t *testing.T) {
 func TestTypecheckSQLite(t *testing.T) {
 	if _, err := Translate(
 		token.NewFileSet(),
-		&Tweaks{EnableEmptyStructs: true},
+		&Tweaks{
+			EnableAnonymousStructFields: true,
+			EnableEmptyStructs:          true,
+		},
 		[]string{"@", ccir.LibcIncludePath},
 		[]string{ccir.LibcIncludePath},
 		NewStringSource("<builtin>", fmt.Sprintf(inj, runtime.GOARCH, runtime.GOOS, predef)),

@@ -156,6 +156,8 @@ func (d *DeclarationSpecifier) typ() Type {
 		return ULongLong
 	case d.is(TypeSpecifierInt, TypeSpecifierLong, TypeSpecifierSigned):
 		return Long
+	case d.is(TypeSpecifierInt, TypeSpecifierLong, TypeSpecifierLong, TypeSpecifierSigned):
+		return LongLong
 	case d.is(TypeSpecifierInt, TypeSpecifierLong, TypeSpecifierUnsigned):
 		return ULong
 	case d.is(TypeSpecifierInt, TypeSpecifierShort):
