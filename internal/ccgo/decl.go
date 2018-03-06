@@ -6,6 +6,7 @@ package ccgo
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/cznic/ir"
 	"github.com/cznic/sqlite2go/internal/c99"
@@ -157,7 +158,9 @@ func (g *gen) tld(n *c99.Declarator) {
 		g.enqueue(x)
 	}
 
-	g.w("\n\n// %s %s, escapes: %v, %v", g.mangleDeclarator(n), n.Type, g.escaped(n), g.position(n))
+	pos := g.position(n)
+	pos.Filename = filepath.Base(pos.Filename)
+	g.w("\n\n// %s %s, escapes: %v, %v", g.mangleDeclarator(n), n.Type, g.escaped(n), pos)
 	if g.isZeroInitializer(n.Initializer) {
 		if isVaList(n.Type) {
 			g.w("\nvar %s []interface{}", g.mangleDeclarator(n))
@@ -227,7 +230,9 @@ func (g *gen) functionDefinition(n *c99.Declarator) {
 	}
 
 	g.nextLabel = 1
-	g.w("\n\n// %s is defined at %v", g.mangleDeclarator(n), g.position(n))
+	pos := g.position(n)
+	pos.Filename = filepath.Base(pos.Filename)
+	g.w("\n\n// %s is defined at %v", g.mangleDeclarator(n), pos)
 	g.w("\nfunc %s(tls *%sTLS", g.mangleDeclarator(n), crt)
 	names := n.ParameterNames()
 	t := n.Type.(*c99.FunctionType)
