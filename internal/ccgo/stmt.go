@@ -103,11 +103,9 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases ma
 		if len(vars)+len(escParams) != 1 {
 			g.w("\n)")
 		}
-		for _, v := range escParams {
-			g.w("\n*(*%s)(unsafe.Pointer(%s)) = a%s", g.typ(v.Type), g.mangleDeclarator(v), dict.S(v.Name()))
-		}
 	}
-	if malloc != 0 || alloca {
+	switch {
+	case alloca:
 		g.w("\ndefer func() {")
 		if malloc != 0 {
 			g.w("\n%sFree(esc)", crt)
@@ -119,6 +117,11 @@ for _, v := range allocs {
 }`, crt)
 		}
 		g.w("\n}()")
+	case malloc != 0:
+		g.w("\ndefer %sFree(esc)", crt)
+	}
+	for _, v := range escParams {
+		g.w("\n*(*%s)(unsafe.Pointer(%s)) = a%s", g.typ(v.Type), g.mangleDeclarator(v), dict.S(v.Name()))
 	}
 	g.blockItemListOpt(n.BlockItemListOpt, cases, brk, cont, deadcode)
 	if vars != nil {
