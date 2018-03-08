@@ -30,14 +30,19 @@ func (g *gen) exprList(n *c99.ExprList, void bool) {
 			g.w(";")
 		}
 	default:
-		g.w("func() %v {", g.typ(n.Operand.Type))
-		for _, v := range l[:len(l)-1] {
-			g.void(v)
-			g.w(";")
+		switch {
+		case len(l) == 1:
+			g.value(l[0], false)
+		default:
+			g.w("func() %v {", g.typ(n.Operand.Type))
+			for _, v := range l[:len(l)-1] {
+				g.void(v)
+				g.w(";")
+			}
+			g.w("return ")
+			g.value(l[len(l)-1], false)
+			g.w("}()")
 		}
-		g.w("return ")
-		g.value(l[len(l)-1], false)
-		g.w("}()")
 	}
 }
 
