@@ -20,12 +20,13 @@ var (
 )
 
 type opt struct {
+	fn           string
 	fset         *token.FileSet
 	needBool2int int
 	out          io.Writer
 	out0         bytes.Buffer
+	used         map[string]struct{}
 	write        bool
-	fn           string
 }
 
 func newOpt() *opt { return &opt{} }
@@ -86,6 +87,8 @@ func bool2int(b bool) int32 {
 	b = bytes.Replace(b, []byte("\n\t;\n"), []byte("\n"), -1)
 	b = bytes.Replace(b, []byte("{\n\n"), []byte("{\n"), -1)
 	b = bytes.Replace(b, []byte(":\n\n"), []byte(":\n"), -1)
+	b = bytes.Replace(b, []byte("\n\n\tdefer"), []byte("\n\tdefer"), -1)
+	b = bytes.Replace(b, []byte("\n\n\t\t"), []byte("\n\t\t"), -1)
 	if traceOpt {
 		os.Stderr.Write(b)
 	}
@@ -102,7 +105,8 @@ func (o *opt) file(n *ast.File) {
 func (o *opt) decl(n *ast.Decl) {
 	switch x := (*n).(type) {
 	case *ast.FuncDecl:
-		o.blockStmt(x.Body)
+		o.used = map[string]struct{}{}
+		o.blockStmt(x.Body, true)
 	case *ast.GenDecl:
 		for i := range x.Specs {
 			o.spec(&x.Specs[i])
@@ -117,8 +121,9 @@ func (o *opt) spec(n *ast.Spec) {
 	case *ast.TypeSpec:
 		// nop
 	case *ast.ValueSpec:
+		use := x.Names[0].Name != "_"
 		for i := range x.Values {
-			o.expr(&x.Values[i])
+			o.expr(&x.Values[i], use)
 			switch x2 := x.Values[i].(type) {
 			case *ast.ParenExpr:
 				x.Values[i] = x2.X
@@ -129,8 +134,42 @@ func (o *opt) spec(n *ast.Spec) {
 	}
 }
 
-func (o *opt) blockStmt(n *ast.BlockStmt) {
+func (o *opt) blockStmt(n *ast.BlockStmt, outermost bool) {
 	o.body(&n.List)
+	if !outermost {
+		return
+	}
+
+	w := 0
+	for _, v := range n.List {
+		switch x := v.(type) {
+		case *ast.AssignStmt:
+			if x2, ok := x.Lhs[0].(*ast.Ident); ok && x2.Name == "_" {
+				if _, used := o.used[x.Rhs[0].(*ast.Ident).Name]; used {
+					continue
+				}
+			}
+		case *ast.DeclStmt:
+			switch x2 := x.Decl.(type) {
+			case *ast.GenDecl:
+				w := 0
+				for _, v := range x2.Specs {
+					if x3, ok := v.(*ast.ValueSpec); ok && x3.Names[0].Name == "_" {
+						if _, used := o.used[x3.Values[0].(*ast.Ident).Name]; used {
+							continue
+						}
+					}
+
+					x2.Specs[w] = v
+					w++
+				}
+				x2.Specs = x2.Specs[:w]
+			}
+		}
+		n.List[w] = v
+		w++
+	}
+	n.List = n.List[:w]
 }
 
 func (o *opt) body(l0 *[]ast.Stmt) {
@@ -146,26 +185,30 @@ func (o *opt) stmt(n *ast.Stmt) {
 		// nop
 	case *ast.AssignStmt:
 		for i := range x.Lhs {
-			o.expr(&x.Lhs[i])
+			o.expr(&x.Lhs[i], false)
 			switch x2 := x.Lhs[i].(type) {
 			case *ast.ParenExpr:
 				x.Lhs[i] = x2.X
 			}
 		}
+		use := true
+		if x, ok := x.Lhs[0].(*ast.Ident); ok && x.Name == "_" {
+			use = false
+		}
 		for i := range x.Rhs {
-			o.expr(&x.Rhs[i])
+			o.expr(&x.Rhs[i], use)
 			switch x2 := x.Rhs[i].(type) {
 			case *ast.ParenExpr:
 				x.Rhs[i] = x2.X
 			}
 		}
 	case *ast.BlockStmt:
-		o.blockStmt(x)
+		o.blockStmt(x, false)
 	case *ast.BranchStmt:
 		// nop
 	case *ast.CaseClause:
 		for i := range x.List {
-			o.expr(&x.List[i])
+			o.expr(&x.List[i], true)
 		}
 		o.body(&x.Body)
 	case *ast.DeclStmt:
@@ -175,33 +218,33 @@ func (o *opt) stmt(n *ast.Stmt) {
 	case *ast.EmptyStmt:
 		// nop
 	case *ast.ExprStmt:
-		o.expr(&x.X)
+		o.expr(&x.X, false)
 		switch x2 := x.X.(type) {
 		case *ast.ParenExpr:
 			x.X = x2.X
 		}
 	case *ast.ForStmt:
 		o.stmt(&x.Init)
-		o.expr(&x.Cond)
+		o.expr(&x.Cond, true)
 		o.stmt(&x.Post)
-		o.blockStmt(x.Body)
+		o.blockStmt(x.Body, false)
 	case *ast.IfStmt:
 		o.stmt(&x.Init)
-		o.expr(&x.Cond)
-		o.blockStmt(x.Body)
+		o.expr(&x.Cond, true)
+		o.blockStmt(x.Body, false)
 		o.stmt(&x.Else)
 	case *ast.IncDecStmt:
-		o.expr(&x.X)
+		o.expr(&x.X, true)
 	case *ast.LabeledStmt:
 		o.stmt(&x.Stmt)
 	case *ast.RangeStmt:
-		o.expr(&x.Key)
-		o.expr(&x.Value)
-		o.expr(&x.X)
-		o.blockStmt(x.Body)
+		o.expr(&x.Key, false)
+		o.expr(&x.Value, false)
+		o.expr(&x.X, true)
+		o.blockStmt(x.Body, false)
 	case *ast.ReturnStmt:
 		for i := range x.Results {
-			o.expr(&x.Results[i])
+			o.expr(&x.Results[i], true)
 			switch y := x.Results[i].(type) {
 			case *ast.ParenExpr:
 				x.Results[i] = y.X
@@ -209,23 +252,23 @@ func (o *opt) stmt(n *ast.Stmt) {
 		}
 	case *ast.SwitchStmt:
 		o.stmt(&x.Init)
-		o.expr(&x.Tag)
-		o.blockStmt(x.Body)
+		o.expr(&x.Tag, true)
+		o.blockStmt(x.Body, false)
 	default:
 		todo("%v: %T", o.pos(x), x)
 	}
 }
 
-func (o *opt) expr(n *ast.Expr) {
+func (o *opt) expr(n *ast.Expr, use bool) {
 	switch x := (*n).(type) {
 	case *ast.ArrayType:
-		o.expr(&x.Len)
-		o.expr(&x.Elt)
+		o.expr(&x.Len, false)
+		o.expr(&x.Elt, false)
 	case *ast.BasicLit:
 		// nop
 	case *ast.BinaryExpr:
-		o.expr(&x.X)
-		o.expr(&x.Y)
+		o.expr(&x.X, true)
+		o.expr(&x.Y, true)
 		switch x.Op {
 		case token.SHL, token.SHR:
 			switch rhs := x.Y.(type) {
@@ -297,12 +340,14 @@ func (o *opt) expr(n *ast.Expr) {
 	case *ast.FuncLit:
 		o.body(&x.Body.List)
 	case *ast.Ident:
-		// nop
+		if use && o.used != nil {
+			o.used[x.Name] = struct{}{}
+		}
 	case *ast.IndexExpr:
-		o.expr(&x.X)
-		o.expr(&x.Index)
+		o.expr(&x.X, true)
+		o.expr(&x.Index, true)
 	case *ast.ParenExpr:
-		o.expr(&x.X)
+		o.expr(&x.X, use)
 		switch x2 := x.X.(type) {
 		case *ast.BasicLit:
 			*n = x2
@@ -330,9 +375,9 @@ func (o *opt) expr(n *ast.Expr) {
 			}
 		}
 	case *ast.SelectorExpr:
-		o.expr(&x.X)
+		o.expr(&x.X, true)
 	case *ast.StarExpr:
-		o.expr(&x.X)
+		o.expr(&x.X, use)
 		switch x2 := x.X.(type) {
 		case *ast.ParenExpr:
 			switch x3 := x2.X.(type) {
@@ -354,18 +399,18 @@ func (o *opt) expr(n *ast.Expr) {
 
 		// nop
 	case *ast.UnaryExpr:
-		o.expr(&x.X)
+		o.expr(&x.X, use)
 	case *ast.CompositeLit:
 		for i := range x.Elts {
-			o.expr(&x.Elts[i])
+			o.expr(&x.Elts[i], true)
 		}
 	case *ast.KeyValueExpr:
-		o.expr(&x.Key)
+		o.expr(&x.Key, true)
 		switch x2 := x.Key.(type) {
 		case *ast.ParenExpr:
 			x.Key = x2.X
 		}
-		o.expr(&x.Value)
+		o.expr(&x.Value, true)
 		switch x2 := x.Value.(type) {
 		case *ast.ParenExpr:
 			x.Value = x2.X
@@ -423,9 +468,9 @@ func (o *opt) not(n ast.Expr) ast.Expr {
 }
 
 func (o *opt) call(n *ast.CallExpr) {
-	o.expr(&n.Fun)
+	o.expr(&n.Fun, true)
 	for i := range n.Args {
-		o.expr(&n.Args[i])
+		o.expr(&n.Args[i], true)
 		switch x := n.Args[i].(type) {
 		case *ast.ParenExpr:
 			n.Args[i] = x.X
