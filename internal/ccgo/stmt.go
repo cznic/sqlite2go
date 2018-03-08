@@ -34,8 +34,28 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases ma
 		w++
 	}
 	vars = vars[:w]
-	var free []*c99.Declarator
 	alloca := false
+	var malloc int64
+	var offp, offv []int64
+	for _, v := range escParams {
+		malloc = roundup(malloc, 16)
+		offp = append(offp, malloc)
+		malloc += g.model.Sizeof(v.Type)
+	}
+	for _, v := range vars {
+		if v == allocaDeclarator {
+			continue
+		}
+
+		if g.escaped(v) {
+			malloc = roundup(malloc, 16)
+			offv = append(offv, malloc)
+			malloc += g.model.Sizeof(v.Type)
+		}
+	}
+	if malloc != 0 {
+		g.w("\nesc := %sMustMalloc(%d)", crt, malloc)
+	}
 	if len(vars)+len(escParams) != 0 {
 		localNames := map[int]struct{}{}
 		num := 0
@@ -57,9 +77,8 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases ma
 		default:
 			g.w("\nvar (\n")
 		}
-		for _, v := range escParams {
-			free = append(free, v)
-			g.w("\n\t%s = %sMustMalloc(%d) // *%s", g.mangleDeclarator(v), crt, g.model.Sizeof(v.Type), g.ptyp(v.Type, false, 1))
+		for i, v := range escParams {
+			g.w("\n\t%s = esc+%d // *%s", g.mangleDeclarator(v), offp[i], g.ptyp(v.Type, false, 1))
 		}
 		for _, v := range vars {
 			switch {
@@ -68,8 +87,9 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases ma
 				g.needAlloca = true
 				alloca = true
 			case g.escaped(v):
-				free = append(free, v)
-				g.w("\n\t%s = %sMustMalloc(%d) // *%s", g.mangleDeclarator(v), crt, g.model.Sizeof(v.Type), g.ptyp(v.Type, false, 1))
+				g.w("\n\t%s = esc+%d // *%s", g.mangleDeclarator(v), offv[0], g.ptyp(v.Type, false, 1))
+				g.w("\n\t_ = %s", g.mangleDeclarator(v))
+				offv = offv[1:]
 			default:
 				switch {
 				case v.Type.Kind() == c99.Ptr:
@@ -77,7 +97,7 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases ma
 				default:
 					g.w("\n\t%s %s", g.mangleDeclarator(v), g.typ(v.Type))
 				}
-				g.w("\n_ = %s", g.mangleDeclarator(v))
+				g.w("\n\t_ = %s", g.mangleDeclarator(v))
 			}
 		}
 		if len(vars)+len(escParams) != 1 {
@@ -87,11 +107,10 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases ma
 			g.w("\n*(*%s)(unsafe.Pointer(%s)) = a%s", g.typ(v.Type), g.mangleDeclarator(v), dict.S(v.Name()))
 		}
 	}
-	if len(free) != 0 || alloca {
+	if malloc != 0 || alloca {
 		g.w("\ndefer func() {")
-		g.w("if err := recover(); err != nil { panic(err) }\n\n")
-		for _, v := range free {
-			g.w("\n%sFree(%s)", crt, g.mangleDeclarator(v))
+		if malloc != 0 {
+			g.w("\n%sFree(esc)", crt)
 		}
 		if alloca {
 			g.w(`
