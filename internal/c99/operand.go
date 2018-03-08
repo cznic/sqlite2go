@@ -297,7 +297,10 @@ func (o Operand) ConvertTo(m Model, t Type) (r Operand) {
 	}
 
 	switch x := t.(type) {
-	case *PointerType:
+	case
+		*PointerType,
+		*TaggedEnumType:
+
 		// ok
 	case TypeKind:
 		switch x {

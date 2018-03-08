@@ -70,6 +70,7 @@ func (d *DeclarationSpecifier) typ() Type {
 					switch x := t.(type) {
 					case
 						*ArrayType,
+						*EnumType,
 						*FunctionType,
 						*StructType,
 						*UnionType:
@@ -373,6 +374,8 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		case *NamedType:
 			t = x.Type
 			goto more
+		case *TaggedEnumType:
+			n.Operand = op.ConvertTo(ctx.model, t)
 		case TypeKind:
 			switch x {
 			case

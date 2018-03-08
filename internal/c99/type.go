@@ -697,6 +697,8 @@ func (t *NamedType) Equal(u Type) bool {
 	}
 
 	switch x := u.(type) {
+	case *ArrayType:
+		return x.Equal(t.Type)
 	case *NamedType:
 		return t.Name == x.Name && t.Type.Equal(x.Type)
 	case
@@ -1049,7 +1051,7 @@ func (t *TaggedEnumType) IsIntegerType() bool { return true }
 func (t *TaggedEnumType) IsPointerType() bool { panic("TODO") }
 
 // IsScalarType implements Type.
-func (t *TaggedEnumType) IsScalarType() bool { panic("TODO") }
+func (t *TaggedEnumType) IsScalarType() bool { return true }
 
 // IsVoidPointerType implements Type.
 func (t *TaggedEnumType) IsVoidPointerType() bool { panic("TODO") }

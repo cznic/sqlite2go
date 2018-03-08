@@ -461,7 +461,7 @@ func (s *Scope) insertEnumTag(ctx *context, nm int, es *EnumSpecifier) {
 			return
 		}
 
-		panic("TODO")
+		panic(fmt.Errorf("%s\n----\n%s", ex, es))
 	}
 
 	s.EnumTags[nm] = es

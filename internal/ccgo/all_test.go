@@ -673,3 +673,52 @@ cc %v ccgo %v build %v run %v ok %v (%.2f%%) csmith %v (%v)
 		b, b2, gccT, bytes.TrimSpace(gccOut), bytes.TrimSpace(ccgoOut),
 		cc, ccgo, build, run, ok, 100*float64(ok)/float64(cs), cs, *oCSmith)
 }
+
+func TestTCL(t *testing.T) {
+	return //TODO- Does not yet compile
+	dir, err := ioutil.TempDir("", "test-ccgo-tcl-")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() {
+		if err := os.RemoveAll(dir); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	var cc, ccgo, build, run, ok int
+	root := filepath.FromSlash("../../_sqlite")
+	if out, err := test(t, false, &cc, &ccgo, &build, &run,
+		`
+#define HAVE_FDATASYNC 1
+#define HAVE_ISNAN 1
+#define HAVE_LOCALTIME_R 1
+/* #define HAVE_MALLOC_USABLE_SIZE 1 */
+#define HAVE_USLEEP 1
+#define SQLITE_DEBUG 1
+#define SQLITE_MEMDEBUG 1
+#define TCLSH 1
+		`,
+		`
+import "math"
+`,
+		filepath.Join(root, "sqlite-amalgamation-3210000"),
+		dir,
+		[]string{
+			filepath.Join(root, "src", "tclsqlite.c"),
+			filepath.Join(root, "sqlite-amalgamation-3210000", "sqlite3.c"),
+		},
+		"TODO", //TODO
+	); err != nil {
+		t.Fatalf("%s: %v", out, err)
+	}
+
+	if run == 1 {
+		ok++
+	}
+	t.Logf("cc %v ccgo %v build %v run %v ok %v", cc, ccgo, build, run, ok)
+	if *oEdit {
+		fmt.Printf("Shell\tcc %v ccgo %v build %v run %v ok %v\n", cc, ccgo, build, run, ok)
+	}
+}
