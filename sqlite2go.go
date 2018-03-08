@@ -116,6 +116,7 @@ Options
 #define __os__ %s
 #include <builtin.h>
 %s
+%s
 `
 
 	copyright = `/*
@@ -199,7 +200,17 @@ func main() {
 	inc := []string{"@", ccir.LibcIncludePath}
 	sysInc := []string{ccir.LibcIncludePath}
 	repo := findRepo()
-	predefSource := c99.NewStringSource("<predefine>", fmt.Sprintf(inject, env("GOARCH", runtime.GOARCH), env("GOOS", runtime.GOOS), strings.Join(opts.D, "\n")))
+	predefSource := c99.NewStringSource(
+		"<predefine>",
+		fmt.Sprintf(
+			inject, env("GOARCH", runtime.GOARCH), env("GOOS", runtime.GOOS), strings.Join(opts.D, "\n"), `
+#define HAVE_FDATASYNC 1
+#define HAVE_ISNAN 1
+#define HAVE_LOCALTIME_R 1
+#define HAVE_USLEEP 1
+`,
+		),
+	)
 	sqliteSource := c99.NewFileSource(filepath.Join(repo, filepath.FromSlash("_sqlite/sqlite-amalgamation-3210000/sqlite3.c")))
 	sqlite, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, sqliteSource)
 	if err != nil {
