@@ -17,6 +17,30 @@ import (
 	"github.com/cznic/xc"
 )
 
+var (
+	noTypedefNameAfter = map[int]struct{}{
+		'*':          {},
+		'.':          {},
+		ARROW:        {},
+		BOOL:         {},
+		CHAR:         {},
+		COMPLEX:      {},
+		DOUBLE:       {},
+		ENUM:         {},
+		FLOAT:        {},
+		GOTO:         {},
+		INT:          {},
+		LONG:         {},
+		SHORT:        {},
+		SIGNED:       {},
+		STRUCT:       {},
+		TYPEDEF_NAME: {},
+		UNION:        {},
+		UNSIGNED:     {},
+		VOID:         {},
+	}
+)
+
 const (
 	intBits  = mathutil.IntBits
 	bitShift = intBits>>6 + 5
@@ -108,12 +132,16 @@ type lexer struct {
 	*lex.Lexer
 	ast         Node
 	commentPos0 token.Pos
+	prev        int // Most recent result returned by Lex
 	last        lex.Char
 	mode        int // CONSTANT_EXPRESSION, TRANSLATION_UNIT
 	sc          int
 	t           *trigraphs
 	tc          *tokenPipe
 	currFn      int // [0]6.4.2.2
+
+	typedef bool // Prev token returned was TYPEDEF_NAME
+
 	ungetBuffer
 }
 
@@ -153,18 +181,25 @@ func (l *lexer) Lex(lval *yySymType) (r int) {
 	//TODO use follow set to recover from errors.
 	l.lex(lval)
 	lval.Token.Rune = l.toC(lval.Token.Rune, lval.Token.Val)
+	typedef := l.typedef
+	l.typedef = false
 	switch lval.Token.Rune {
 	case NON_REPL:
 		lval.Token.Rune = IDENTIFIER
 		fallthrough
 	case IDENTIFIER:
-		if !followSetHasTypedefName[lval.yys] {
+		if typedef || !followSetHasTypedefName[lval.yys] {
+			break
+		}
+
+		if _, ok := noTypedefNameAfter[l.prev]; ok {
 			break
 		}
 
 		if l.scope.isTypedef(lval.Token.Val) {
 			// https://en.wikipedia.org/wiki/The_lexer_hack
 			lval.Token.Rune = TYPEDEF_NAME
+			l.typedef = true
 		}
 	case PPNUMBER:
 		lval.Token.Rune = INTCONST
@@ -174,17 +209,16 @@ func (l *lexer) Lex(lval *yySymType) (r int) {
 				switch v {
 				case '.', '+', '-', 'e', 'E', 'p', 'P':
 					lval.Token.Rune = FLOATCONST
-					return int(lval.Token.Rune)
 				}
 			}
 		}
-		return int(lval.Token.Rune)
 	case ccEOF:
 		lval.Token.Rune = lex.RuneEOF
 		lval.Token.Val = 0
 	}
 
-	return int(lval.Token.Rune)
+	l.prev = int(lval.Token.Rune)
+	return l.prev
 }
 
 func (l *lexer) ReadChar() (c lex.Char, size int, err error) {

@@ -123,6 +123,9 @@ into the unit in which the previous bit- field, if any, was placed.
 var (
 	_ Source = (*FileSource)(nil)
 	_ Source = (*StringSource)(nil)
+
+	// Parser debug hook.
+	YYDebug = &yyDebug
 )
 
 // TranslationUnit represents a translation unit, see [0]6.9.
@@ -450,9 +453,6 @@ func (s *Scope) insertLabel(ctx *context, st *LabeledStmt) {
 }
 
 func (s *Scope) insertEnumTag(ctx *context, nm int, es *EnumSpecifier) {
-	for s.Parent != nil {
-		s = s.Parent
-	}
 	if s.EnumTags == nil {
 		s.EnumTags = map[int]*EnumSpecifier{}
 	}
@@ -506,7 +506,7 @@ func (s *Scope) insertStructTag(ctx *context, ss *StructOrUnionSpecifier) {
 	if ex := s.StructTags[nm]; ex != nil && !ex.typ.Equal(ss.typ) {
 		//dbg("", ex.typ)
 		//dbg("", ss.typ)
-		panic(ctx.position(ss))
+		panic(fmt.Errorf("%v: %v, %v", ctx.position(ss), ex.typ, ss.typ))
 	}
 
 	s.StructTags[nm] = ss

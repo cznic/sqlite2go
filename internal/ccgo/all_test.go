@@ -6,7 +6,7 @@ package ccgo
 
 //	TCC	cc 51 ccgo 51 build 51 run 51 ok 51
 //	Other	cc 9 ccgo 9 build 9 run 9 ok 9
-//	GCC	cc 952 ccgo 926 build 916 run 916 ok 916
+//	GCC	cc 953 ccgo 930 build 916 run 916 ok 916
 //	Shell	cc 1 ccgo 1 build 1 run 1 ok 1
 
 import (
@@ -77,8 +77,8 @@ func init() {
 const (
 	inject = `
 #define _CCGO 1
-#define __arch__ %s
 #define __os__ %s
+#define __arch__ %s
 #include <builtin.h>
 
 %s
@@ -126,7 +126,7 @@ func trim(b []byte) []byte {
 	return bytes.Join(a, []byte{'\n'})
 }
 
-func test(t *testing.T, clean bool, cc, ccgo, build, run *int, def, imp, inc2, dir string, pth []string, args ...string) ([]byte, error) {
+func test(t *testing.T, clean bool, cc, ccgo, build, run *int, def, imp string, inc2 []string, dir string, pth []string, args ...string) ([]byte, error) {
 	testFn = pth[len(pth)-1]
 	if clean {
 		m, err := filepath.Glob(filepath.Join(dir, "*.*"))
@@ -152,10 +152,10 @@ func test(t *testing.T, clean bool, cc, ccgo, build, run *int, def, imp, inc2, d
 		EnableReturnExprInVoidFunc:  true,
 		IgnorePragmas:               true,
 	}
-	inc := []string{"@", ccir.LibcIncludePath, inc2}
+	inc := append([]string{"@", ccir.LibcIncludePath}, inc2...)
 	sysInc := []string{ccir.LibcIncludePath}
 
-	predefSource := c99.NewStringSource("<predefine>", fmt.Sprintf(inject, runtime.GOARCH, runtime.GOOS, def))
+	predefSource := c99.NewStringSource("<predefine>", fmt.Sprintf(inject, runtime.GOOS, runtime.GOARCH, def))
 	crt0, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, c99.NewFileSource(filepath.Join(ccir.LibcIncludePath, "crt0.c")))
 	if err != nil {
 		return nil, err
@@ -282,7 +282,7 @@ func TestTCC(t *testing.T) {
 		}
 
 		run0 := run
-		out, err := test(t, false, &cc, &ccgo, &build, &run, "", "", "", dir, []string{pth})
+		out, err := test(t, false, &cc, &ccgo, &build, &run, "", "", nil, dir, []string{pth})
 		if err != nil {
 			t.Errorf("%v: %v", pth, err)
 			continue
@@ -344,7 +344,7 @@ func TestOther(t *testing.T) {
 		}
 
 		run0 := run
-		out, err := test(t, false, &cc, &ccgo, &build, &run, "", "", *oI, dir, []string{pth})
+		out, err := test(t, false, &cc, &ccgo, &build, &run, "", "", strings.Split(*oI, ","), dir, []string{pth})
 		if err != nil {
 			t.Errorf("%v: %v", pth, err)
 			continue
@@ -427,7 +427,7 @@ func TestGCC(t *testing.T) {
 		}
 
 		run0 := run
-		out, err := test(t, false, &cc, &ccgo, &build, &run, def, "", "", dir, []string{pth})
+		out, err := test(t, false, &cc, &ccgo, &build, &run, def, "", nil, dir, []string{pth})
 		if err != nil {
 			t.Errorf("%v: %v", pth, err)
 			continue
@@ -488,7 +488,7 @@ func TestSQLiteShell(t *testing.T) {
 		`
 import "math"
 `,
-		"",
+		nil,
 		dir,
 		[]string{
 			filepath.Join(root, "shell.c"),
@@ -617,7 +617,7 @@ out:
 		cs++
 		build0 := build
 		os.Remove("main.go")
-		ccgoOut, err := test(t, false, &cc, &ccgo, &build, &run, "", "", inc, dir, []string{mainC})
+		ccgoOut, err := test(t, false, &cc, &ccgo, &build, &run, "", "", []string{inc}, dir, []string{mainC})
 		if err != nil {
 			t.Log(err)
 			csmithFatal(t, mainC, gccOut, ccgoOut, cc, ccgo, build, run, ok, cs, gccT)
@@ -675,7 +675,7 @@ cc %v ccgo %v build %v run %v ok %v (%.2f%%) csmith %v (%v)
 }
 
 func TestTCL(t *testing.T) {
-	return //TODO- Does not yet compile
+	return //TODO-
 	dir, err := ioutil.TempDir("", "test-ccgo-tcl-")
 	if err != nil {
 		t.Fatal(err)
@@ -688,7 +688,8 @@ func TestTCL(t *testing.T) {
 	}()
 
 	var cc, ccgo, build, run, ok int
-	root := filepath.FromSlash("../../_sqlite")
+	sqliteRoot := filepath.FromSlash("../../_sqlite")
+	tclRoot := filepath.FromSlash("../../_tcl8.6.8")
 	if out, err := test(t, false, &cc, &ccgo, &build, &run,
 		`
 #define HAVE_FDATASYNC 1
@@ -703,11 +704,15 @@ func TestTCL(t *testing.T) {
 		`
 import "math"
 `,
-		filepath.Join(root, "sqlite-amalgamation-3210000"),
+		[]string{
+			filepath.Join(sqliteRoot, "sqlite-amalgamation-3210000"),
+			filepath.Join(tclRoot, "unix"),
+		},
 		dir,
 		[]string{
-			filepath.Join(root, "src", "tclsqlite.c"),
-			filepath.Join(root, "sqlite-amalgamation-3210000", "sqlite3.c"),
+			filepath.Join(tclRoot, "generic", "tclEncoding.c"),
+			filepath.Join(sqliteRoot, "src", "tclsqlite.c"),
+			filepath.Join(sqliteRoot, "sqlite-amalgamation-3210000", "sqlite3.c"),
 		},
 		"TODO", //TODO
 	); err != nil {

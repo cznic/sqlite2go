@@ -40,6 +40,10 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool, lvl int) (r string) {
 
 	switch x := t.(type) {
 	case *c99.ArrayType:
+		if x.Size.Value == nil {
+			return fmt.Sprintf("*%s", g.ptyp(x.Item, ptr2uintptr, lvl))
+		}
+
 		return fmt.Sprintf("[%d]%s", x.Size.Value.(*ir.Int64Value).Value, g.ptyp(x.Item, ptr2uintptr, lvl))
 	case *c99.FunctionType:
 		var buf bytes.Buffer
@@ -178,6 +182,8 @@ func prefer(t c99.Type) bool {
 			return x.Size.Type != nil
 		case *c99.PointerType:
 			t = x.Item
+		case *c99.TaggedStructType:
+			return x.Type != nil
 		case c99.TypeKind:
 			switch x {
 			case

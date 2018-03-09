@@ -779,7 +779,16 @@ func (c *cpp) glue(ls, rs []xc.Token) (n int, out []xc.Token) {
 			panic(PrettyString([]xc.Token{l, r}))
 		}
 	default:
-		l.Val = dict.SID(TokSrc(l) + TokSrc(r))
+		switch l.Rune {
+		case STRINGLITERAL:
+			s := TokSrc(l)
+			if len(s) > 2 && s[0] == '"' && s[len(s)-1] == '"' {
+				s = s[1 : len(s)-1]
+			}
+			l.Val = dict.SID(s + TokSrc(r))
+		default:
+			l.Val = dict.SID(TokSrc(l) + TokSrc(r))
+		}
 	}
 	return n, append(append(ls, l), rs...)
 }
