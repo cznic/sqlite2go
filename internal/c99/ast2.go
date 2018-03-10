@@ -27,6 +27,7 @@ func (n *TranslationUnit) Pos() token.Pos { return token.Pos(0) }
 
 // DeclarationSpecifier describes declaration specifiers.
 type DeclarationSpecifier struct {
+	FunctionSpecifiers     []*FunctionSpecifier
 	StorageClassSpecifiers []*StorageClassSpecifier
 	TypeQualifiers         []*TypeQualifier
 	TypeSpecifiers         []*TypeSpecifier
@@ -175,6 +176,8 @@ func (d *DeclarationSpecifier) typ() Type {
 		return LongLong
 	case d.is(TypeSpecifierLong, TypeSpecifierUnsigned):
 		return ULong
+	case d.is(TypeSpecifierLong, TypeSpecifierLong, TypeSpecifierSigned):
+		return LongLong
 	case d.is(TypeSpecifierLong, TypeSpecifierLong, TypeSpecifierUnsigned):
 		return ULongLong
 	case d.is(TypeSpecifierShort, TypeSpecifierUnsigned):
@@ -1232,6 +1235,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	}
+
 	if !arr2ptr {
 		return n.Operand
 	}
@@ -1257,6 +1261,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		case *NamedType:
 			t = x.Type
 		case
+			*EnumType,
 			*PointerType,
 			*StructType,
 			*TaggedEnumType,
@@ -1356,8 +1361,10 @@ func checkFn(ctx *context, t Type) *FunctionType {
 			switch x := x.Item.(type) {
 			case *FunctionType:
 				return x
+			case *NamedType:
+				t = x.Type
 			default:
-				panic(ctx.position)
+				panic(fmt.Errorf("%T", x))
 			}
 		case nil:
 			return nil
@@ -2077,11 +2084,11 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 		case LinkageNone:
 			switch n.Linkage {
 			case LinkageNone:
-				if ex.DeclarationSpecifier.IsTypedef() && n.DeclarationSpecifier.IsTypedef() && ex.Type.String() == n.Type.String() {
+				if ex.DeclarationSpecifier.IsTypedef() && n.DeclarationSpecifier.IsTypedef() && ex.Type.IsCompatible(n.Type) {
 					break
 				}
 
-				panic(ctx.position(n))
+				panic(fmt.Errorf("%v: %v, %v", ctx.position(n), ex.Type, n.Type))
 			default:
 				panic(n.Linkage)
 			}
@@ -2103,7 +2110,7 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 					panic(ctx.position(n))
 				}
 			default:
-				panic(n.Linkage)
+				// Keep it internal.
 			}
 		default:
 			panic(ex.Linkage)
@@ -2347,7 +2354,8 @@ func (n *ParameterTypeListOpt) check(ctx *context) ([]Type, bool) {
 
 func (n *DeclarationSpecifiers) check(ctx *context, ds *DeclarationSpecifier) {
 	switch n.Case {
-	//TODO case DeclarationSpecifiersFunc: // FunctionSpecifier DeclarationSpecifiersOpt
+	case DeclarationSpecifiersFunc: // FunctionSpecifier DeclarationSpecifiersOpt
+		n.FunctionSpecifier.check(ctx, ds)
 	case DeclarationSpecifiersStorage: // StorageClassSpecifier DeclarationSpecifiersOpt
 		n.StorageClassSpecifier.check(ctx, ds)
 	case DeclarationSpecifiersQualifier: // TypeQualifier DeclarationSpecifiersOpt
@@ -2358,6 +2366,10 @@ func (n *DeclarationSpecifiers) check(ctx *context, ds *DeclarationSpecifier) {
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	}
 	n.DeclarationSpecifiersOpt.check(ctx, ds)
+}
+
+func (n *FunctionSpecifier) check(ctx *context, ds *DeclarationSpecifier) {
+	ds.FunctionSpecifiers = append(ds.FunctionSpecifiers, n)
 }
 
 func (n *TypeQualifier) check(ctx *context, ds *DeclarationSpecifier) {
@@ -2402,11 +2414,17 @@ func (n *TypeSpecifier) check(ctx *context, ds *DeclarationSpecifier) {
 }
 
 func (n *EnumSpecifier) check(ctx *context) { // [0]6.7.2.2
+	n.Tag = n.Token2.Val
+	if n.IdentifierOpt != nil {
+		n.Tag = n.IdentifierOpt.Token.Val
+	}
 	switch n.Case {
 	case EnumSpecifierTag: // "enum" IDENTIFIER
-		n.typ = &TaggedEnumType{Tag: n.Token2.Val, scope: n.scope}
+		n.typ = &TaggedEnumType{Tag: n.Tag, scope: n.scope}
 	case EnumSpecifierDefine: // "enum" IdentifierOpt '{' EnumeratorList CommaOpt '}'
 		t := n.EnumeratorList.check(ctx, n.scope)
+		t.Tag = n.Tag
+		n.typ = t
 		var max uint64
 		for i, v := range t.Enums {
 			w := v.Operand.Value.(*ir.Int64Value).Value
@@ -2425,10 +2443,21 @@ func (n *EnumSpecifier) check(ctx *context) { // [0]6.7.2.2
 		if n.IdentifierOpt != nil {
 			n.scope.insertEnumTag(ctx, n.IdentifierOpt.Token.Val, n)
 		}
-		n.typ = t
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	}
+}
+
+func (n *EnumSpecifier) isCompatible(m *EnumSpecifier) bool {
+	if n.Tag != m.Tag || (n.EnumeratorList != nil) != (m.EnumeratorList != nil) {
+		return false
+	}
+
+	if n.typ != nil && m.typ != nil {
+		return n.typ.IsCompatible(m.typ)
+	}
+
+	panic(fmt.Errorf("%v, %v", n, m))
 }
 
 func (n *EnumeratorList) check(ctx *context, s *Scope) *EnumType {
@@ -2464,6 +2493,10 @@ func (n *Enumerator) check(ctx *context, s *Scope, iota *int64) *EnumerationCons
 }
 
 func (n *StructOrUnionSpecifier) check(ctx *context) {
+	var tag int
+	if n.IdentifierOpt != nil {
+		tag = n.IdentifierOpt.Token.Val
+	}
 	switch n.Case {
 	case StructOrUnionSpecifierTag: // StructOrUnion IDENTIFIER
 		switch n.StructOrUnion.Case {
@@ -2475,21 +2508,21 @@ func (n *StructOrUnionSpecifier) check(ctx *context) {
 			panic(ctx.position(n))
 		}
 	case StructOrUnionSpecifierEmpty: // StructOrUnion IdentifierOpt '{' '}'
-		if n.IdentifierOpt != nil {
+		if tag != 0 {
 			panic(ctx.position(n)) // declare tag
 		}
 		switch n.StructOrUnion.Case {
 		case StructOrUnionStruct:
-			n.typ = &StructType{}
+			n.typ = &StructType{Tag: tag}
 		default:
 			panic(ctx.position(n))
 		}
 	case StructOrUnionSpecifierDefine: // StructOrUnion IdentifierOpt '{' StructDeclarationList '}'
 		switch n.StructOrUnion.Case {
 		case StructOrUnionStruct:
-			n.typ = &StructType{Fields: n.StructDeclarationList.check(ctx), scope: n.scope}
+			n.typ = &StructType{Tag: tag, Fields: n.StructDeclarationList.check(ctx), scope: n.scope}
 		default:
-			n.typ = &UnionType{Fields: n.StructDeclarationList.check(ctx), scope: n.scope}
+			n.typ = &UnionType{Tag: tag, Fields: n.StructDeclarationList.check(ctx), scope: n.scope}
 		}
 		if n.IdentifierOpt != nil {
 			n.scope.Parent.insertStructTag(ctx, n)
@@ -2995,4 +3028,8 @@ func (n *Expr) Equals(m *Expr) bool {
 	default:
 		panic(fmt.Errorf("%T.Equal %v", n, n.Case))
 	}
+}
+
+func (n *EnumerationConstant) equal(m *EnumerationConstant) bool {
+	return n.Token.Val == m.Token.Val && n.Operand.Value.(*ir.Int64Value).Value == m.Operand.Value.(*ir.Int64Value).Value
 }

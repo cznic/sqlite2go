@@ -483,6 +483,7 @@ import (
                         |	','
 
                         // [0]6.7.2.2
+			//yy:field	Tag	int
 			//yy:field	scope	*Scope	// Where to declare enumeration constants.
 			//yy:field	typ	Type
 /*yy:case Tag        */ EnumSpecifier:

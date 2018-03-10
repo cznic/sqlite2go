@@ -160,6 +160,10 @@ type Tweaks struct {
 //
 // The returned scope is the file scope of the Translation unit.
 func Translate(fset *token.FileSet, tweaks *Tweaks, includePaths, sysIncludePaths []string, sources ...Source) (*TranslationUnit, error) {
+	var a []string //TODO
+	for _, v := range sources {
+		a = append(a, v.Name())
+	}
 	model, err := newModel()
 	if err != nil {
 		return nil, err
@@ -457,7 +461,7 @@ func (s *Scope) insertEnumTag(ctx *context, nm int, es *EnumSpecifier) {
 		s.EnumTags = map[int]*EnumSpecifier{}
 	}
 	if ex := s.EnumTags[nm]; ex != nil {
-		if ex == es {
+		if ex == es || ex.isCompatible(es) {
 			return
 		}
 
@@ -489,7 +493,11 @@ func (s *Scope) insertEnumerationConstant(ctx *context, c *EnumerationConstant) 
 			return
 		}
 
-		panic(ctx.position(c))
+		if x, ok := ex.(*EnumerationConstant); ok && x.equal(c) {
+			return
+		}
+
+		panic(fmt.Errorf("%v: %v, %v", ctx.position(c), ex, c))
 	}
 
 	s.Idents[nm] = c
@@ -503,9 +511,7 @@ func (s *Scope) insertStructTag(ctx *context, ss *StructOrUnionSpecifier) {
 		s.StructTags = map[int]*StructOrUnionSpecifier{}
 	}
 	nm := ss.IdentifierOpt.Token.Val
-	if ex := s.StructTags[nm]; ex != nil && !ex.typ.Equal(ss.typ) {
-		//dbg("", ex.typ)
-		//dbg("", ss.typ)
+	if ex := s.StructTags[nm]; ex != nil && !ex.typ.IsCompatible(ss.typ) {
 		panic(fmt.Errorf("%v: %v, %v", ctx.position(ss), ex.typ, ss.typ))
 	}
 
@@ -516,6 +522,7 @@ func (s *Scope) insertTypedef(ctx *context, d *Declarator) {
 	if s.typedefs == nil {
 		s.typedefs = map[int]struct{}{}
 	}
+	// Redefinitions, if any, are ignored during parsing, but checked later in insertDeclarator.
 	s.typedefs[d.Name()] = struct{}{}
 }
 

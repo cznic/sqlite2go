@@ -264,7 +264,7 @@ func (o Operand) add(ctx *context, p Operand) (r Operand) {
 	case *ir.Float64Value:
 		return Operand{Type: o.Type, Value: &ir.Float64Value{Value: x.Value + p.Value.(*ir.Float64Value).Value}}.normalize(ctx.model)
 	default:
-		panic(fmt.Errorf("TODO %T", x))
+		panic(fmt.Errorf("TODO %T %v %v", x, o, p))
 	}
 }
 
@@ -298,6 +298,7 @@ func (o Operand) ConvertTo(m Model, t Type) (r Operand) {
 
 	switch x := t.(type) {
 	case
+		*EnumType,
 		*PointerType,
 		*TaggedEnumType:
 
@@ -397,6 +398,20 @@ func (o Operand) ConvertTo(m Model, t Type) (r Operand) {
 
 	if o.isPointerType() && t.IsIntegerType() {
 		o.Type = t
+		switch x := o.Value.(type) {
+		case *ir.AddressValue:
+			if x.NameID != 0 {
+				o.Value = nil
+				break
+			}
+
+			o.Value = &ir.Int64Value{Value: int64(x.Offset)}
+		case *ir.Int64Value:
+			// nop
+		default:
+			//fmt.Printf("TODO405 %T %v -> %v\n", x, o, t) //TODO-
+			panic(fmt.Errorf("%T %v -> %v", x, o, t))
+		}
 		return o.normalize(m)
 	}
 
@@ -555,6 +570,8 @@ func (o Operand) integerPromotion(m Model) Operand {
 	t := o.Type
 	for {
 		switch x := t.(type) {
+		case *EnumType:
+			t = x.Enums[0].Operand.Type
 		case *NamedType:
 			t = x.Type
 		case *TaggedEnumType:
@@ -919,6 +936,10 @@ func ConvertFloat64(v float64, t Type, m Model) int64 {
 }
 
 func ConvertInt64(n int64, t Type, m Model) int64 {
+	switch x := UnderlyingType(t).(type) {
+	case *EnumType:
+		t = x.Enums[0].Operand.Type
+	}
 	signed := !t.IsUnsigned()
 	switch sz := m[t.Kind()].Size; sz {
 	case 1:

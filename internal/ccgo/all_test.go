@@ -6,7 +6,7 @@ package ccgo
 
 //	TCC	cc 51 ccgo 51 build 51 run 51 ok 51
 //	Other	cc 9 ccgo 9 build 9 run 9 ok 9
-//	GCC	cc 953 ccgo 930 build 916 run 916 ok 916
+//	GCC	cc 1004 ccgo 978 build 963 run 963 ok 963
 //	Shell	cc 1 ccgo 1 build 1 run 1 ok 1
 
 import (
@@ -153,7 +153,7 @@ func test(t *testing.T, clean bool, cc, ccgo, build, run *int, def, imp string, 
 		IgnorePragmas:               true,
 	}
 	inc := append([]string{"@", ccir.LibcIncludePath}, inc2...)
-	sysInc := []string{ccir.LibcIncludePath}
+	sysInc := []string{ccir.LibcIncludePath, "@"}
 
 	predefSource := c99.NewStringSource("<predefine>", fmt.Sprintf(inject, runtime.GOOS, runtime.GOARCH, def))
 	crt0, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, c99.NewFileSource(filepath.Join(ccir.LibcIncludePath, "crt0.c")))
@@ -706,10 +706,17 @@ import "math"
 `,
 		[]string{
 			filepath.Join(sqliteRoot, "sqlite-amalgamation-3210000"),
+			filepath.Join(tclRoot, "generic"),
+			filepath.Join(tclRoot, "libtommath"),
 			filepath.Join(tclRoot, "unix"),
 		},
 		dir,
 		[]string{
+			filepath.Join(tclRoot, "unix", "tclUnixInit.c"),
+			filepath.Join(tclRoot, "generic", "tclEvent.c"),
+			filepath.Join(tclRoot, "generic", "tclResult.c"),
+			filepath.Join(tclRoot, "generic", "tclVar.c"),
+			filepath.Join(tclRoot, "generic", "tclBasic.c"),
 			filepath.Join(tclRoot, "generic", "tclEncoding.c"),
 			filepath.Join(sqliteRoot, "src", "tclsqlite.c"),
 			filepath.Join(sqliteRoot, "sqlite-amalgamation-3210000", "sqlite3.c"),

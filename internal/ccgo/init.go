@@ -198,7 +198,31 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 
 		g.w("%s{", g.typ(t))
 		if !g.isZeroInitializer(n) {
-			todo("", g.position0(n), x)
+			layout := g.model.Layout(t)
+		more2:
+			fld := 0
+			fields := x.Fields
+			for l := n.InitializerList; l != nil; l = l.InitializerList {
+				if l.Designation != nil {
+					todo("", g.position0(n))
+				}
+				switch {
+				case layout[fld].Bits < 0:
+					fld++
+					goto more2
+				case layout[fld].Bits > 0:
+					todo("bit field %v", g.position0(n))
+				}
+				if fld != 0 {
+					todo("", g.position0(n))
+				}
+				d := fields[fld]
+				g.w("%s: ", mangleIdent(d.Name, true))
+				g.literal(d.Type, l.Initializer)
+				g.w(", ")
+				g.initializerListNL(n.InitializerList)
+				fld++
+			}
 		}
 		g.w("}")
 	default:

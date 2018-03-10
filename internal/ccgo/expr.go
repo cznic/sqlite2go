@@ -402,7 +402,7 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 		if !isFnPtr(n.Expr.Operand.Type, &ft0) {
 			todo("", g.position0(n))
 		}
-		ft := ft0.(*c99.FunctionType)
+		ft := c99.UnderlyingType(ft0).(*c99.FunctionType)
 		g.convert(n.Expr, ft)
 		g.w("(tls")
 		if o := n.ArgumentExprListOpt; o != nil {

@@ -16,6 +16,7 @@ import (
 
 	"github.com/cznic/ir"
 	"github.com/cznic/sqlite2go/internal/c99"
+	"github.com/cznic/strutil"
 	"github.com/cznic/xc"
 )
 
@@ -43,6 +44,8 @@ var (
 	traceTODO   bool
 	traceWrites bool
 )
+
+func pretty(v interface{}) string { return strutil.PrettyString(v, "", "", nil) }
 
 func compact(s string, maxLines int) string {
 	a := strings.Split(s, "\n")

@@ -392,6 +392,8 @@ func (m Model) StructAlignof(t Type) int {
 	switch x := t.(type) {
 	case *ArrayType:
 		return m.StructAlignof(x.Item)
+	case *EnumType:
+		return m.StructAlignof(x.Enums[0].Operand.Type)
 	case *NamedType:
 		return m.StructAlignof(x.Type)
 	case *PointerType:

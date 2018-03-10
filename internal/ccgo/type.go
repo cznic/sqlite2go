@@ -122,6 +122,12 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool, lvl int) (r string) {
 		}
 		buf.WriteByte('}')
 		return buf.String()
+	case *c99.EnumType:
+		if x.Tag == 0 {
+			return g.typ(x.Enums[0].Operand.Type)
+		}
+
+		return fmt.Sprintf("E%s", dict.S(x.Tag))
 	case *c99.TaggedEnumType:
 		g.enqueue(x)
 		return fmt.Sprintf("E%s", dict.S(x.Tag))
@@ -170,7 +176,7 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool, lvl int) (r string) {
 			return fmt.Sprintf("struct{X int%d; _ [%d]byte}", 8*al, sz-al) //TODO use precomputed padding from model layout?
 		}
 	default:
-		todo("%v %T %v", t, x, ptr2uintptr)
+		todo("%v %T %v\n%v", t, x, ptr2uintptr, pretty(x))
 	}
 	panic("unreachable")
 }

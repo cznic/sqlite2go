@@ -196,23 +196,18 @@ func (t TypeKind) IsCompatible(u Type) bool {
 		case *NamedType:
 			u = x.Type
 		case TypeKind:
+			if t.IsIntegerType() && u.IsIntegerType() {
+				return intConvRank[t] == intConvRank[x] && isSigned[t] == isSigned[x]
+			}
+
 			switch x {
 			case
-				Char,
 				Double,
 				Float,
-				Int,
-				Long,
-				LongLong,
-				SChar,
-				Short,
-				UChar,
-				UInt,
-				ULong,
-				ULongLong,
-				UShort,
-				Void:
+				LongDouble:
 
+				return t == x
+			case Void:
 				return t == x
 			default:
 				panic(fmt.Errorf("%v", x))
@@ -237,6 +232,17 @@ func (t TypeKind) Equal(u Type) bool {
 			return false
 		default:
 			panic(t)
+		}
+	case *EnumType:
+		switch t {
+		case
+			Char,
+			Int,
+			Void:
+
+			return false
+		default:
+			panic(fmt.Errorf("\n%v\n%v", PrettyString(t), PrettyString(x)))
 		}
 	case *FunctionType:
 		switch t {
@@ -444,8 +450,10 @@ func (t *ArrayType) IsCompatible(u Type) bool {
 		}
 
 		return true
+	case *PointerType:
+		return t.Size.Type == nil && t.Item.IsCompatible(x.Item)
 	default:
-		panic(x)
+		panic(fmt.Errorf("%T\n%v\n%v", x, t, u))
 	}
 }
 
@@ -462,14 +470,17 @@ func (t *ArrayType) Equal(u Type) bool {
 		}
 
 		switch {
-		case t.Size.Type != nil:
+		case t.Size.Type != nil && x.Size.Type != nil:
 			return x.Size.Type != nil && t.Size.Value.(*ir.Int64Value).Value == x.Size.Value.(*ir.Int64Value).Value
+		case t.Size.Type == nil && x.Size.Type == nil:
+			return true
 		default:
-			panic("TODO")
+			panic(fmt.Errorf("%v, %v", t, u))
 		}
 	case
 		*FunctionType,
-		*PointerType:
+		*PointerType,
+		*StructType:
 
 		return false
 	case TypeKind:
@@ -513,6 +524,7 @@ func (t *ArrayType) String() string {
 
 // EnumType represents an enum type.
 type EnumType struct {
+	Tag   int
 	Enums []*EnumerationConstant
 }
 
@@ -526,7 +538,24 @@ func (t *EnumType) IsVoidPointerType() bool { panic("TODO") }
 func (t *EnumType) IsArithmeticType() bool { return true }
 
 // IsCompatible implements Type.
-func (t *EnumType) IsCompatible(u Type) bool { panic("TODO") }
+func (t *EnumType) IsCompatible(u Type) bool {
+	switch x := UnderlyingType(u).(type) {
+	case *EnumType:
+		if len(t.Enums) != len(x.Enums) {
+			return false
+		}
+
+		for i, v := range t.Enums {
+			if !v.equal(x.Enums[i]) {
+				return false
+			}
+		}
+
+		return true
+	default:
+		return false
+	}
+}
 
 // Equal implements Type.
 func (t *EnumType) Equal(u Type) bool {
@@ -541,19 +570,21 @@ func (t *EnumType) Equal(u Type) bool {
 func (t *EnumType) Kind() TypeKind { return Enum }
 
 // assign implements Type.
-func (t *EnumType) assign(ctx *context, op Operand) Operand { panic("TODO") }
+func (t *EnumType) assign(ctx *context, op Operand) Operand {
+	return op.ConvertTo(ctx.model, t)
+}
 
 // IsPointerType implements Type.
 func (t *EnumType) IsPointerType() bool { panic("TODO") }
 
 // IsIntegerType implements Type.
-func (t *EnumType) IsIntegerType() bool { panic("TODO") }
+func (t *EnumType) IsIntegerType() bool { return true }
 
 // IsScalarType implements Type.
 func (t *EnumType) IsScalarType() bool { panic("TODO") }
 
 func (t *EnumType) String() string {
-	return fmt.Sprintf("%s enumeration", t.Enums[0].Operand.Type.String())
+	return fmt.Sprintf("%s enumeration %s", t.Enums[0].Operand.Type.String(), dict.S(t.Tag))
 }
 
 // Field represents a struct/union field.
@@ -566,6 +597,10 @@ type Field struct {
 
 func (f Field) equal(g Field) bool {
 	return f.Name == g.Name && f.Type.Equal(g.Type) && f.Bits == g.Bits
+}
+
+func (f Field) isCompatiblel(g Field) bool {
+	return f.Name == g.Name && f.Type.IsCompatible(g.Type) && f.Bits == g.Bits
 }
 
 func (f Field) String() string { return fmt.Sprintf("%s %v", dict.S(f.Name), f.Type) }
@@ -600,6 +635,8 @@ func (t *FunctionType) IsCompatible(u Type) bool {
 			}
 		}
 		return true
+	case *NamedType:
+		return x.Type.IsCompatible(t)
 	default:
 		panic(fmt.Errorf("%T", x))
 	}
@@ -699,6 +736,8 @@ func (t *NamedType) Equal(u Type) bool {
 	switch x := u.(type) {
 	case *ArrayType:
 		return x.Equal(t.Type)
+	case *EnumType:
+		return x.Equal(t.Type)
 	case *NamedType:
 		return t.Name == x.Name && t.Type.Equal(x.Type)
 	case
@@ -777,6 +816,8 @@ func (t *PointerType) IsCompatible(u Type) bool {
 	}
 
 	switch x := u.(type) {
+	case *ArrayType:
+		return t.Item.IsCompatible(x.Item)
 	case *NamedType:
 		return t.IsCompatible(x.Type)
 	case *PointerType:
@@ -788,7 +829,7 @@ func (t *PointerType) IsCompatible(u Type) bool {
 		// result shall compare equal to the original pointer.
 		return t.Item == Void || x.Item == Void || t.Item.IsCompatible(x.Item)
 	default:
-		panic(fmt.Errorf("%T", x))
+		panic(fmt.Errorf("%T\n%v\n%v", x, t, u))
 	}
 }
 
@@ -886,6 +927,7 @@ func (t *PointerType) String() string { return fmt.Sprintf("pointer to %v", t.It
 // StructType represents a struct type.
 type StructType struct {
 	Fields []Field
+	Tag    int
 	scope  *Scope
 	layout []FieldProperties
 	//TODO cache layout, size, alignment, struct alignment.
@@ -916,7 +958,36 @@ func (t *StructType) IsCompatible(u Type) bool {
 		return true
 	}
 
-	panic("TODO")
+	// [0]6.2.7.1
+	//
+	// Moreover, two structure, union, or enumerated types declared in
+	// separate translation units are compatible if their tags and members
+	// satisfy the following requirements: If one is declared with a tag,
+	// the other shall be declared with the same tag. If both are complete
+	// types, then the following additional requirements apply: there shall
+	// be a one-to-one correspondence between their members such that each
+	// pair of corresponding members are declared with compatible types,
+	// and such that if one member of a corresponding pair is declared with
+	// a name, the other member is declared with the same name. For two
+	// structures, corresponding members shall be declared in the same
+	// order. For two structures or unions, corresponding bit-fields shall
+	// have the same widths.
+	switch x := UnderlyingType(u).(type) {
+	case *StructType:
+		if len(t.Fields) != len(x.Fields) || t.Tag != x.Tag {
+			return false
+		}
+
+		for i, v := range t.Fields {
+			if !v.isCompatiblel(x.Fields[i]) {
+				return false
+			}
+		}
+
+		return true
+	default:
+		return false
+	}
 }
 
 // Equal implements Type.
@@ -934,7 +1005,7 @@ func (t *StructType) Equal(u Type) bool {
 
 		return false
 	case *StructType:
-		if len(t.Fields) != len(x.Fields) {
+		if len(t.Fields) != len(x.Fields) || t.Tag != x.Tag {
 			return false
 		}
 
@@ -980,9 +1051,16 @@ func (t *StructType) assign(ctx *context, op Operand) Operand {
 		if !t.IsCompatible(x) {
 			panic("TODO")
 		}
+
+		return Operand{Type: t}
+	case *NamedType:
+		if !t.IsCompatible(x.Type) {
+			panic("TODO")
+		}
+
 		return Operand{Type: t}
 	default:
-		panic(x)
+		panic(fmt.Errorf("%T %v", x, x))
 	}
 }
 
@@ -1211,6 +1289,7 @@ func (t *TaggedStructType) String() string { return fmt.Sprintf("struct %s", dic
 // UnionType represents a union type.
 type UnionType struct {
 	Fields []Field
+	Tag    int
 	scope  *Scope
 	layout []FieldProperties
 	//TODO cache size, alignment, struct alignment.
@@ -1356,6 +1435,17 @@ func (t *UnionType) Equal(u Type) bool {
 		default:
 			panic(x)
 		}
+	case *UnionType:
+		if len(t.Fields) != len(x.Fields) || t.Tag != x.Tag {
+			return false
+		}
+
+		for i, v := range t.Fields {
+			if !v.equal(x.Fields[i]) {
+				return false
+			}
+		}
+		return true
 	default:
 		panic(x)
 	}
@@ -1414,6 +1504,7 @@ func AdjustedParameterType(t Type) Type {
 		case *NamedType:
 			u = x.Type
 		case
+			*EnumType,
 			*PointerType,
 			*StructType,
 			*TaggedStructType,

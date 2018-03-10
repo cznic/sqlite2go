@@ -39,7 +39,7 @@ editor: ast.go parser.go scanner.go trigraphs.go stringer.go
 	GOOS=windows GOARCH=386 go build
 	GOOS=windows GOARCH=amd64 go build
 	go test -i
-	go test -short 2>&1 | tee -a log
+	go test -short 2>&1 | tee log
 	go install
 
 internalError:

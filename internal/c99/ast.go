@@ -1017,6 +1017,7 @@ func (n EnumSpecifierCase) String() string {
 //	        "enum" IDENTIFIER                                     // Case EnumSpecifierTag
 //	|       "enum" IdentifierOpt '{' EnumeratorList CommaOpt '}'  // Case EnumSpecifierDefine
 type EnumSpecifier struct {
+	Tag            int
 	scope          *Scope // Where to declare enumeration constants.
 	typ            Type
 	Case           EnumSpecifierCase
