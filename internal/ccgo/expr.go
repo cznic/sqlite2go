@@ -204,24 +204,9 @@ func (g *gen) void(n *c99.Expr) {
 	case c99.ExprCond: // Expr '?' ExprList ':' Expr
 		switch {
 		case n.Expr.IsZero() && g.voidCanIgnore(n.Expr):
-			switch {
-			case g.voidCanIgnoreExprList(n.ExprList):
-				switch {
-				case g.voidCanIgnore(n.Expr2):
-					todo("", g.position0(n))
-				default:
-					g.void(n.Expr2)
-				}
-			default:
-				switch {
-				case g.voidCanIgnore(n.Expr2):
-					todo("", g.position0(n))
-				default:
-					g.void(n.Expr2)
-				}
-			}
+			g.void(n.Expr2)
 		case n.Expr.IsNonZero() && g.voidCanIgnore(n.Expr):
-			todo("", g.position0(n))
+			g.exprList(n.ExprList, true)
 		default:
 			switch {
 			case g.voidCanIgnoreExprList(n.ExprList):
