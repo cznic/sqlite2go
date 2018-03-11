@@ -177,11 +177,15 @@ func (g *gen) tld(n *c99.Declarator) {
 			g.w("\nvar %s = bss + %d\n", g.mangleDeclarator(n), g.allocBSS(n.Type))
 		case *c99.PointerType:
 			g.w("\nvar %s uintptr\n", g.mangleDeclarator(n))
-		case c99.TypeKind:
+		case
+			*c99.EnumType,
+			c99.TypeKind:
+
 			if x.IsArithmeticType() {
 				g.w("\nvar %s %s\n", g.mangleDeclarator(n), g.typ(n.Type))
 				break
 			}
+
 			todo("%v: %v", g.position(n), x)
 		default:
 			todo("%v: %s %v %T", g.position(n), dict.S(n.Name()), n.Type, x)

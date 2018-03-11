@@ -27,8 +27,6 @@ import (
 	"github.com/cznic/sqlite2go/internal/c99"
 )
 
-//TODO do not pass pointers to helpers, use uintptrs everywhere.
-
 var (
 	isTesting bool // Test hook
 )

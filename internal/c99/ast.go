@@ -3351,6 +3351,8 @@ const (
 	TypeSpecifierEnum
 	TypeSpecifierStruct
 	TypeSpecifierName
+	TypeSpecifierTypeofExpr
+	TypeSpecifierTypeof
 )
 
 // String implements fmt.Stringer
@@ -3384,6 +3386,10 @@ func (n TypeSpecifierCase) String() string {
 		return "TypeSpecifierStruct"
 	case TypeSpecifierName:
 		return "TypeSpecifierName"
+	case TypeSpecifierTypeofExpr:
+		return "TypeSpecifierTypeofExpr"
+	case TypeSpecifierTypeof:
+		return "TypeSpecifierTypeof"
 	default:
 		return fmt.Sprintf("TypeSpecifierCase(%v)", int(n))
 	}
@@ -3392,26 +3398,33 @@ func (n TypeSpecifierCase) String() string {
 // TypeSpecifier represents data reduced by productions:
 //
 //	TypeSpecifier:
-//	        "_Bool"                 // Case TypeSpecifierBool
-//	|       "_Complex"              // Case TypeSpecifierComplex
-//	|       "char"                  // Case TypeSpecifierChar
-//	|       "double"                // Case TypeSpecifierDouble
-//	|       "float"                 // Case TypeSpecifierFloat
-//	|       "int"                   // Case TypeSpecifierInt
-//	|       "long"                  // Case TypeSpecifierLong
-//	|       "short"                 // Case TypeSpecifierShort
-//	|       "signed"                // Case TypeSpecifierSigned
-//	|       "unsigned"              // Case TypeSpecifierUnsigned
-//	|       "void"                  // Case TypeSpecifierVoid
-//	|       EnumSpecifier           // Case TypeSpecifierEnum
-//	|       StructOrUnionSpecifier  // Case TypeSpecifierStruct
-//	|       TYPEDEF_NAME            // Case TypeSpecifierName
+//	        "_Bool"                    // Case TypeSpecifierBool
+//	|       "_Complex"                 // Case TypeSpecifierComplex
+//	|       "char"                     // Case TypeSpecifierChar
+//	|       "double"                   // Case TypeSpecifierDouble
+//	|       "float"                    // Case TypeSpecifierFloat
+//	|       "int"                      // Case TypeSpecifierInt
+//	|       "long"                     // Case TypeSpecifierLong
+//	|       "short"                    // Case TypeSpecifierShort
+//	|       "signed"                   // Case TypeSpecifierSigned
+//	|       "unsigned"                 // Case TypeSpecifierUnsigned
+//	|       "void"                     // Case TypeSpecifierVoid
+//	|       EnumSpecifier              // Case TypeSpecifierEnum
+//	|       StructOrUnionSpecifier     // Case TypeSpecifierStruct
+//	|       TYPEDEF_NAME               // Case TypeSpecifierName
+//	|       "typeof" '(' Expr ')'      // Case TypeSpecifierTypeofExpr
+//	|       "typeof" '(' TypeName ')'  // Case TypeSpecifierTypeof
 type TypeSpecifier struct {
 	scope                  *Scope
+	typ                    Type // typeof
 	Case                   TypeSpecifierCase
 	EnumSpecifier          *EnumSpecifier
+	Expr                   *Expr
 	StructOrUnionSpecifier *StructOrUnionSpecifier
 	Token                  xc.Token
+	Token2                 xc.Token
+	Token3                 xc.Token
+	TypeName               *TypeName
 }
 
 func (n *TypeSpecifier) fragment() interface{} { return n }
@@ -3432,7 +3445,7 @@ func (n *TypeSpecifier) Pos() token.Pos {
 		return n.EnumSpecifier.Pos()
 	case 12:
 		return n.StructOrUnionSpecifier.Pos()
-	case 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 13:
+	case 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 14, 15:
 		return n.Token.Pos()
 	default:
 		panic("internal error")

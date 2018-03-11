@@ -160,10 +160,6 @@ type Tweaks struct {
 //
 // The returned scope is the file scope of the Translation unit.
 func Translate(fset *token.FileSet, tweaks *Tweaks, includePaths, sysIncludePaths []string, sources ...Source) (*TranslationUnit, error) {
-	var a []string //TODO
-	for _, v := range sources {
-		a = append(a, v.Name())
-	}
 	model, err := newModel()
 	if err != nil {
 		return nil, err

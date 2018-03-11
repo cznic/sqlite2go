@@ -1115,11 +1115,19 @@ func (g *gen) voidCanIgnore(n *c99.Expr) bool {
 		return true
 	case c99.ExprPExprList: // '(' ExprList ')'
 		return g.voidCanIgnoreExprList(n.ExprList)
+	case c99.ExprCall: // Expr '(' ArgumentExprListOpt ')'
+		switch n.Expr.Case {
+		case c99.ExprIdent:
+			switch n.Expr.Token.Val {
+			case idBuiltinTypesCompatible:
+				return true
+			}
+		}
+		return false
 	case
 		c99.ExprAddAssign, // Expr "+=" Expr
 		c99.ExprAndAssign, // Expr "&=" Expr
 		c99.ExprAssign,    // Expr '=' Expr
-		c99.ExprCall,      // Expr '(' ArgumentExprListOpt ')'
 		c99.ExprDivAssign, // Expr "/=" Expr
 		c99.ExprLshAssign, // Expr "<<=" Expr
 		c99.ExprModAssign, // Expr "%=" Expr

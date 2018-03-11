@@ -395,6 +395,7 @@ import (
 
                         // [0]6.7.2
 			//yy:field	scope	*Scope
+			//yy:field	typ	Type	// typeof
 /*yy:case Bool       */ TypeSpecifier:
                         	"_Bool"
 /*yy:case Complex    */ |	"_Complex"
@@ -414,6 +415,8 @@ import (
 				{
 					lhs.scope = lx.scope
 				}
+/*yy:case TypeofExpr */	|	"typeof" '(' Expr ')'
+/*yy:case Typeof     */	|	"typeof" '(' TypeName ')'
 
                         // [0]6.7.2.1
 			//yy:field	scope	*Scope	// Declare the struct tag in scope.parent.

@@ -92,6 +92,7 @@ func (d *DeclarationSpecifier) typ() Type {
 						case
 							Char,
 							Double,
+							Float,
 							Int,
 							Long,
 							LongLong,
@@ -138,6 +139,11 @@ func (d *DeclarationSpecifier) typ() Type {
 				x.getType()
 			}
 			return t
+		case
+			TypeSpecifierTypeof,
+			TypeSpecifierTypeofExpr:
+
+			return d.TypeSpecifiers[0].typ
 		default:
 			panic(d.typeSpecifiers)
 		}
@@ -351,7 +357,10 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		n.Operand.Value = op.Value
 	case ExprPExprList: // '(' ExprList ')'
 		n.Operand = n.ExprList.eval(ctx, arr2ptr, fn)
-	//TODO case ExprCompLit: // '(' TypeName ')' '{' InitializerList CommaOpt '}'
+	case ExprCompLit: // '(' TypeName ')' '{' InitializerList CommaOpt '}'
+		t := n.TypeName.check(ctx)
+		n.Operand = Operand{Type: t}
+		// TODO check InitDeclaratorList
 	case ExprCast: // '(' TypeName ')' Expr
 		// [0]6.5.4
 		t := n.TypeName.check(ctx)
@@ -641,7 +650,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			case *TaggedStructType:
 				t = x.getType()
 				if t == x {
-					panic("TODO")
+					panic(fmt.Errorf("%v: %q", ctx.position(n), dict.S(x.Tag)))
 				}
 			case *UnionType:
 				nm := n.Token2.Val
@@ -786,6 +795,44 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			}
 		}
 	case ExprCall: // Expr '(' ArgumentExprListOpt ')'
+		if n.Expr.Case == ExprIdent && n.Expr.Token.Val == idBuiltinTypesCompatible {
+			// using #define __builtin_types_compatible_p(type1, type2) __builtin_types_compatible__((type1){}, (type2){})
+			o := n.ArgumentExprListOpt
+			if o == nil {
+				panic("missing arguments of __builtin_types_compatible_p")
+			}
+
+			args := o.ArgumentExprList
+			arg1 := args.Expr
+			if arg1.Case != ExprCompLit { // '(' TypeName ')' '{' InitializerList CommaOpt '}'
+				panic("invalid argument of __builtin_types_compatible__p")
+			}
+
+			args = args.ArgumentExprList
+			if args == nil {
+				panic("missing argument of __builtin_types_compatible_p")
+			}
+
+			arg2 := args.Expr
+			if arg2.Case != ExprCompLit { // '(' TypeName ')' '{' InitializerList CommaOpt '}'
+				panic("invalid argument of __builtin_types_compatible__")
+			}
+
+			if args.ArgumentExprList != nil {
+				panic("too many arguments of __builtin_types_compatible_p")
+			}
+
+			t := arg1.eval(ctx, arr2ptr, fn).Type
+			u := arg2.eval(ctx, arr2ptr, fn).Type
+			var v int64
+			if t.IsCompatible(u) {
+				v = 1
+			}
+			n.Operand.Type = Int
+			n.Operand.Value = &ir.Int64Value{Value: v}
+			break
+		}
+
 		// [0]6.5.2.2
 		op := n.Expr.eval(ctx, arr2ptr, fn)
 		args := n.ArgumentExprListOpt.eval(ctx, fn)
@@ -1119,6 +1166,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			switch y := t.(type) {
 			case
 				*ArrayType,
+				*EnumType,
 				*PointerType,
 				*StructType,
 				*TaggedEnumType,
@@ -2336,7 +2384,21 @@ func (n *DirectAbstractDeclarator) check(ctx *context, t Type) Type {
 		return n.DirectAbstractDeclarator.check(ctx, t)
 	//TODO case DirectAbstractDeclaratorDArrSize: // DirectAbstractDeclaratorOpt '[' "static" TypeQualifierListOpt Expr ']'
 	//TODO case DirectAbstractDeclaratorDArrVL: // DirectAbstractDeclaratorOpt '[' '*' ']'
-	//TODO case DirectAbstractDeclaratorDArr: // DirectAbstractDeclaratorOpt '[' ExprOpt ']'
+	case DirectAbstractDeclaratorDArr: // DirectAbstractDeclaratorOpt '[' ExprOpt ']'
+		n.ExprOpt.eval(ctx, true, nil)
+		var sz Operand
+		if o := n.ExprOpt; o != nil {
+			sz = o.Expr.Operand
+		}
+		t := &ArrayType{
+			Item: t,
+			Size: sz,
+		}
+		if n.DirectAbstractDeclaratorOpt == nil {
+			return t
+		}
+
+		return n.DirectAbstractDeclaratorOpt.DirectAbstractDeclarator.check(ctx, t)
 	//TODO case DirectAbstractDeclaratorDArrSize2: // DirectAbstractDeclaratorOpt '[' TypeQualifierList "static" Expr ']'
 	//TODO case DirectAbstractDeclaratorDArr2: // DirectAbstractDeclaratorOpt '[' TypeQualifierList ExprOpt ']'
 	default:
@@ -2407,6 +2469,11 @@ func (n *TypeSpecifier) check(ctx *context, ds *DeclarationSpecifier) {
 		n.EnumSpecifier.check(ctx)
 	case TypeSpecifierStruct: // StructOrUnionSpecifier
 		n.StructOrUnionSpecifier.check(ctx)
+	case TypeSpecifierTypeof: // "typeof" '(' TypeName ')'
+		n.typ = n.TypeName.check(ctx)
+	case TypeSpecifierTypeofExpr: // "typeof" '(' Expr ')'
+		op := n.Expr.eval(ctx, false, nil)
+		n.typ = op.Type
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	}

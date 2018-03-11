@@ -80,34 +80,35 @@ var (
 	// Null pointer, [0]6.3.2.3-3.
 	Null = &ir.AddressValue{}
 
-	idAlloca   = dict.SID("__builtin_alloca")
-	idAsm      = dict.SID("asm")
-	idChar     = dict.SID("char")
-	idConst    = dict.SID("const")
-	idDefine   = dict.SID("define")
-	idDefined  = dict.SID("defined")
-	idElif     = dict.SID("elif")
-	idElse     = dict.SID("else")
-	idEndif    = dict.SID("endif")
-	idError    = dict.SID("error")
-	idFile     = dict.SID("__FILE__")
-	idFuncName = dict.SID("__func__")
-	idIf       = dict.SID("if")
-	idIfdef    = dict.SID("ifdef")
-	idIfndef   = dict.SID("ifndef")
-	idInclude  = dict.SID("include")
-	idLine     = dict.SID("__LINE__")
-	idMain     = dict.SID("main")
-	idOne      = dict.SID("1")
-	idPragma   = dict.SID("pragma")
-	idPtrdiffT = dict.SID("ptrdiff_t")
-	idSizeT    = dict.SID("size_t")
-	idStatic   = dict.SID("static")
-	idUndef    = dict.SID("undef")
-	idVaArgs   = dict.SID("__VA_ARGS__")
-	idVaList   = dict.SID("va_list")
-	idWarning  = dict.SID("warning")
-	idZero     = dict.SID("0")
+	idAlloca                 = dict.SID("__builtin_alloca")
+	idAsm                    = dict.SID("asm")
+	idBuiltinTypesCompatible = dict.SID("__builtin_types_compatible__") // Implements __builtin_types_compatible_p
+	idChar                   = dict.SID("char")
+	idConst                  = dict.SID("const")
+	idDefine                 = dict.SID("define")
+	idDefined                = dict.SID("defined")
+	idElif                   = dict.SID("elif")
+	idElse                   = dict.SID("else")
+	idEndif                  = dict.SID("endif")
+	idError                  = dict.SID("error")
+	idFile                   = dict.SID("__FILE__")
+	idFuncName               = dict.SID("__func__")
+	idIf                     = dict.SID("if")
+	idIfdef                  = dict.SID("ifdef")
+	idIfndef                 = dict.SID("ifndef")
+	idInclude                = dict.SID("include")
+	idLine                   = dict.SID("__LINE__")
+	idMain                   = dict.SID("main")
+	idOne                    = dict.SID("1")
+	idPragma                 = dict.SID("pragma")
+	idPtrdiffT               = dict.SID("ptrdiff_t")
+	idSizeT                  = dict.SID("size_t")
+	idStatic                 = dict.SID("static")
+	idUndef                  = dict.SID("undef")
+	idVaArgs                 = dict.SID("__VA_ARGS__")
+	idVaList                 = dict.SID("va_list")
+	idWarning                = dict.SID("warning")
+	idZero                   = dict.SID("0")
 
 	protectedMacro = map[int]bool{
 		idFile: true,
@@ -146,6 +147,7 @@ var (
 		dict.SID("struct"):   STRUCT,
 		dict.SID("switch"):   SWITCH,
 		dict.SID("typedef"):  TYPEDEF,
+		dict.SID("typeof"):   TYPEOF,
 		dict.SID("union"):    UNION,
 		dict.SID("unsigned"): UNSIGNED,
 		dict.SID("void"):     VOID,

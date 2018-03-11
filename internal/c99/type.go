@@ -188,7 +188,10 @@ func (t TypeKind) IsCompatible(u Type) bool {
 		switch x := u.(type) {
 		case *PointerType:
 			switch t {
-			case Int:
+			case
+				Char,
+				Int:
+
 				return false
 			default:
 				panic(fmt.Errorf("%v %v", t, x))
@@ -477,6 +480,8 @@ func (t *ArrayType) Equal(u Type) bool {
 		default:
 			panic(fmt.Errorf("%v, %v", t, u))
 		}
+	case *NamedType:
+		return x.Type.Equal(t)
 	case
 		*FunctionType,
 		*PointerType,
@@ -494,7 +499,7 @@ func (t *ArrayType) Equal(u Type) bool {
 			panic(x)
 		}
 	default:
-		panic(x)
+		panic(fmt.Errorf("%T %v", x, x))
 	}
 }
 
@@ -581,7 +586,7 @@ func (t *EnumType) IsPointerType() bool { panic("TODO") }
 func (t *EnumType) IsIntegerType() bool { return true }
 
 // IsScalarType implements Type.
-func (t *EnumType) IsScalarType() bool { panic("TODO") }
+func (t *EnumType) IsScalarType() bool { return true }
 
 func (t *EnumType) String() string {
 	return fmt.Sprintf("%s enumeration %s", t.Enums[0].Operand.Type.String(), dict.S(t.Tag))
@@ -815,6 +820,14 @@ func (t *PointerType) IsCompatible(u Type) bool {
 		return true
 	}
 
+	var ai Type
+	switch x := UnderlyingType(t.Item).(type) {
+	case *ArrayType:
+		if x.Size.Type == nil {
+			ai = x.Item
+		}
+	}
+
 	switch x := u.(type) {
 	case *ArrayType:
 		return t.Item.IsCompatible(x.Item)
@@ -827,7 +840,15 @@ func (t *PointerType) IsCompatible(u Type) bool {
 		// incomplete or object type. A pointer to any incomplete or object
 		// type may be converted to a pointer to void and back again; the
 		// result shall compare equal to the original pointer.
-		return t.Item == Void || x.Item == Void || t.Item.IsCompatible(x.Item)
+		return t.Item == Void || x.Item == Void || ai != nil && ai.IsCompatible(x.Item) || t.Item.IsCompatible(x.Item)
+	case *StructType:
+		return false
+	case TypeKind:
+		if u.IsArithmeticType() {
+			return false
+		}
+
+		panic(fmt.Errorf("%T\n%v\n%v", x, t, u))
 	default:
 		panic(fmt.Errorf("%T\n%v\n%v", x, t, u))
 	}
@@ -843,6 +864,7 @@ func (t *PointerType) Equal(u Type) bool {
 	case
 		*ArrayType,
 		*FunctionType,
+		*StructType,
 		*TaggedStructType:
 
 		return false
@@ -909,7 +931,7 @@ func (t *PointerType) assign(ctx *context, op Operand) (r Operand) {
 
 		return Operand{Type: t, Value: Null}
 	default:
-		panic(fmt.Errorf("%v <- %v", t, op))
+		panic(fmt.Errorf("%v <- %v, %v %v", t, op, op.Type.IsPointerType(), t.IsCompatible(op.Type)))
 	}
 }
 
@@ -1000,6 +1022,7 @@ func (t *StructType) Equal(u Type) bool {
 	case *NamedType:
 		return t.Equal(x.Type)
 	case
+		*ArrayType,
 		*FunctionType,
 		*PointerType:
 

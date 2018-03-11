@@ -6,7 +6,7 @@ package ccgo
 
 //	TCC	cc 51 ccgo 51 build 51 run 51 ok 51
 //	Other	cc 9 ccgo 9 build 9 run 9 ok 9
-//	GCC	cc 1004 ccgo 978 build 963 run 963 ok 963
+//	GCC	cc 1021 ccgo 980 build 965 run 965 ok 965
 //	Shell	cc 1 ccgo 1 build 1 run 1 ok 1
 
 import (
@@ -389,11 +389,12 @@ func TestGCC(t *testing.T) {
 		"pr23467.c":       {}, // __attribute__ ((aligned (8)))
 		"pushpop_macro.c": {}, // #pragma push_macro("_")
 
-		"921016-1.c":  {}, //TODO bits, arithmetic precision
-		"bitfld-1.c":  {}, //TODO bits, arithmetic precision
-		"bitfld-3.c":  {}, //TODO bits, arithmetic precision
-		"pr32244-1.c": {}, //TODO bits, arithmetic precision
-		"pr34971.c":   {}, //TODO bits, arithmetic precision
+		"921016-1.c":                   {}, //TODO bits, arithmetic precision
+		"bitfld-1.c":                   {}, //TODO bits, arithmetic precision
+		"bitfld-3.c":                   {}, //TODO bits, arithmetic precision
+		"builtin-types-compatible-p.c": {}, //TODO must track type qualifiers
+		"pr32244-1.c":                  {}, //TODO bits, arithmetic precision
+		"pr34971.c":                    {}, //TODO bits, arithmetic precision
 	}
 
 	if s := *oRE; s != "" {
@@ -687,11 +688,74 @@ func TestTCL(t *testing.T) {
 		}
 	}()
 
-	var cc, ccgo, build, run, ok int
-	sqliteRoot := filepath.FromSlash("../../_sqlite")
-	tclRoot := filepath.FromSlash("../../_tcl8.6.8")
-	if out, err := test(t, false, &cc, &ccgo, &build, &run,
-		`
+	tweaks := &c99.Tweaks{
+		EnableAnonymousStructFields: true,
+		EnableEmptyStructs:          true,
+	}
+	fset := token.NewFileSet()
+	inc := []string{
+		ccir.LibcIncludePath,
+	}
+	sysInc := []string{ccir.LibcIncludePath}
+	crt0, err := translate(fset, tweaks, inc, sysInc, "", filepath.FromSlash(filepath.Join(ccir.LibcIncludePath, "crt0.c")))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tus := []*c99.TranslationUnit{crt0}
+
+	root := "../.."
+	tweaks = &c99.Tweaks{
+		EnableAnonymousStructFields: true,
+		EnableEmptyStructs:          true,
+	}
+	inc = []string{
+		".",
+		filepath.FromSlash(filepath.Join(root, "_tcl8.6.8/unix")),
+		filepath.FromSlash(filepath.Join(root, "_tcl8.6.8/generic")),
+		filepath.FromSlash(filepath.Join(root, "_tcl8.6.8/libtommath")),
+		ccir.LibcIncludePath,
+	}
+	sysInc = []string{
+		"@",
+		ccir.LibcIncludePath,
+	}
+	for _, v := range []string{
+		"_tcl8.6.8/unix/tclUnixFCmd.c",
+		"_tcl8.6.8/generic/tclIOUtil.c",
+		"_tcl8.6.8/unix/tclUnixFile.c", //TODO Windows: win/tclWinFile.c
+		"_tcl8.6.8/unix/tclUnixInit.c", //TODO Windows: win/tclWinInit.c
+		"_tcl8.6.8/generic/tclEvent.c",
+		"_tcl8.6.8/generic/tclResult.c",
+		"_tcl8.6.8/generic/tclVar.c",
+		"_tcl8.6.8/generic/tclBasic.c",
+		"_tcl8.6.8/generic/tclEncoding.c",
+	} {
+		tu, err := translate(fset, tweaks, inc, sysInc, `
+#define TCL_LIBRARY "\"/usr/local/lib/tcl8.6\""
+#define TCL_PACKAGE_PATH "\"/usr/local/lib64 /usr/local/lib \""
+#define HAVE_STRUCT_DIRENT64 1 //TODO 386
+#define HAVE_UNISTD_H 1
+	`,
+			filepath.FromSlash(filepath.Join(root, v)))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		tus = append(tus, tu)
+	}
+	tweaks = &c99.Tweaks{
+		EnableEmptyStructs: true,
+	}
+	inc = []string{
+		filepath.FromSlash(filepath.Join(root, "_sqlite/sqlite-amalgamation-3210000")),
+		ccir.LibcIncludePath,
+	}
+	for _, v := range []string{
+		"_sqlite/src/tclsqlite.c",
+		"_sqlite/sqlite-amalgamation-3210000/sqlite3.c",
+	} {
+		tu, err := translate(fset, tweaks, inc, sysInc, `
 #define HAVE_FDATASYNC 1
 #define HAVE_ISNAN 1
 #define HAVE_LOCALTIME_R 1
@@ -700,37 +764,51 @@ func TestTCL(t *testing.T) {
 #define SQLITE_DEBUG 1
 #define SQLITE_MEMDEBUG 1
 #define TCLSH 1
-		`,
-		`
-import "math"
-`,
-		[]string{
-			filepath.Join(sqliteRoot, "sqlite-amalgamation-3210000"),
-			filepath.Join(tclRoot, "generic"),
-			filepath.Join(tclRoot, "libtommath"),
-			filepath.Join(tclRoot, "unix"),
-		},
-		dir,
-		[]string{
-			filepath.Join(tclRoot, "unix", "tclUnixInit.c"),
-			filepath.Join(tclRoot, "generic", "tclEvent.c"),
-			filepath.Join(tclRoot, "generic", "tclResult.c"),
-			filepath.Join(tclRoot, "generic", "tclVar.c"),
-			filepath.Join(tclRoot, "generic", "tclBasic.c"),
-			filepath.Join(tclRoot, "generic", "tclEncoding.c"),
-			filepath.Join(sqliteRoot, "src", "tclsqlite.c"),
-			filepath.Join(sqliteRoot, "sqlite-amalgamation-3210000", "sqlite3.c"),
-		},
-		"TODO", //TODO
-	); err != nil {
-		t.Fatalf("%s: %v", out, err)
+	`,
+			filepath.FromSlash(filepath.Join(root, v)))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		tus = append(tus, tu)
+	}
+	f, err := os.Create(filepath.Join(dir, "main.go"))
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	if run == 1 {
-		ok++
+	w := bufio.NewWriter(f)
+	w.WriteString(`package main
+	
+import (
+	"os"
+	"unsafe"
+	"github.com/cznic/crt"
+)
+`)
+	if err := Command(w, tus); err != nil {
+		t.Fatal(err)
 	}
-	t.Logf("cc %v ccgo %v build %v run %v ok %v", cc, ccgo, build, run, ok)
-	if *oEdit {
-		fmt.Printf("Shell\tcc %v ccgo %v build %v run %v ok %v\n", cc, ccgo, build, run, ok)
+	if err := w.Flush(); err != nil {
+		t.Fatal(err)
 	}
+
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if out, err := exec.Command("go", "build", "-o", filepath.Join(dir, "main"), f.Name()).CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+}
+
+func translate(fset *token.FileSet, tweaks *c99.Tweaks, includePaths, sysIncludePaths []string, def string, sources ...string) (*c99.TranslationUnit, error) {
+	if traceTODO {
+		fmt.Println(sources)
+	}
+	in := []c99.Source{c99.NewStringSource("<predefine>", fmt.Sprintf(inject, runtime.GOOS, runtime.GOARCH, def))}
+	for _, v := range sources {
+		in = append(in, c99.NewFileSource(v))
+	}
+	return c99.Translate(fset, tweaks, includePaths, sysIncludePaths, in...)
 }

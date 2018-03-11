@@ -33,11 +33,12 @@ var (
 	bPanic           = []byte("panic")
 	dict             = xc.Dict
 
-	idAlloca   = dict.SID("__builtin_alloca")
-	idFuncName = dict.SID("__func__")
-	idMain     = dict.SID("main")
-	idStart    = dict.SID("_start")
-	idVaList   = dict.SID("va_list")
+	idAlloca                 = dict.SID("__builtin_alloca")
+	idBuiltinTypesCompatible = dict.SID("__builtin_types_compatible__") // Implements __builtin_types_compatible_p
+	idFuncName               = dict.SID("__func__")
+	idMain                   = dict.SID("main")
+	idStart                  = dict.SID("_start")
+	idVaList                 = dict.SID("va_list")
 
 	testFn      string
 	traceOpt    bool
