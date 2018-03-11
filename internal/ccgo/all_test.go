@@ -676,7 +676,6 @@ cc %v ccgo %v build %v run %v ok %v (%.2f%%) csmith %v (%v)
 }
 
 func TestTCL(t *testing.T) {
-	return //TODO-
 	dir, err := ioutil.TempDir("", "test-ccgo-tcl-")
 	if err != nil {
 		t.Fatal(err)

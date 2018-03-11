@@ -1540,6 +1540,7 @@ func AdjustedParameterType(t Type) Type {
 			case
 				Char,
 				Double,
+				LongDouble,
 				Float,
 				Int,
 				Long,

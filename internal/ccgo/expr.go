@@ -217,7 +217,7 @@ func (g *gen) void(n *c99.Expr) {
 				case g.voidCanIgnore(n.Expr2):
 					todo("", g.position0(n))
 				default:
-					todo("", g.position0(n))
+					g.void(n.Expr2)
 				}
 			}
 		case n.Expr.IsNonZero() && g.voidCanIgnore(n.Expr):

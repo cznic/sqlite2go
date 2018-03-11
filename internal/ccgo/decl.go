@@ -222,6 +222,7 @@ func (g *gen) escapedTLD(n *c99.Declarator) {
 		}
 	}
 
+	dbg("", g.position(n))
 	g.w("\nvar %s = bss + %d // %v \n", g.mangleDeclarator(n), g.allocBSS(n.Type), n.Type)
 	g.w("\n\nfunc init() { *(*%s)(unsafe.Pointer(%s)) = ", g.typ(n.Type), g.mangleDeclarator(n))
 	g.literal(n.Type, n.Initializer)
