@@ -57,7 +57,7 @@ func (g *gen) compoundStmt(n *c99.CompoundStmt, vars []*c99.Declarator, cases ma
 		g.w("\nesc := %sMustMalloc(%d)", crt, malloc)
 	}
 	if len(vars)+len(escParams) != 0 {
-		localNames := map[int]struct{}{}
+		localNames := map[int]struct{}{} //TODO use
 		num := 0
 		for _, v := range vars {
 			if v == allocaDeclarator {

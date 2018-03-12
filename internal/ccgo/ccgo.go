@@ -53,8 +53,6 @@ type gen struct {
 	fset                *token.FileSet
 	helpers             map[string]int
 	in                  []*c99.TranslationUnit
-	internalNames       map[int]struct{}          //TODO-?
-	internals           []map[int]*c99.Declarator //TODO-?
 	model               c99.Model
 	needBool2int        int
 	nextLabel           int
@@ -85,8 +83,6 @@ func newGen(out io.Writer, in []*c99.TranslationUnit) *gen {
 		externs:             map[int]*c99.Declarator{},
 		helpers:             map[string]int{},
 		in:                  in,
-		internalNames:       map[int]struct{}{},
-		internals:           make([]map[int]*c99.Declarator, len(in)),
 		nums:                map[*c99.Declarator]int{},
 		opaqueStructTags:    map[int]struct{}{},
 		out:                 out,
@@ -276,8 +272,6 @@ func (g *gen) w(s string, args ...interface{}) {
 
 func (g *gen) collectSymbols() error {
 	for unit, t := range g.in {
-		internal := map[int]*c99.Declarator{}
-		g.internals[unit] = internal
 		for nm, n := range t.FileScope.Idents {
 			switch x := n.(type) {
 			case *c99.Declarator:
@@ -321,16 +315,7 @@ func (g *gen) collectSymbols() error {
 
 					g.externs[nm] = x
 				case c99.LinkageInternal:
-					if _, ok := internal[nm]; ok {
-						todo("")
-					}
-
-					internal[nm] = x
-					if _, ok := g.internalNames[nm]; ok {
-						g.num++
-						g.nums[x] = g.num
-					}
-					g.internalNames[nm] = struct{}{}
+					// ok
 				case c99.LinkageNone:
 					if x.DeclarationSpecifier.IsTypedef() {
 						// nop ATM

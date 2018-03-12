@@ -722,6 +722,10 @@ func TestTCL(t *testing.T) {
 		ccir.LibcIncludePath,
 	}
 	for _, v := range []string{
+		"_tcl8.6.8/generic/tclCompExpr.c",
+		"_tcl8.6.8/generic/tclOOMethod.c",
+		"_tcl8.6.8/unix/tclUnixPipe.c", //TODO Windows: win/tclWinPipe.c
+		"_tcl8.6.8/generic/tclLoad.c",
 		"_tcl8.6.8/generic/tclFileName.c",
 		"_tcl8.6.8/generic/tclTimer.c",
 		"_tcl8.6.8/generic/tclScan.c",

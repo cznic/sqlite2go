@@ -460,6 +460,12 @@ func (t *ArrayType) IsCompatible(u Type) bool {
 		return true
 	case *PointerType:
 		return t.Size.Type == nil && t.Item.IsCompatible(x.Item)
+	case TypeKind:
+		if x.IsArithmeticType() {
+			return false
+		}
+
+		panic(fmt.Errorf("%T\n%v\n%v", x, t, u))
 	default:
 		panic(fmt.Errorf("%T\n%v\n%v", x, t, u))
 	}
@@ -869,12 +875,10 @@ func (t *PointerType) IsCompatible(u Type) bool {
 	var ai Type
 	switch x := UnderlyingType(t.Item).(type) {
 	case *ArrayType:
-		if x.Size.Type == nil {
-			ai = x.Item
-		}
+		ai = x.Item
 	}
 
-	switch x := u.(type) {
+	switch x := UnderlyingType(u).(type) {
 	case *ArrayType:
 		return t.Item.IsCompatible(x.Item)
 	case *NamedType:
