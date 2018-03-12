@@ -453,14 +453,13 @@ func (c *cpp) expand(r tokenReader, w tokenWriter, cs conds) conds {
 					m.repl[0].Val = dict.SID(fmt.Sprint(c.position(t).Line))
 				}
 				// ------------------------------------------ C
-				t.Rune = SENTINEL
-				r.unget(t)
+				c.hideSet[nm]++
 				toks := c.subst(m, nil)
 				for i, v := range toks {
 					toks[i].Char = lex.NewChar(t.Pos(), v.Rune)
 				}
-				c.hideSet[nm]++
 				r.ungets(c.sanitize(toks)...)
+				c.hideSet[nm]--
 				continue
 			}
 
@@ -572,7 +571,6 @@ func (c *cpp) actuals(m *macro, r tokenReader) (out [][]xc.Token) {
 }
 
 func (c *cpp) expands(toks []xc.Token) (out []xc.Token) {
-	//defer func(toks []xc.Token) { dbg("%v -> %v", toks, out) }(append([]xc.Token(nil), toks...))
 	var r, w tokenBuffer
 	r.toks = toks
 	c.expand(&r, &w, conds(nil).push(condZero))

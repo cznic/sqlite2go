@@ -10,6 +10,7 @@ import (
 	"go/scanner"
 	"io"
 	"runtime/debug"
+	"strings"
 
 	"github.com/cznic/strutil"
 	"github.com/cznic/xc"
@@ -169,4 +170,16 @@ func (n *Expr) dumpOperands(s string) {
 func isVaList(t Type) bool { //TODO export and use
 	x, ok := t.(*NamedType)
 	return ok && x.Name == idVaList
+}
+
+func toksDump(toks []xc.Token, sep string) string {
+	var a []string
+	for _, t := range toks {
+		if t.Rune == '\n' {
+			continue
+		}
+
+		a = append(a, TokSrc(t))
+	}
+	return strings.Join(a, sep)
 }
