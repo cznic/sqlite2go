@@ -33,6 +33,8 @@ more:
 			goto more
 		case *c99.NamedType:
 			g.defineNamedType(y)
+		case *c99.EnumType:
+			g.defineEnumType(y)
 		case *c99.TaggedEnumType:
 			g.defineTaggedEnumType(y)
 		case *c99.TaggedStructType:
@@ -52,6 +54,15 @@ func (g *gen) defineNamedType(t *c99.NamedType) {
 
 	g.producedNamedTypes[t.Name] = struct{}{}
 	g.w("\ntype %s = %s\n", g.typ(t), g.typ(t.Type))
+}
+
+func (g *gen) defineEnumType(t *c99.EnumType) {
+	switch {
+	case t.Tag == 0:
+		todo("", t)
+	default:
+		g.defineTaggedEnumType(&c99.TaggedEnumType{Tag: t.Tag, Type: t})
+	}
 }
 
 func (g *gen) defineTaggedEnumType(t *c99.TaggedEnumType) {

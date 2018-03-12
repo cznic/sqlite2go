@@ -326,6 +326,8 @@ func (m Model) Alignof(t Type) int {
 	switch x := t.(type) {
 	case *ArrayType:
 		return m.Alignof(x.Item)
+	case *EnumType:
+		return m.Alignof(x.Enums[0].Operand.Type)
 	case *NamedType:
 		return m.Alignof(x.Type)
 	case *PointerType:
@@ -347,6 +349,12 @@ func (m Model) Alignof(t Type) int {
 			}
 		}
 		return r
+	case *TaggedEnumType:
+		u := x.getType()
+		if u == x {
+			panic("TODO")
+		}
+		return m.Alignof(u)
 	case *TaggedStructType:
 		u := x.getType()
 		if u == x {
@@ -415,6 +423,12 @@ func (m Model) StructAlignof(t Type) int {
 			}
 		}
 		return r
+	case *TaggedEnumType:
+		u := x.getType()
+		if u == x {
+			panic("TODO")
+		}
+		return m.StructAlignof(u)
 	case *TaggedStructType:
 		u := x.getType()
 		if u == x {

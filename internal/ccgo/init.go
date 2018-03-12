@@ -184,6 +184,13 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 			}
 		}
 		g.w("}")
+	case *c99.EnumType:
+		switch n.Case {
+		case c99.InitializerExpr:
+			g.value(n.Expr, false)
+		default:
+			todo("", g.position0(n), n.Case)
+		}
 	case c99.TypeKind:
 		if x.IsArithmeticType() {
 			g.convert(n.Expr, t)

@@ -164,6 +164,8 @@ func (t TypeKind) IsScalarType() bool {
 		UShort:
 
 		return true
+	case Void:
+		return false
 	default:
 		panic(t)
 	}
@@ -241,6 +243,7 @@ func (t TypeKind) Equal(u Type) bool {
 		case
 			Char,
 			Int,
+			UInt,
 			Void:
 
 			return false
@@ -270,6 +273,7 @@ func (t TypeKind) Equal(u Type) bool {
 			ULong,
 			ULongLong,
 			UShort,
+			UChar,
 			Void:
 
 			return false
@@ -281,6 +285,7 @@ func (t TypeKind) Equal(u Type) bool {
 		case
 			Char,
 			Int,
+			UChar,
 			Void:
 
 			return false
@@ -507,7 +512,14 @@ func (t *ArrayType) Equal(u Type) bool {
 func (t *ArrayType) Kind() TypeKind { return Array }
 
 // assign implements Type.
-func (t *ArrayType) assign(ctx *context, op Operand) Operand { panic("TODO") }
+func (t *ArrayType) assign(ctx *context, op Operand) Operand {
+	switch {
+	case t.Size.Value == nil:
+		return (&PointerType{Item: t.Item}).assign(ctx, op)
+	default:
+		panic("TODO")
+	}
+}
 
 // IsPointerType implements Type.
 func (t *ArrayType) IsPointerType() bool { panic("TODO") }
@@ -531,6 +543,15 @@ func (t *ArrayType) String() string {
 type EnumType struct {
 	Tag   int
 	Enums []*EnumerationConstant
+}
+
+func (t *EnumType) find(nm int) *EnumerationConstant {
+	for _, v := range t.Enums {
+		if v.Token.Val == nm {
+			return v
+		}
+	}
+	return nil
 }
 
 // IsUnsigned implements Type.
@@ -568,7 +589,29 @@ func (t *EnumType) Equal(u Type) bool {
 		return true
 	}
 
-	panic("TODO")
+	switch x := UnderlyingType(u).(type) {
+	case *EnumType:
+		if t.Tag != x.Tag || len(t.Enums) != len(x.Enums) {
+			return false
+		}
+
+		for i, v := range t.Enums {
+			w := x.Enums[i]
+			if !v.Operand.Type.Equal(w.Operand.Type) || v.Operand.Value.(*ir.Int64Value).Value != w.Operand.Value.(*ir.Int64Value).Value {
+				return false
+			}
+		}
+
+		return true
+	case TypeKind:
+		if x.IsScalarType() {
+			return false
+		}
+
+		panic(fmt.Errorf("%v %T %v", t, x, x))
+	default:
+		panic(fmt.Errorf("%v %T %v", t, x, x))
+	}
 }
 
 // Kind implements Type.
@@ -752,6 +795,9 @@ func (t *NamedType) Equal(u Type) bool {
 		return x.Equal(t.Type)
 	case *StructType:
 		return t.Type.Equal(x)
+	case *TaggedEnumType:
+		v := x.getType()
+		return v != x && t.Type.Equal(v)
 	case *TaggedStructType:
 		v := x.getType()
 		return v != x && t.Type.Equal(v)
@@ -1094,7 +1140,7 @@ func (t *StructType) IsPointerType() bool { panic("TODO") }
 func (t *StructType) IsIntegerType() bool { return false }
 
 // IsScalarType implements Type.
-func (t *StructType) IsScalarType() bool { panic("TODO") }
+func (t *StructType) IsScalarType() bool { return false }
 
 func (t *StructType) String() string {
 	var buf bytes.Buffer
@@ -1124,9 +1170,14 @@ func (t *TaggedEnumType) IsUnsigned() bool { return t.Type.IsUnsigned() }
 
 // Equal implements Type.
 func (t *TaggedEnumType) Equal(u Type) bool {
-	switch x := u.(type) {
-	case *TaggedEnumType:
-		return t.Tag == x.Tag
+	switch x := UnderlyingType(u).(type) {
+	case *EnumType:
+		switch y := t.getType(); {
+		case y == t:
+			panic("TODO")
+		default:
+			return y.Equal(u)
+		}
 	case TypeKind:
 		switch x {
 		case Int:
@@ -1143,7 +1194,14 @@ func (t *TaggedEnumType) Equal(u Type) bool {
 func (t *TaggedEnumType) IsArithmeticType() bool { return true }
 
 // IsCompatible implements Type.
-func (t *TaggedEnumType) IsCompatible(u Type) bool { panic("TODO") }
+func (t *TaggedEnumType) IsCompatible(u Type) bool {
+	switch x := t.getType(); {
+	case x == t:
+		panic("TODO")
+	default:
+		return x.IsCompatible(u)
+	}
+}
 
 // IsIntegerType implements Type.
 func (t *TaggedEnumType) IsIntegerType() bool { return true }
@@ -1164,7 +1222,11 @@ func (t *TaggedEnumType) String() string { return fmt.Sprintf("enum %s", dict.S(
 
 // assign implements Type.
 func (t *TaggedEnumType) assign(ctx *context, op Operand) Operand {
-	switch x := op.Type.(type) {
+	switch x := UnderlyingType(op.Type).(type) {
+	case *EnumType:
+		//TODO use IsCompatible
+		op.Type = t
+		return op
 	case TypeKind:
 		switch x {
 		case
@@ -1432,7 +1494,15 @@ func (t *UnionType) IsCompatible(u Type) bool {
 		return true
 	}
 
-	panic("TODO")
+	switch x := UnderlyingType(u).(type) {
+	case TypeKind:
+		if x.IsScalarType() {
+			return false
+		}
+		panic(fmt.Errorf("%v %T %v", t, x, x))
+	default:
+		panic(fmt.Errorf("%v %T %v", t, x, x))
+	}
 }
 
 // Equal implements Type.
@@ -1497,7 +1567,7 @@ func (t *UnionType) IsPointerType() bool { panic("TODO") }
 func (t *UnionType) IsIntegerType() bool { return false }
 
 // IsScalarType implements Type.
-func (t *UnionType) IsScalarType() bool { panic("TODO") }
+func (t *UnionType) IsScalarType() bool { return false }
 
 func (t *UnionType) String() string {
 	var buf bytes.Buffer
@@ -1530,6 +1600,7 @@ func AdjustedParameterType(t Type) Type {
 			*EnumType,
 			*PointerType,
 			*StructType,
+			*TaggedEnumType,
 			*TaggedStructType,
 			*TaggedUnionType,
 			*UnionType:

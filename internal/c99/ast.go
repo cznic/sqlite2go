@@ -1418,7 +1418,8 @@ type Expr struct {
 	Declarator          *Declarator // Case Ident.
 	Operand             Operand
 	Scope               *Scope // Case Ident.
-	AssignedTo          bool   // Expression appears at the left side of assignment.
+	enum                *EnumType
+	AssignedTo          bool // Expression appears at the left side of assignment.
 	ArgumentExprListOpt *ArgumentExprListOpt
 	Case                ExprCase
 	CommaOpt            *CommaOpt

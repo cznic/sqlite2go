@@ -5,8 +5,8 @@
 package ccgo
 
 //	TCC	cc 51 ccgo 51 build 51 run 51 ok 51
-//	Other	cc 11 ccgo 11 build 11 run 11 ok 11
-//	GCC	cc 1025 ccgo 984 build 969 run 969 ok 969
+//	Other	cc 12 ccgo 12 build 12 run 12 ok 12
+//	GCC	cc 1036 ccgo 996 build 983 run 983 ok 983
 //	Shell	cc 1 ccgo 1 build 1 run 1 ok 1
 
 import (
@@ -390,11 +390,13 @@ func TestGCC(t *testing.T) {
 		"pushpop_macro.c": {}, // #pragma push_macro("_")
 
 		"921016-1.c":                   {}, //TODO bits, arithmetic precision
+		"970217-1.c":                   {}, //TODO VLA
 		"bitfld-1.c":                   {}, //TODO bits, arithmetic precision
 		"bitfld-3.c":                   {}, //TODO bits, arithmetic precision
 		"builtin-types-compatible-p.c": {}, //TODO must track type qualifiers
 		"pr32244-1.c":                  {}, //TODO bits, arithmetic precision
 		"pr34971.c":                    {}, //TODO bits, arithmetic precision
+		"pr77767.c":                    {}, //TODO VLA
 	}
 
 	if s := *oRE; s != "" {
@@ -676,7 +678,6 @@ cc %v ccgo %v build %v run %v ok %v (%.2f%%) csmith %v (%v)
 }
 
 func TestTCL(t *testing.T) {
-	return //TODO-
 	dir, err := ioutil.TempDir("", "test-ccgo-tcl-")
 	if err != nil {
 		t.Fatal(err)
@@ -711,7 +712,7 @@ func TestTCL(t *testing.T) {
 	}
 	inc = []string{
 		".",
-		filepath.FromSlash(filepath.Join(root, "_tcl8.6.8/unix")),
+		filepath.FromSlash(filepath.Join(root, "_tcl8.6.8/unix")), //TODO Windows
 		filepath.FromSlash(filepath.Join(root, "_tcl8.6.8/generic")),
 		filepath.FromSlash(filepath.Join(root, "_tcl8.6.8/libtommath")),
 		ccir.LibcIncludePath,
@@ -721,6 +722,53 @@ func TestTCL(t *testing.T) {
 		ccir.LibcIncludePath,
 	}
 	for _, v := range []string{
+		"_tcl8.6.8/generic/tclFileName.c",
+		"_tcl8.6.8/generic/tclTimer.c",
+		"_tcl8.6.8/generic/tclScan.c",
+		"_tcl8.6.8/generic/tclCompCmdsGR.c",
+		"_tcl8.6.8/generic/tclProc.c",
+		"_tcl8.6.8/generic/tclCompCmds.c",
+		"_tcl8.6.8/generic/tclThread.c",
+		"_tcl8.6.8/generic/tclAlloc.c",
+		"_tcl8.6.8/generic/tclNotify.c",
+		"_tcl8.6.8/generic/tclIO.c",
+		"_tcl8.6.8/generic/tclStrToD.c",
+		"_tcl8.6.8/generic/tclThreadStorage.c",
+		"_tcl8.6.8/generic/tclStringObj.c",
+		"_tcl8.6.8/generic/tclOO.c",
+		"_tcl8.6.8/generic/tclTomMathInterface.c",
+		"_tcl8.6.8/generic/tclPkg.c",
+		"_tcl8.6.8/generic/tclParse.c",
+		"_tcl8.6.8/generic/tclUtil.c",
+		"_tcl8.6.8/generic/tclTrace.c",
+		"_tcl8.6.8/generic/tclPkgConfig.c",
+		"_tcl8.6.8/generic/tclEnv.c",
+		"_tcl8.6.8/generic/tclAssembly.c",
+		"_tcl8.6.8/generic/tclDisassemble.c",
+		"_tcl8.6.8/generic/tclClock.c",
+		"_tcl8.6.8/generic/tclIndexObj.c",
+		"_tcl8.6.8/generic/tclCmdMZ.c",
+		"_tcl8.6.8/generic/tclCmdIL.c",
+		"_tcl8.6.8/generic/tclCmdAH.c",
+		"_tcl8.6.8/generic/tclDictObj.c",
+		"_tcl8.6.8/generic/tclIOCmd.c",
+		"_tcl8.6.8/generic/tclBinary.c",
+		"_tcl8.6.8/generic/tclInterp.c",
+		"_tcl8.6.8/generic/tclEnsemble.c",
+		"_tcl8.6.8/generic/tclAsync.c",
+		"_tcl8.6.8/generic/tclCompCmdsSZ.c",
+		"_tcl8.6.8/generic/tclExecute.c",
+		"_tcl8.6.8/generic/tclNamesp.c",
+		"_tcl8.6.8/unix/tclUnixThrd.c", //TODO Windows: win/tclWinThrd.c
+		"_tcl8.6.8/generic/tclLiteral.c",
+		"_tcl8.6.8/generic/tclListObj.c",
+		"_tcl8.6.8/generic/tclCompile.c",
+		"_tcl8.6.8/generic/tclOptimize.c",
+		"_tcl8.6.8/generic/tclPreserve.c",
+		"_tcl8.6.8/generic/tclObj.c",
+		"_tcl8.6.8/generic/tclCkalloc.c",
+		"_tcl8.6.8/generic/tclHash.c",
+		"_tcl8.6.8/generic/tclPanic.c",
 		"_tcl8.6.8/unix/tclUnixFCmd.c",
 		"_tcl8.6.8/generic/tclIOUtil.c",
 		"_tcl8.6.8/unix/tclUnixFile.c", //TODO Windows: win/tclWinFile.c
@@ -732,10 +780,21 @@ func TestTCL(t *testing.T) {
 		"_tcl8.6.8/generic/tclEncoding.c",
 	} {
 		tu, err := translate(fset, tweaks, inc, sysInc, `
-#define TCL_LIBRARY "\"/usr/local/lib/tcl8.6\""
-#define TCL_PACKAGE_PATH "\"/usr/local/lib64 /usr/local/lib \""
+#define	CFG_INSTALL_BINDIR "\"/usr/local/bin\""
+#define	CFG_INSTALL_DOCDIR "\"/usr/local/man\""
+#define	CFG_INSTALL_INCDIR "\"usr/local/include\""
+#define	CFG_INSTALL_LIBDIR "\"/usr/local/lib64\"" //TODO hardcoded for linux_amd64
+#define	CFG_INSTALL_SCRDIR "\"/usr/local/bin/lib/tcl8.6.8\""
+#define	CFG_RUNTIME_BINDIR "\"/usr/local/bin\""
+#define	CFG_RUNTIME_DOCDIR "\"/usr/local/man\""
+#define	CFG_RUNTIME_INCDIR "\"usr/local/include\""
+#define	CFG_RUNTIME_LIBDIR "\"/usr/local/lib64\"" //TODO hardcoded for linux_amd64
+#define	CFG_RUNTIME_SCRDIR "\"/usr/local/bin/lib/tcl8.6.8\""
 #define HAVE_STRUCT_DIRENT64 1 //TODO 386
 #define HAVE_UNISTD_H 1
+#define TCL_CFGVAL_ENCODING "iso8859-1"
+#define TCL_LIBRARY "\"/usr/local/lib/tcl8.6\""
+#define TCL_PACKAGE_PATH "\"/usr/local/lib64 /usr/local/lib \""
 	`,
 			filepath.FromSlash(filepath.Join(root, v)))
 		if err != nil {

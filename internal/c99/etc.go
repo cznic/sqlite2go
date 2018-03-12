@@ -183,3 +183,35 @@ func toksDump(toks []xc.Token, sep string) string {
 	}
 	return strings.Join(a, sep)
 }
+
+func prefer(t Type) bool {
+	for {
+		switch x := UnderlyingType(t).(type) {
+		case *ArrayType:
+			return x.Size.Type != nil
+		case
+			*EnumType,
+			*FunctionType,
+			*StructType:
+
+			return true
+		case *PointerType:
+			t = x.Item
+		case *TaggedStructType:
+			return x.Type != nil
+		case TypeKind:
+			if x.IsScalarType() {
+				return true
+			}
+
+			switch x {
+			case Void:
+				return true
+			default:
+				panic(x)
+			}
+		default:
+			panic(x)
+		}
+	}
+}

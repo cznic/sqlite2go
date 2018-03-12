@@ -391,6 +391,28 @@ func (o Operand) ConvertTo(m Model, t Type) (r Operand) {
 		}
 	}
 
+	if o.Type.Kind() == Float {
+		v := o.Value.(*ir.Float32Value).Value
+		if t.IsIntegerType() {
+			return Operand{Type: t, Value: &ir.Int64Value{Value: ConvertFloat64(float64(v), t, m)}}.normalize(m)
+		}
+
+		switch x := t.(type) {
+		case TypeKind:
+			switch x {
+			case
+				Double,
+				LongDouble:
+
+				return Operand{Type: t, Value: &ir.Float64Value{Value: float64(v)}}.normalize(m)
+			default:
+				panic(x)
+			}
+		default:
+			panic(x)
+		}
+	}
+
 	if o.isPointerType() && t.IsPointerType() {
 		o.Type = t
 		return o.normalize(m)

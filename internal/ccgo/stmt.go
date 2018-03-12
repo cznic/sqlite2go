@@ -201,8 +201,8 @@ func (g *gen) labeledStmt(n *c99.LabeledStmt, cases map[*c99.LabeledStmt]int, br
 func (g *gen) selectionStmt(n *c99.SelectionStmt, cases map[*c99.LabeledStmt]int, brk, cont *int, deadcode *bool) {
 	switch n.Case {
 	case c99.SelectionStmtSwitch: // "switch" '(' ExprList ')' Stmt
-		if n.ExprList.Operand.Value != nil {
-			todo("")
+		if n.ExprList.Operand.Value != nil && g.voidCanIgnoreExprList(n.ExprList) {
+			//TODO optimize
 		}
 		g.w("\nswitch ")
 		switch el := n.ExprList; {

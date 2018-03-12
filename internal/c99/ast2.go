@@ -393,6 +393,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			case
 				Char,
 				Double,
+				Float,
 				Int,
 				Long,
 				LongDouble,
@@ -688,6 +689,10 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		}
 	case ExprEq: // Expr "==" Expr
 		lhs := n.Expr.eval(ctx, arr2ptr, fn)
+		switch x := UnderlyingType(lhs.Type).(type) {
+		case *EnumType:
+			n.Expr2.enum = x
+		}
 		rhs := n.Expr2.eval(ctx, arr2ptr, fn)
 		n.Operand.Type = Int
 		if n.Expr.Equals(n.Expr2) {
@@ -1037,6 +1042,10 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 				n.Operand.Type = d.Type
 			}
 		}
+		switch x := UnderlyingType(n.Operand.Type).(type) {
+		case *EnumType:
+			n.Expr2.enum = x
+		}
 		n.Operand.Type.assign(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
 	case ExprGt: // Expr '>' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).gt(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
@@ -1144,15 +1153,25 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 	case ExprIdent: // IDENTIFIER
 		// [0]6.5.1
 		nm := n.Token.Val
-		if n.Scope.LookupIdent(nm) == nil && ctx.tweaks.EnableImplicitBuiltins {
-			nm2 := dict.SID("__builtin_" + string(dict.S(nm)))
-			if n.Scope.LookupIdent(nm2) != nil {
-				nm = nm2
-			} else {
-				if !ctx.tweaks.EnableImplicitDeclarations {
-					panic(fmt.Errorf("%v", ctx.position(n)))
+		if n.Scope.LookupIdent(nm) == nil {
+			if n.enum != nil {
+				if c := n.enum.find(nm); c != nil {
+					n.Operand = c.Operand
+					return n.Operand
 				}
 			}
+
+			if ctx.tweaks.EnableImplicitBuiltins {
+				nm2 := dict.SID("__builtin_" + string(dict.S(nm)))
+				if n.Scope.LookupIdent(nm2) != nil {
+					nm = nm2
+				} else {
+					if !ctx.tweaks.EnableImplicitDeclarations {
+						panic(fmt.Errorf("%v", ctx.position(n)))
+					}
+				}
+			}
+
 		}
 		switch x := n.Scope.LookupIdent(nm).(type) {
 		case *Declarator:
@@ -1921,6 +1940,17 @@ func (n *Initializer) check(ctx *context, t Type, fn *Declarator) (r Operand) {
 				return Operand{}
 			}
 
+			if t.Kind() == Union {
+				x := UnderlyingType(t).(*UnionType)
+				if x.Fields[0].Type.Kind() == Array && n.Expr.IsZero() {
+					return op
+				}
+
+				if x.Fields[0].Type.IsCompatible(op.Type) {
+					return op
+				}
+			}
+
 			panic(ctx.position(n))
 		}
 
@@ -2147,6 +2177,11 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 					if !(n.Name() == idMain && n.scope.Parent == nil && n.Type.Kind() == Function) {
 						panic(ctx.position(n))
 					}
+					break
+				}
+
+				if prefer(n.Type) || !prefer(ex.Type) {
+					n.scope.Idents[nm] = n
 				}
 			default:
 				panic(n.Linkage)

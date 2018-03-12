@@ -268,6 +268,7 @@ import (
 			//yy:field	Declarator	*Declarator	// Case Ident.
 			//yy:field	Operand		Operand
 			//yy:field	Scope		*Scope		// Case Ident.
+			//yy:field	enum		*EnumType
 			//yy:field	AssignedTo	bool		// Expression appears at the left side of assignment.
 /*yy:case PreInc     */ Expr:
                         	"++" Expr

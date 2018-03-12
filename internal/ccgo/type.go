@@ -32,8 +32,14 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool, lvl int) (r string) {
 
 	defer func() { g.tCache[k] = r }()
 
-	if ptr2uintptr && t.Kind() == c99.Ptr && !isVaList(t) {
-		if _, ok := t.(*c99.NamedType); !ok {
+	if ptr2uintptr {
+		if t.Kind() == c99.Ptr && !isVaList(t) {
+			if _, ok := t.(*c99.NamedType); !ok {
+				return "uintptr"
+			}
+		}
+
+		if x, ok := t.(*c99.ArrayType); ok && x.Size.Value == nil {
 			return "uintptr"
 		}
 	}
@@ -127,6 +133,7 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool, lvl int) (r string) {
 			return g.typ(x.Enums[0].Operand.Type)
 		}
 
+		g.enqueue(x)
 		return fmt.Sprintf("E%s", dict.S(x.Tag))
 	case *c99.TaggedEnumType:
 		g.enqueue(x)
@@ -183,19 +190,25 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool, lvl int) (r string) {
 
 func prefer(t c99.Type) bool {
 	for {
-		switch x := t.(type) {
+		switch x := c99.UnderlyingType(t).(type) {
 		case *c99.ArrayType:
 			return x.Size.Type != nil
 		case *c99.PointerType:
 			t = x.Item
+		case
+			*c99.EnumType,
+			*c99.StructType:
+
+			return true
 		case *c99.TaggedStructType:
 			return x.Type != nil
 		case c99.TypeKind:
-			switch x {
-			case
-				c99.Char,
-				c99.Void:
+			if x.IsScalarType() {
+				return true
+			}
 
+			switch x {
+			case c99.Void:
 				return true
 			default:
 				todo("", x)

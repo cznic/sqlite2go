@@ -208,40 +208,18 @@ func (g *gen) void(n *c99.Expr) {
 		case n.Expr.IsNonZero() && g.voidCanIgnore(n.Expr):
 			g.exprList(n.ExprList, true)
 		default:
-			switch {
-			case g.voidCanIgnoreExprList(n.ExprList):
-				switch {
-				case g.voidCanIgnore(n.Expr2):
-					todo("", g.position0(n))
-				default:
-					// if expr == 0 {
-					//	expr2
-					// }
-					g.w("if ")
-					g.value(n.Expr, false)
-					g.w(" == 0 {")
-					g.void(n.Expr2)
-					g.w("}")
-				}
-			default:
-				switch {
-				case g.voidCanIgnore(n.Expr2):
-					todo("", g.position0(n))
-				default:
-					// if expr != 0 {
-					//	exprList
-					// } else {
-					//	expr2
-					// }
-					g.w("if ")
-					g.value(n.Expr, false)
-					g.w(" != 0 {")
-					g.exprList(n.ExprList, true)
-					g.w("} else {")
-					g.void(n.Expr2)
-					g.w("}")
-				}
-			}
+			// if expr != 0 {
+			//	exprList
+			// } else {
+			//	expr2
+			// }
+			g.w("if ")
+			g.value(n.Expr, false)
+			g.w(" != 0 {")
+			g.exprList(n.ExprList, true)
+			g.w("} else {")
+			g.void(n.Expr2)
+			g.w("}")
 		}
 	case c99.ExprLAnd: // Expr "&&" Expr
 		if n.Expr.IsZero() && g.voidCanIgnore(n.Expr) {
