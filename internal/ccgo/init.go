@@ -136,10 +136,12 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 				if l.Designation != nil {
 					todo("", g.position0(n))
 				}
-				g.w("%d: ", index)
-				g.literal(x.Item, l.Initializer)
-				g.w(", ")
-				g.initializerListNL(n.InitializerList)
+				if !g.isZeroInitializer(l.Initializer) {
+					g.w("%d: ", index)
+					g.literal(x.Item, l.Initializer)
+					g.w(", ")
+					g.initializerListNL(n.InitializerList)
+				}
 				index++
 			}
 		}
@@ -175,11 +177,13 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 				case layout[fld].Bits > 0:
 					todo("bit field %v", g.position0(n))
 				}
-				d := fields[fld]
-				g.w("%s: ", mangleIdent(d.Name, true))
-				g.literal(d.Type, l.Initializer)
-				g.w(", ")
-				g.initializerListNL(n.InitializerList)
+				if !g.isZeroInitializer(l.Initializer) {
+					d := fields[fld]
+					g.w("%s: ", mangleIdent(d.Name, true))
+					g.literal(d.Type, l.Initializer)
+					g.w(", ")
+					g.initializerListNL(n.InitializerList)
+				}
 				fld++
 			}
 		}
@@ -198,12 +202,18 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 		}
 		todo("", g.position0(n), x)
 	case *c99.UnionType:
+		// *(*struct{ X int32 })(unsafe.Pointer(&struct{int32}{int32(1)})),
 		if n.Expr != nil {
 			todo("", g.position0(n), x)
 			return
 		}
 
-		g.w("%s{", g.typ(t))
+		if g.isZeroInitializer(n) {
+			g.w("%s{}", g.typ(t))
+			return
+		}
+
+		g.w("*(*%s)(unsafe.Pointer(&struct{", g.typ(t))
 		if !g.isZeroInitializer(n) {
 			layout := g.model.Layout(t)
 		more2:
@@ -223,15 +233,19 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 				if fld != 0 {
 					todo("", g.position0(n))
 				}
+
 				d := fields[fld]
-				g.w("%s: ", mangleIdent(d.Name, true))
+				switch pad := g.model.Sizeof(t) - g.model.Sizeof(d.Type); {
+				case pad == 0:
+					g.w("%s}{", g.typ(d.Type))
+				default:
+					g.w("f %s; _[%d]byte}{f: ", g.typ(d.Type), pad)
+				}
 				g.literal(d.Type, l.Initializer)
-				g.w(", ")
-				g.initializerListNL(n.InitializerList)
 				fld++
 			}
 		}
-		g.w("}")
+		g.w("}))")
 	default:
 		todo("%v: %T", g.position0(n), x)
 	}

@@ -2642,6 +2642,7 @@ func (n *StructDeclaration) check(ctx *context, field *int) []Field {
 	case StructDeclarationAnon: // SpecifierQualifierList ';'
 		ds := &DeclarationSpecifier{}
 		n.SpecifierQualifierList.check(ctx, ds)
+		*field++
 		return []Field{{Type: ds.typ()}}
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
