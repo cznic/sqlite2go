@@ -211,7 +211,11 @@ func main() {
 `,
 		),
 	)
-	sqliteSource := c99.NewFileSource(filepath.Join(repo, filepath.FromSlash("_sqlite/sqlite-amalgamation-3210000/sqlite3.c")))
+	sqliteSource, err := c99.NewFileSource(filepath.Join(repo, filepath.FromSlash("_sqlite/sqlite-amalgamation-3210000/sqlite3.c")))
+	if err != nil {
+		exit(1, "%s", errString(err))
+	}
+
 	sqlite, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, sqliteSource)
 	if err != nil {
 		exit(1, "%s", errString(err))
@@ -219,13 +223,21 @@ func main() {
 
 	switch {
 	case opts.shell:
-		crt0Source := c99.NewFileSource(filepath.Join(ccir.LibcIncludePath, "crt0.c"))
+		crt0Source, err := c99.NewFileSource(filepath.Join(ccir.LibcIncludePath, "crt0.c"))
+		if err != nil {
+			exit(1, "%s", errString(err))
+		}
+
 		crt0, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, crt0Source)
 		if err != nil {
 			exit(1, "%s", errString(err))
 		}
 
-		shellSource := c99.NewFileSource(filepath.Join(repo, filepath.FromSlash("_sqlite/sqlite-amalgamation-3210000/shell.c")))
+		shellSource, err := c99.NewFileSource(filepath.Join(repo, filepath.FromSlash("_sqlite/sqlite-amalgamation-3210000/shell.c")))
+		if err != nil {
+			exit(1, "%s", errString(err))
+		}
+
 		shell, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, shellSource)
 		if err != nil {
 			exit(1, "%s", errString(err))

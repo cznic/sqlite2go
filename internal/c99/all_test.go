@@ -465,8 +465,17 @@ func testCPPParseSource(ctx *context, src Source) (*cpp, tokenReader, error) {
 	return c, r, nil
 }
 
+func mustFileSource(nm string) *FileSource {
+	src, err := NewFileSource(nm)
+	if err != nil {
+		panic(fmt.Errorf("%v: %v", nm, err))
+	}
+
+	return src
+}
+
 func testCPPParseFile(ctx *context, nm string) (*cpp, tokenReader, error) {
-	return testCPPParseSource(ctx, NewFileSource(nm))
+	return testCPPParseSource(ctx, mustFileSource(nm))
 }
 
 func testCPPParseString(ctx *context, name, src string) (*cpp, tokenReader, error) {
@@ -623,7 +632,7 @@ func TestPreprocessSQLite(t *testing.T) {
 	cpp := newCPP(ctx)
 	cpp.includePaths = []string{"@", ccir.LibcIncludePath}
 	cpp.sysIncludePaths = []string{ccir.LibcIncludePath}
-	r, err := cpp.parse(NewStringSource("<builtin>", builtin), NewFileSource(sqlite3c))
+	r, err := cpp.parse(NewStringSource("<builtin>", builtin), mustFileSource(sqlite3c))
 	if err != nil {
 		t.Fatalf("%v: %v", sqlite3c, err)
 	}
@@ -662,7 +671,7 @@ func TestParseSQLite(t *testing.T) {
 	if _, err := ctx.parse(
 		[]Source{
 			NewStringSource("<builtin>", fmt.Sprintf(inj, runtime.GOARCH, runtime.GOOS, predef)),
-			NewFileSource(sqlite3c),
+			mustFileSource(sqlite3c),
 		},
 	); err != nil {
 		t.Fatalf("%v", errString(err))
@@ -751,7 +760,7 @@ func TestTypecheckSQLite(t *testing.T) {
 		[]string{"@", ccir.LibcIncludePath},
 		[]string{ccir.LibcIncludePath},
 		NewStringSource("<builtin>", fmt.Sprintf(inj, runtime.GOARCH, runtime.GOOS, predef)),
-		NewFileSource(sqlite3c),
+		mustFileSource(sqlite3c),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -767,8 +776,8 @@ func TestTypecheckSQLiteShell(t *testing.T) {
 		[]string{"@", ccir.LibcIncludePath},
 		[]string{ccir.LibcIncludePath},
 		NewStringSource("<builtin>", fmt.Sprintf(inj, runtime.GOARCH, runtime.GOOS, predef)),
-		NewFileSource(filepath.Join(ccir.LibcIncludePath, "crt0.c")),
-		NewFileSource(shellc),
+		mustFileSource(filepath.Join(ccir.LibcIncludePath, "crt0.c")),
+		mustFileSource(shellc),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -800,8 +809,8 @@ func TestTypecheckTCCTests(t *testing.T) {
 			[]string{"@", ccir.LibcIncludePath},
 			[]string{ccir.LibcIncludePath},
 			NewStringSource("<builtin>", fmt.Sprintf(inj, runtime.GOARCH, runtime.GOOS, predef)),
-			NewFileSource(filepath.Join(ccir.LibcIncludePath, "crt0.c")),
-			NewFileSource(pth),
+			mustFileSource(filepath.Join(ccir.LibcIncludePath, "crt0.c")),
+			mustFileSource(pth),
 		); err != nil {
 			t.Fatal(err)
 		}

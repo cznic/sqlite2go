@@ -6,7 +6,7 @@ package ccgo
 
 //	TCC	cc 51 ccgo 51 build 51 run 51 ok 51
 //	Other	cc 12 ccgo 12 build 12 run 12 ok 12
-//	GCC	cc 1036 ccgo 996 build 983 run 983 ok 983
+//	GCC	cc 1034 ccgo 996 build 983 run 983 ok 983
 //	Shell	cc 1 ccgo 1 build 1 run 1 ok 1
 
 import (
@@ -126,6 +126,15 @@ func trim(b []byte) []byte {
 	return bytes.Join(a, []byte{'\n'})
 }
 
+func mustFileSource(nm string) *c99.FileSource {
+	src, err := c99.NewFileSource(nm)
+	if err != nil {
+		panic(fmt.Errorf("%v: %v", nm, err))
+	}
+
+	return src
+}
+
 func test(t *testing.T, clean bool, cc, ccgo, build, run *int, def, imp string, inc2 []string, dir string, pth []string, args ...string) ([]byte, error) {
 	testFn = pth[len(pth)-1]
 	if clean {
@@ -156,14 +165,14 @@ func test(t *testing.T, clean bool, cc, ccgo, build, run *int, def, imp string, 
 	sysInc := []string{ccir.LibcIncludePath, "@"}
 
 	predefSource := c99.NewStringSource("<predefine>", fmt.Sprintf(inject, runtime.GOOS, runtime.GOARCH, def))
-	crt0, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, c99.NewFileSource(filepath.Join(ccir.LibcIncludePath, "crt0.c")))
+	crt0, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, mustFileSource(filepath.Join(ccir.LibcIncludePath, "crt0.c")))
 	if err != nil {
 		return nil, err
 	}
 
 	tus := []*c99.TranslationUnit{crt0}
 	for _, v := range pth {
-		tu, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, c99.NewFileSource(v))
+		tu, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, mustFileSource(v))
 		if err != nil {
 			if !*oCC {
 				err = nil
@@ -871,7 +880,7 @@ func translate(fset *token.FileSet, tweaks *c99.Tweaks, includePaths, sysInclude
 	}
 	in := []c99.Source{c99.NewStringSource("<predefine>", fmt.Sprintf(inject, runtime.GOOS, runtime.GOARCH, def))}
 	for _, v := range sources {
-		in = append(in, c99.NewFileSource(v))
+		in = append(in, mustFileSource(v))
 	}
 	return c99.Translate(fset, tweaks, includePaths, sysIncludePaths, in...)
 }

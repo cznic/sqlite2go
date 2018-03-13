@@ -126,7 +126,15 @@ var (
 
 	// Parser debug hook.
 	YYDebug = &yyDebug
+
+	cache   = map[cacheKey][]uint32{}
+	cacheMu sync.Mutex
 )
+
+type cacheKey struct {
+	name  string
+	mtime int64
+}
 
 // TranslationUnit represents a translation unit, see [0]6.9.
 type TranslationUnit struct {
@@ -352,44 +360,74 @@ type FileSource struct {
 	*bufio.Reader
 	f    *os.File
 	path string
+	key  cacheKey
+	size int64
 }
 
 // NewFileSource returns a newly created *FileSource reading from name.
-func NewFileSource(name string) *FileSource { return &FileSource{path: name} }
+func NewFileSource(name string) (*FileSource, error) {
+	f, err := os.Open(name)
+	if err != nil {
+		return nil, err
+	}
+
+	r := &FileSource{f: f, path: name}
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	r.size = fi.Size()
+	r.key = cacheKey{name, fi.ModTime().UnixNano()}
+	return r, nil
+}
 
 // Cache implements Source.
-func (s *FileSource) Cache([]uint32) {}
+func (s *FileSource) Cache(a []uint32) {
+	cacheMu.Lock()
+	if len(cache) > 500 {
+		for k := range cache {
+			delete(cache, k)
+			break
+		}
+	}
+	cache[s.key] = a
+	cacheMu.Unlock()
+}
 
 // Cached implements Source.
-func (s *FileSource) Cached() []uint32 { return nil }
+func (s *FileSource) Cached() (r []uint32) {
+	cacheMu.Lock()
+	var ok bool
+	r, ok = cache[s.key]
+	cacheMu.Unlock()
+	if ok {
+		s.Close()
+	}
+	return r
+}
 
 // Close implements io.ReadCloser.
-func (s *FileSource) Close() error { return s.f.Close() }
+func (s *FileSource) Close() error {
+	if f := s.f; f != nil {
+		s.f = nil
+		return f.Close()
+	}
+
+	return nil
+}
 
 // Name implements Source.
 func (s *FileSource) Name() string { return s.path }
 
 // ReadCloser implements Source.
 func (s *FileSource) ReadCloser() (io.ReadCloser, error) {
-	f, err := os.Open(s.path)
-	if err != nil {
-		return nil, err
-	}
-
-	s.f = f
-	s.Reader = bufio.NewReader(f)
+	s.Reader = bufio.NewReader(s.f)
 	return s, nil
 }
 
 // Size implements Source.
-func (s *FileSource) Size() (int64, error) {
-	fi, err := os.Stat(s.path)
-	if err != nil {
-		return 0, err
-	}
-
-	return fi.Size(), nil
-}
+func (s *FileSource) Size() (int64, error) { return s.size, nil }
 
 // StringSource is a Source reading from a string.
 type StringSource struct {

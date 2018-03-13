@@ -1065,7 +1065,13 @@ func (c *cpp) include(n Node, nm string, paths []string, w tokenWriter) {
 		panic(fmt.Errorf("%v: %q %q", c.position(n), nm, paths))
 	}
 
-	r, err := c.parse(NewFileSource(path))
+	s, err := NewFileSource(path)
+	if err != nil {
+		c.err(n, "%s", err.Error())
+		return
+	}
+
+	r, err := c.parse(s)
 	if err != nil {
 		c.err(n, "%s", err.Error())
 	}
