@@ -120,6 +120,10 @@ into the unit in which the previous bit- field, if any, was placed.
 
 */
 
+const (
+	cacheSize = 500
+)
+
 var (
 	_ Source = (*FileSource)(nil)
 	_ Source = (*StringSource)(nil)
@@ -127,13 +131,20 @@ var (
 	// Parser debug hook.
 	YYDebug = &yyDebug
 
-	cache   = map[cacheKey][]uint32{}
+	cache   = make(map[cacheKey][]uint32, cacheSize)
 	cacheMu sync.Mutex
 )
 
 type cacheKey struct {
 	name  string
 	mtime int64
+}
+
+// FlushCache removes all items in the file cache used by instances of FileSource.
+func FlushCache() {
+	cacheMu.Lock()
+	cache = make(map[cacheKey][]uint32, cacheSize)
+	cacheMu.Unlock()
 }
 
 // TranslationUnit represents a translation unit, see [0]6.9.
@@ -385,7 +396,7 @@ func NewFileSource(name string) (*FileSource, error) {
 // Cache implements Source.
 func (s *FileSource) Cache(a []uint32) {
 	cacheMu.Lock()
-	if len(cache) > 500 {
+	if len(cache) > cacheSize {
 		for k := range cache {
 			delete(cache, k)
 			break

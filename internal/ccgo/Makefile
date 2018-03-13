@@ -38,6 +38,7 @@ editor:
 	GOOS=windows GOARCH=386 go build
 	GOOS=windows GOARCH=amd64 go build
 	go test -i
+	cp log log0 || true
 	go test -timeout 1h -edit 2>&1 | tee log
 	go install github.com/cznic/sqlite2go
 

@@ -5,8 +5,8 @@
 package ccgo
 
 //	TCC	cc 51 ccgo 51 build 51 run 51 ok 51
-//	Other	cc 12 ccgo 12 build 12 run 12 ok 12
-//	GCC	cc 1034 ccgo 996 build 983 run 983 ok 983
+//	Other	cc 13 ccgo 13 build 13 run 13 ok 13
+//	GCC	cc 1035 ccgo 997 build 984 run 984 ok 984
 //	Shell	cc 1 ccgo 1 build 1 run 1 ok 1
 
 import (
@@ -253,6 +253,7 @@ import (
 }
 
 func TestTCC(t *testing.T) {
+	c99.FlushCache()
 	blacklist := map[string]struct{}{
 		"13_integer_literals.c": {}, // 9:12: ExprInt strconv.ParseUint: parsing "0b010101010101": invalid syntax
 		"31_args.c":             {},
@@ -326,6 +327,7 @@ func TestTCC(t *testing.T) {
 }
 
 func TestOther(t *testing.T) {
+	c99.FlushCache()
 	if s := *oRE; s != "" {
 		re = regexp.MustCompile(s)
 	}
@@ -388,6 +390,7 @@ func TestOther(t *testing.T) {
 }
 
 func TestGCC(t *testing.T) {
+	c99.FlushCache()
 	const def = `
 #define SIGNAL_SUPPRESS // gcc.c-torture/execute/20101011-1.c
 `
@@ -474,6 +477,7 @@ func TestGCC(t *testing.T) {
 }
 
 func TestSQLiteShell(t *testing.T) {
+	c99.FlushCache()
 	dir, err := ioutil.TempDir("", "test-ccgo-shell-")
 	if err != nil {
 		t.Fatal(err)
@@ -521,6 +525,7 @@ import "math"
 }
 
 func TestCSmith(t *testing.T) {
+	c99.FlushCache()
 	csmith, err := exec.LookPath("csmith")
 	if err != nil {
 		t.Logf("%v: skipping test", err)
@@ -687,6 +692,7 @@ cc %v ccgo %v build %v run %v ok %v (%.2f%%) csmith %v (%v)
 }
 
 func TestTCL(t *testing.T) {
+	c99.FlushCache()
 	dir, err := ioutil.TempDir("", "test-ccgo-tcl-")
 	if err != nil {
 		t.Fatal(err)

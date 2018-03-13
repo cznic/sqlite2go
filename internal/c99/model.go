@@ -143,12 +143,14 @@ func (m Model) Sizeof(t Type) int64 {
 
 // FieldProperties describe a struct/union field.
 type FieldProperties struct {
-	Bitoff     int   // Zero based bit number of a bitfield
-	Bits       int   // Width of a bit field or zero otherwise.
+	Bitoff     int // Zero based bit number of a bitfield
+	Bits       int // Width of a bit field or zero otherwise.
+	Declarator *Declarator
 	Offset     int64 // Byte offset relative to start of the struct/union.
-	Size       int64 // Field size for copying.
-	Padding    int   // Adjustment to enforce proper alignment.
 	PackedType Type  // Bits != 0: Storage type holding the bit field.
+	Padding    int   // Adjustment to enforce proper alignment.
+	Size       int64 // Field size for copying.
+	Type       Type
 }
 
 func (f *FieldProperties) Mask() uint64 {
@@ -181,14 +183,14 @@ func (m Model) Layout(t Type) (r []FieldProperties) {
 			case v.Bits != 0:
 				switch {
 				case bitoff == 0 && v.Bits > 0:
-					r[i] = FieldProperties{Offset: off, Bitoff: bitoff, Bits: v.Bits}
+					r[i] = FieldProperties{Offset: off, Bitoff: bitoff, Bits: v.Bits, Declarator: v.Declarator, Type: v.Type}
 					bitoff = v.Bits
 				default:
 					if v.Bits < 0 {
 						if n := m.packBits(bitoff, i-1, off, r); bitoff != 0 {
 							off = n
 						}
-						r[i] = FieldProperties{Offset: off, Bits: -1}
+						r[i] = FieldProperties{Offset: off, Bits: -1, Declarator: v.Declarator, Type: v.Type}
 						bitoff = 0
 						break
 					}
@@ -196,12 +198,12 @@ func (m Model) Layout(t Type) (r []FieldProperties) {
 					n := bitoff + v.Bits
 					if n > 32 {
 						off = m.packBits(bitoff, i-1, off, r)
-						r[i] = FieldProperties{Offset: off, Bits: v.Bits}
+						r[i] = FieldProperties{Offset: off, Bits: v.Bits, Declarator: v.Declarator, Type: v.Type}
 						bitoff = v.Bits
 						break
 					}
 
-					r[i] = FieldProperties{Offset: off, Bitoff: bitoff, Bits: v.Bits}
+					r[i] = FieldProperties{Offset: off, Bitoff: bitoff, Bits: v.Bits, Declarator: v.Declarator, Type: v.Type}
 					bitoff = n
 				}
 			default:
@@ -218,7 +220,7 @@ func (m Model) Layout(t Type) (r []FieldProperties) {
 				if off != z {
 					r[i-1].Padding = int(off - z)
 				}
-				r[i] = FieldProperties{Offset: off, Size: sz}
+				r[i] = FieldProperties{Offset: off, Size: sz, Declarator: v.Declarator, Type: v.Type}
 				off += sz
 			}
 		}
@@ -258,18 +260,20 @@ func (m Model) Layout(t Type) (r []FieldProperties) {
 			return x.layout
 		}
 
-		r := make([]FieldProperties, len(x.Fields))
+		defer func() { x.layout = r }()
+
+		r = make([]FieldProperties, len(x.Fields))
 		for i, v := range x.Fields {
 			switch {
 			case v.Bits < 0:
 				m.packBits(v.Bits, i, 0, r)
 			case v.Bits > 0:
-				r[i] = FieldProperties{Bits: v.Bits}
+				r[i] = FieldProperties{Bits: v.Bits, Declarator: v.Declarator, Type: v.Type}
 				m.packBits(v.Bits, i, 0, r)
 				x.Fields[i].PackedType = r[i].PackedType
 			default:
 				sz := m.Sizeof(v.Type)
-				r[i] = FieldProperties{Size: sz, Bits: v.Bits}
+				r[i] = FieldProperties{Size: sz, Bits: v.Bits, Declarator: v.Declarator, Type: v.Type}
 			}
 		}
 		for i, v := range r {

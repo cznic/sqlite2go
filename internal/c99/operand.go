@@ -214,9 +214,16 @@ func UsualArithmeticConversions(m Model, a, b Operand) (Operand, Operand) {
 type Operand struct {
 	Type Type
 	ir.Value
-	Bits       int  // Non zero: bit field width.
-	PackedType Type // Bits != 0: Storage type holding the bit field.
-	Bitoff     int  // Bits != 0: bit field offset
+	FieldProperties *FieldProperties
+}
+
+// Bits return the width of a bit field operand or zero othewise
+func (o *Operand) Bits() int {
+	if fp := o.FieldProperties; fp != nil {
+		return fp.Bits
+	}
+
+	return 0
 }
 
 func newIntConst(ctx *context, n Node, v uint64, t ...TypeKind) (r Operand) {
@@ -240,8 +247,11 @@ func newIntConst(ctx *context, n Node, v uint64, t ...TypeKind) (r Operand) {
 	return Operand{Type: Int}.normalize(ctx.model)
 }
 
+func (o Operand) String() string {
+	return fmt.Sprintf("(%v, %v, %+v)", o.Type, o.Value, o.FieldProperties)
+}
+
 func (o Operand) isArithmeticType() bool { return o.Type.IsArithmeticType() }
-func (o Operand) String() string         { return fmt.Sprintf("(%v, %v)", o.Type, o.Value) }
 func (o Operand) isIntegerType() bool    { return o.Type.IsIntegerType() }
 func (o Operand) isPointerType() bool    { return o.Type.IsPointerType() }
 func (o Operand) isScalarType() bool     { return o.Type.IsScalarType() } // [0]6.2.5-21
@@ -599,15 +609,15 @@ func (o Operand) integerPromotion(m Model) Operand {
 		case *TaggedEnumType:
 			t = x.getType().(*EnumType).Enums[0].Operand.Type
 		case TypeKind:
-			if x.IsIntegerType() && o.Bits != 0 {
+			if x.IsIntegerType() && o.Bits() != 0 {
 				bits := m[Int].Size * 8
 				switch {
 				case x.IsUnsigned():
-					if o.Bits < bits {
+					if o.Bits() < bits {
 						return o.ConvertTo(m, Int)
 					}
 				default:
-					if o.Bits < bits-1 {
+					if o.Bits() < bits-1 {
 						return o.ConvertTo(m, Int)
 					}
 				}

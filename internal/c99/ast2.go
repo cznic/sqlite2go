@@ -633,17 +633,14 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			case *NamedType:
 				t = x.Type
 			case *StructType:
-				nm := n.Token2.Val
-				d0, ok := x.scope.Idents[nm]
-				if !ok {
+				ctx.model.Layout(x)
+				fp := x.Field(n.Token2.Val)
+				if fp == nil {
 					panic(ctx.position(n))
 				}
-				d := d0.(*Declarator)
-				fp := ctx.model.Layout(x)[d.Field]
-				n.Operand = Operand{Type: x.Fields[d.Field].Type}
-				n.Operand.Bits = x.Fields[d.Field].Bits
-				n.Operand.PackedType = fp.PackedType
-				n.Operand.Bitoff = fp.Bitoff
+
+				n.Operand = Operand{Type: fp.Declarator.Type}
+				n.Operand.FieldProperties = fp
 				if op.Value == Null {
 					n.Operand.Value = &ir.Int64Value{Value: fp.Offset}
 				}
@@ -654,17 +651,14 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 					panic(fmt.Errorf("%v: %q", ctx.position(n), dict.S(x.Tag)))
 				}
 			case *UnionType:
-				nm := n.Token2.Val
-				d0, ok := x.scope.Idents[nm]
-				if !ok {
+				ctx.model.Layout(x)
+				fp := x.Field(n.Token2.Val)
+				if fp == nil {
 					panic(ctx.position(n))
 				}
-				d := d0.(*Declarator)
-				fp := ctx.model.Layout(x)[d.Field]
-				n.Operand = Operand{Type: x.Fields[d.Field].Type}
-				n.Operand.Bits = x.Fields[d.Field].Bits
-				n.Operand.PackedType = fp.PackedType
-				n.Operand.Bitoff = fp.Bitoff
+
+				n.Operand = Operand{Type: fp.Declarator.Type}
+				n.Operand.FieldProperties = fp
 				if op.Value == Null {
 					n.Operand.Value = &ir.Int64Value{}
 				}
@@ -973,18 +967,14 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			case *NamedType:
 				t = x.Type
 			case *StructType:
-				nm := n.Token2.Val
-				d0, ok := x.scope.Idents[nm]
-				if !ok {
+				ctx.model.Layout(x)
+				fp := x.Field(n.Token2.Val)
+				if fp == nil {
 					panic(ctx.position(n))
 				}
-				d := d0.(*Declarator)
-				f := x.Fields[d.Field]
-				fp := ctx.model.Layout(x)[d.Field]
-				n.Operand = Operand{Type: f.Type}
-				n.Operand.Bits = f.Bits
-				n.Operand.PackedType = fp.PackedType
-				n.Operand.Bitoff = fp.Bitoff
+
+				n.Operand = Operand{Type: fp.Declarator.Type}
+				n.Operand.FieldProperties = fp
 				if d := n.Expr.Declarator; d != nil && (n.Operand.Type.Kind() == Array || fp.Bits != 0) {
 					d.AddressTaken = true
 				}
@@ -994,26 +984,24 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 				if x == y {
 					panic("TODO")
 				}
+
 				t = y
 			case *TaggedUnionType:
 				y := x.getType()
 				if x == y {
 					panic("TODO")
 				}
+
 				t = y
 			case *UnionType:
-				nm := n.Token2.Val
-				d0, ok := x.scope.Idents[nm]
-				if !ok {
+				ctx.model.Layout(x)
+				fp := x.Field(n.Token2.Val)
+				if fp == nil {
 					panic(ctx.position(n))
 				}
-				d := d0.(*Declarator)
-				f := x.Fields[d.Field]
-				fp := ctx.model.Layout(x)[d.Field]
-				n.Operand = Operand{Type: f.Type}
-				n.Operand.Bits = f.Bits
-				n.Operand.PackedType = fp.PackedType
-				n.Operand.Bitoff = fp.Bitoff
+
+				n.Operand = Operand{Type: fp.Declarator.Type}
+				n.Operand.FieldProperties = fp
 				if d := n.Expr.Declarator; d != nil && (n.Operand.Type.Kind() == Array || fp.Bits != 0) {
 					d.AddressTaken = true
 				}
@@ -2615,16 +2603,16 @@ func (n *StructOrUnionSpecifier) check(ctx *context) {
 		}
 		switch n.StructOrUnion.Case {
 		case StructOrUnionStruct:
-			n.typ = &StructType{Tag: tag}
+			n.typ = &StructType{structBase{Tag: tag}}
 		default:
 			panic(ctx.position(n))
 		}
 	case StructOrUnionSpecifierDefine: // StructOrUnion IdentifierOpt '{' StructDeclarationList '}'
 		switch n.StructOrUnion.Case {
 		case StructOrUnionStruct:
-			n.typ = &StructType{Tag: tag, Fields: n.StructDeclarationList.check(ctx), scope: n.scope}
+			n.typ = &StructType{structBase{Tag: tag, Fields: n.StructDeclarationList.check(ctx), scope: n.scope}}
 		default:
-			n.typ = &UnionType{Tag: tag, Fields: n.StructDeclarationList.check(ctx), scope: n.scope}
+			n.typ = &UnionType{structBase{Tag: tag, Fields: n.StructDeclarationList.check(ctx), scope: n.scope}}
 		}
 		if n.IdentifierOpt != nil {
 			n.scope.Parent.insertStructTag(ctx, n)
@@ -2671,7 +2659,7 @@ func (n *StructDeclaratorList) check(ctx *context, ds *DeclarationSpecifier, fie
 func (n *StructDeclarator) check(ctx *context, ds *DeclarationSpecifier, field int) Field {
 	switch n.Case {
 	case StructDeclaratorBase: // Declarator
-		f := Field{Type: n.Declarator.check(ctx, ds, ds.typ(), false, nil, nil), Name: n.Declarator.Name()}
+		f := Field{Type: n.Declarator.check(ctx, ds, ds.typ(), false, nil, nil), Name: n.Declarator.Name(), Declarator: n.Declarator}
 		n.Declarator.IsField = true
 		n.Declarator.Field = field
 		return f
@@ -2705,7 +2693,7 @@ func (n *StructDeclarator) check(ctx *context, ds *DeclarationSpecifier, field i
 		if d != nil {
 			d.Bits = n.Bits
 		}
-		return Field{Type: t, Name: nm, Bits: n.Bits}
+		return Field{Type: t, Name: nm, Bits: n.Bits, Declarator: d}
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	}

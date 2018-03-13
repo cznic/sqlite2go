@@ -25,7 +25,14 @@ var (
 	_ Type = (*TaggedEnumType)(nil)
 	_ Type = (*UnionType)(nil)
 	_ Type = TypeKind(0)
+
+	_ fieldFinder = (*StructType)(nil)
+	_ fieldFinder = (*UnionType)(nil)
 )
+
+type fieldFinder interface {
+	findField(int) *FieldProperties
+}
 
 // Type represents a C type.
 type Type interface {
@@ -644,9 +651,10 @@ func (t *EnumType) String() string {
 // Field represents a struct/union field.
 type Field struct {
 	Bits       int
+	Declarator *Declarator
 	Name       int
-	Type       Type
 	PackedType Type // Bits != 0: underlaying struct field type
+	Type       Type
 }
 
 func (f Field) equal(g Field) bool {
@@ -996,27 +1004,49 @@ func (t *PointerType) IsScalarType() bool { return true }
 
 func (t *PointerType) String() string { return fmt.Sprintf("pointer to %v", t.Item) }
 
-// StructType represents a struct type.
-type StructType struct {
+type structBase struct {
 	Fields []Field
 	Tag    int
 	scope  *Scope
 	layout []FieldProperties
-	//TODO cache layout, size, alignment, struct alignment.
 }
+
+func (s *structBase) findField(nm int) *FieldProperties {
+	fps := s.layout
+	if x, ok := s.scope.Idents[nm].(*Declarator); ok {
+		return &fps[x.Field]
+	}
+
+	for _, v := range fps {
+		if v.Declarator != nil {
+			continue
+		}
+
+		x, ok := v.Type.(fieldFinder)
+		if !ok {
+			continue
+		}
+
+		if fp := x.findField(nm); fp != nil {
+			r := *fp
+			r.Offset += v.Offset
+			return &r
+		}
+	}
+	return nil
+}
+
+// StructType represents a struct type.
+type StructType struct{ structBase }
+
+func (t *StructType) names() map[int]Node      { return t.scope.Idents }
+func (t *StructType) props() []FieldProperties { return t.layout }
 
 // IsUnsigned implements Type.
 func (t *StructType) IsUnsigned() bool { panic("TODO") }
 
-// Field returns the declarator of field nm.
-func (t *StructType) Field(nm int) *Declarator {
-	switch x := t.scope.Idents[nm].(type) {
-	case *Declarator:
-		return x
-	default:
-		panic(fmt.Errorf("%T", x))
-	}
-}
+// Field returns the properties of field nm or nil if the field does not exist.
+func (t *StructType) Field(nm int) *FieldProperties { return t.findField(nm) }
 
 // IsVoidPointerType implements Type.
 func (t *StructType) IsVoidPointerType() bool { panic("TODO") }
@@ -1376,23 +1406,13 @@ func (t *TaggedStructType) IsScalarType() bool { return false }
 func (t *TaggedStructType) String() string { return fmt.Sprintf("struct %s", dict.S(t.Tag)) }
 
 // UnionType represents a union type.
-type UnionType struct {
-	Fields []Field
-	Tag    int
-	scope  *Scope
-	layout []FieldProperties
-	//TODO cache size, alignment, struct alignment.
-}
+type UnionType struct{ structBase }
 
-// Field returns the declarator of field nm.
-func (t *UnionType) Field(nm int) *Declarator {
-	switch x := t.scope.Idents[nm].(type) {
-	case *Declarator:
-		return x
-	default:
-		panic(fmt.Errorf("%T", x))
-	}
-}
+func (t *UnionType) names() map[int]Node      { return t.scope.Idents }
+func (t *UnionType) props() []FieldProperties { return t.layout }
+
+// Field returns the properties of field nm or nil if the field does not exist.
+func (t *UnionType) Field(nm int) *FieldProperties { return t.findField(nm) }
 
 // IsUnsigned implements Type.
 func (t *UnionType) IsUnsigned() bool { panic("TODO") }
