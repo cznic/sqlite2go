@@ -195,6 +195,7 @@ func main() {
 	tweaks := &c99.Tweaks{
 		EnableAnonymousStructFields: true,
 		EnableEmptyStructs:          true,
+		IgnorePragmas:               true,
 		InjectFinalNL:               true,
 	}
 	inc := []string{"@", ccir.LibcIncludePath}
