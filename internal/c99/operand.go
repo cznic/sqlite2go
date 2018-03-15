@@ -973,7 +973,7 @@ func ConvertInt64(n int64, t Type, m Model) int64 {
 		t = x.Enums[0].Operand.Type
 	}
 	signed := !t.IsUnsigned()
-	switch sz := m[t.Kind()].Size; sz {
+	switch sz := m[UnderlyingType(t).Kind()].Size; sz {
 	case 1:
 		switch {
 		case signed:
@@ -1013,7 +1013,7 @@ func ConvertInt64(n int64, t Type, m Model) int64 {
 	case 8:
 		return n
 	default:
-		panic(fmt.Errorf("TODO %v", sz))
+		panic(fmt.Errorf("TODO %v %T %v", sz, t, t))
 	}
 }
 func (o Operand) normalize(m Model) (r Operand) {

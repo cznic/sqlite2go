@@ -87,6 +87,9 @@ func (d *DeclarationSpecifier) typ() Type {
 					case *TaggedUnionType:
 						x.getType()
 						return r
+					case *TaggedEnumType:
+						x.getType()
+						return r
 					case TypeKind:
 						switch x {
 						case
@@ -188,6 +191,8 @@ func (d *DeclarationSpecifier) typ() Type {
 		return ULongLong
 	case d.is(TypeSpecifierShort, TypeSpecifierUnsigned):
 		return UShort
+	case d.is(TypeSpecifierShort, TypeSpecifierSigned):
+		return Short
 	default:
 		panic(d.typeSpecifiers)
 	}
@@ -1120,8 +1125,10 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			n.Operand = Operand{Type: t.Item}
 		case *PointerType:
 			n.Operand = Operand{Type: t.Item}
+		case *NamedType:
+			n.Operand = Operand{Type: t.Type}
 		default:
-			panic(ctx.position(n))
+			panic(fmt.Errorf("%v: %T", ctx.position(n), t))
 		}
 		if !index.isIntegerType() {
 			panic("TODO")
@@ -2163,7 +2170,7 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 			case LinkageExternal:
 				if !ex.Type.IsCompatible(n.Type) {
 					if !(n.Name() == idMain && n.scope.Parent == nil && n.Type.Kind() == Function) {
-						panic(ctx.position(n))
+						panic(fmt.Errorf("%v: %v\n%v: %v", ctx.position(ex), ex.Type, ctx.position(n), n.Type))
 					}
 					break
 				}

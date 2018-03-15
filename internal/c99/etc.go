@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"go/scanner"
 	"io"
+	"os"
 	"runtime/debug"
 	"strings"
 
@@ -214,4 +215,12 @@ func prefer(t Type) bool {
 			panic(x)
 		}
 	}
+}
+
+func env(key, val string) string {
+	if s := os.Getenv(key); s != "" {
+		return s
+	}
+
+	return val
 }

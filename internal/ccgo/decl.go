@@ -73,7 +73,7 @@ func (g *gen) defineTaggedEnumType(t *c99.TaggedEnumType) {
 	g.producedEnumTags[t.Tag] = struct{}{}
 	et := t.Type.(*c99.EnumType)
 	tag := dict.S(t.Tag)
-	g.w("\ntype E%s %s\n", tag, g.typ(et.Enums[0].Operand.Type))
+	g.w("\ntype E%s = %s\n", tag, g.typ(et.Enums[0].Operand.Type))
 	g.w("\nconst (")
 	var iota int64
 	for i, v := range et.Enums {

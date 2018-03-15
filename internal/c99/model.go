@@ -51,17 +51,22 @@ func newModel() (m Model, err error) {
 			Ptr:  {4, 4, 4},
 		}, nil
 	case "amd64":
-		return Model{
+		var longLength = 8
+		if env("GOOS", runtime.GOOS) == "windows" {
+			longLength = 4
+		}
+
+		model := Model{
 			Bool:      {1, 1, 1},
 			Char:      {1, 1, 1},
 			Int:       {4, 4, 4},
-			Long:      {8, 8, 8},
+			Long:      {longLength, longLength, longLength},
 			LongLong:  {8, 8, 8},
 			SChar:     {1, 1, 1},
 			Short:     {2, 2, 2},
 			UChar:     {1, 1, 1},
 			UInt:      {4, 4, 4},
-			ULong:     {8, 8, 8},
+			ULong:     {longLength, longLength, longLength},
 			ULongLong: {8, 8, 8},
 			UShort:    {2, 2, 2},
 
@@ -75,7 +80,9 @@ func newModel() (m Model, err error) {
 
 			Void: {1, 1, 1},
 			Ptr:  {8, 8, 8},
-		}, nil
+		}
+
+		return model, nil
 	default:
 		return nil, fmt.Errorf("unknown/unsupported architecture %s", arch)
 	}

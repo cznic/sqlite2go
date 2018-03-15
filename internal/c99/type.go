@@ -355,7 +355,7 @@ func (t TypeKind) Equal(u Type) bool {
 		}
 	case *UnionType:
 		switch t {
-		case Void:
+		case Void, UChar:
 			return false
 		default:
 			panic(t)
@@ -1039,9 +1039,6 @@ func (s *structBase) findField(nm int) *FieldProperties {
 // StructType represents a struct type.
 type StructType struct{ structBase }
 
-func (t *StructType) names() map[int]Node      { return t.scope.Idents }
-func (t *StructType) props() []FieldProperties { return t.layout }
-
 // IsUnsigned implements Type.
 func (t *StructType) IsUnsigned() bool { panic("TODO") }
 
@@ -1408,9 +1405,6 @@ func (t *TaggedStructType) String() string { return fmt.Sprintf("struct %s", dic
 // UnionType represents a union type.
 type UnionType struct{ structBase }
 
-func (t *UnionType) names() map[int]Node      { return t.scope.Idents }
-func (t *UnionType) props() []FieldProperties { return t.layout }
-
 // Field returns the properties of field nm or nil if the field does not exist.
 func (t *UnionType) Field(nm int) *FieldProperties { return t.findField(nm) }
 
@@ -1664,13 +1658,14 @@ func UnderlyingType(t Type) Type {
 		switch x := t.(type) {
 		case
 			*ArrayType,
-			*EnumType,
 			*FunctionType,
 			*PointerType,
 			*StructType,
 			*UnionType:
 
 			return x
+		case *EnumType:
+			return x.Enums[0].Operand.Type
 		case *NamedType:
 			if x.Type == nil {
 				return x

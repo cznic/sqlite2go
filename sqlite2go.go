@@ -201,15 +201,23 @@ func main() {
 	inc := []string{"@", ccir.LibcIncludePath}
 	sysInc := []string{ccir.LibcIncludePath}
 	repo := findRepo()
+
+	var additionalInject string
+	if env("GOOS", runtime.GOOS) != "windows" {
+		additionalInject += "#define HAVE_LOCALTIME_R 1"
+	} else {
+		additionalInject += "#define SQLITE_SHELL_IS_UTF8 1"
+	}
+
 	predefSource := c99.NewStringSource(
 		"<predefine>",
 		fmt.Sprintf(
 			inject, env("GOARCH", runtime.GOARCH), env("GOOS", runtime.GOOS), strings.Join(opts.D, "\n"), `
 #define HAVE_FDATASYNC 1
 #define HAVE_ISNAN 1
-#define HAVE_LOCALTIME_R 1
 #define HAVE_USLEEP 1
-`,
+#define __typeof__ typeof
+`+additionalInject,
 		),
 	)
 	sqliteSource, err := c99.NewFileSource(filepath.Join(repo, filepath.FromSlash("_sqlite/sqlite-amalgamation-3210000/sqlite3.c")))
