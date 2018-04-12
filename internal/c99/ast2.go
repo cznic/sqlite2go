@@ -746,8 +746,11 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 
 				n.Operand = Operand{Type: fp.Declarator.Type}
 				n.Operand.FieldProperties = fp
-				if d := n.Expr.Declarator; d != nil && (n.Operand.Type.Kind() == Array || fp.Bits != 0) {
-					d.AddressTaken = true
+				if d := n.Expr.Declarator; d != nil {
+					n.Declarator = d
+					if n.Operand.Type.Kind() == Array || fp.Bits != 0 {
+						d.AddressTaken = true
+					}
 				}
 				break out3
 			case *TaggedStructType:
@@ -773,8 +776,11 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 
 				n.Operand = Operand{Type: fp.Declarator.Type}
 				n.Operand.FieldProperties = fp
-				if d := n.Expr.Declarator; d != nil && (n.Operand.Type.Kind() == Array || fp.Bits != 0) {
-					d.AddressTaken = true
+				if d := n.Expr.Declarator; d != nil {
+					n.Declarator = d
+					if n.Operand.Type.Kind() == Array || fp.Bits != 0 {
+						d.AddressTaken = true
+					}
 				}
 				break out3
 			default:

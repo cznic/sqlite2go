@@ -19,7 +19,7 @@ package ccgo
 //	GCC	cc 1107 ccgo 1089 build 1087 run 1087 ok 1087
 //	Shell	cc 1 ccgo 1 build 1 run 1 ok 1
 //	--- FAIL: TestTCL (3241.93s)
-//		all_test.go:1354: 
+//		all_test.go:1354:
 //			Test cases:   260473
 //			Pass:         259499 (99.63%)
 //			Fail:            974 (0.37%)
@@ -34,7 +34,7 @@ package ccgo
 //			! autovacuum-1.1.3 expected: [4]
 //			! autovacuum-1.1.3 got:      [16]
 //			... too many fails
-//		all_test.go:1362: 
+//		all_test.go:1362:
 //			Test binary exit error: exit status 1
 //			Last completed test file: "Time: selectC.test 199 ms"
 //			Last passed test: "no_optimization.selectC-5.3... Ok"
@@ -1819,9 +1819,10 @@ out:
 			"--bitfields",            // --bitfields | --no-bitfields: enable | disable full-bitfields structs (disabled by default).
 			"--no-const-pointers",    // --const-pointers | --no-const-pointers: enable | disable const pointers (enabled by default).
 			"--no-consts",            // --consts | --no-consts: enable | disable const qualifier (enabled by default).
-			"--paranoid",             // --paranoid | --no-paranoid: enable | disable pointer-related assertions (disabled by default).
+			"--no-packed-struct",     // --packed-struct | --no-packed-struct: enable | disable packed structs by adding #pragma pack(1) before struct definition (disabled by default).
 			"--no-volatile-pointers", // --volatile-pointers | --no-volatile-pointers: enable | disable volatile pointers (enabled by default).
 			"--no-volatiles",         // --volatiles | --no-volatiles: enable | disable volatiles (enabled by default).
+			"--paranoid",             // --paranoid | --no-paranoid: enable | disable pointer-related assertions (disabled by default).
 		).Output()
 		if err != nil {
 			t.Fatalf("%v\n%s", err, out)
