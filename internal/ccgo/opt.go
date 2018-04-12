@@ -26,7 +26,10 @@ type opt struct {
 	out          io.Writer
 	out0         bytes.Buffer
 	used         map[string]struct{}
-	write        bool
+
+	forceBool2int bool
+	noBool2int    bool
+	write         bool
 }
 
 func newOpt() *opt { return &opt{} }
@@ -68,7 +71,7 @@ func (o *opt) do(out io.Writer, in io.Reader, fn string, needBool2int int) error
 		return err
 	}
 
-	if o.needBool2int != 0 {
+	if o.needBool2int != 0 && !o.noBool2int || o.forceBool2int {
 		_, err = o.Write([]byte(`
 func bool2int(b bool) int32 {
 	if b {
@@ -175,9 +178,18 @@ func (o *opt) blockStmt(n *ast.BlockStmt, outermost bool) {
 
 func (o *opt) body(l0 *[]ast.Stmt) {
 	l := *l0
+	w := 0
 	for i := range l {
 		o.stmt(&l[i])
+		switch x := l[i].(type) {
+		case *ast.EmptyStmt:
+			// nop
+		default:
+			l[w] = x
+			w++
+		}
 	}
+	*l0 = l[:w]
 }
 
 func (o *opt) stmt(n *ast.Stmt) {
@@ -234,6 +246,18 @@ func (o *opt) stmt(n *ast.Stmt) {
 		o.expr(&x.Cond, true)
 		o.blockStmt(x.Body, false)
 		o.stmt(&x.Else)
+		if len(x.Body.List) == 0 {
+			x.Cond = o.not(x.Cond)
+			switch y := x.Else.(type) {
+			case *ast.BlockStmt:
+				x.Body.List = y.List
+			case nil:
+				// ok
+			default:
+				panic(fmt.Errorf("%T", y))
+			}
+			x.Else = nil
+		}
 	case *ast.IncDecStmt:
 		o.expr(&x.X, true)
 	case *ast.LabeledStmt:

@@ -31,11 +31,45 @@ var (
 	isTesting bool // Test hook
 )
 
+const (
+	mainSrc = `
+func main() {
+	psz := unsafe.Sizeof(uintptr(0))
+	argv := crt.MustCalloc((len(os.Args) + 1) * int(psz))
+	p := argv
+	for _, v := range os.Args {
+		*(*uintptr)(unsafe.Pointer(p)) = %[1]sCString(v)
+		p += psz
+	}
+	a := os.Environ()
+	env := crt.MustCalloc((len(a) + 1) * int(psz))
+	p = env
+	for _, v := range a {
+		*(*uintptr)(unsafe.Pointer(p)) = %[1]sCString(v)
+		p += psz
+	}
+	*(*uintptr)(unsafe.Pointer(Xenviron)) = env
+	X_start(%[1]sNewTLS(), int32(len(os.Args)), argv)
+}
+`
+	compactStack = 30
+)
+
 // Command outputs a Go program generated from in to w.
 //
 // No package or import clause is generated.
 func Command(w io.Writer, in []*c99.TranslationUnit) (err error) {
-	return newGen(w, in).gen(true)
+	returned := false
+
+	defer func() {
+		if e := recover(); !returned && err == nil {
+			err = fmt.Errorf("PANIC: %v\n%s", e, compact(string(debugStack()), compactStack))
+		}
+	}()
+
+	err = newGen(w, in).gen(true)
+	returned = true
+	return err
 }
 
 // Package outputs a Go package generated from in to w.
@@ -46,32 +80,39 @@ func Package(w io.Writer, in []*c99.TranslationUnit) error {
 }
 
 type gen struct {
-	bss                 int64
-	ds                  []byte
-	errs                scanner.ErrorList
-	externs             map[int]*c99.Declarator
-	fset                *token.FileSet
-	helpers             map[string]int
-	in                  []*c99.TranslationUnit
-	model               c99.Model
-	needBool2int        int
-	nextLabel           int
-	num                 int
-	nums                map[*c99.Declarator]int
-	opaqueStructTags    map[int]struct{}
-	out                 io.Writer
-	out0                bytes.Buffer
-	producedDeclarators map[*c99.Declarator]struct{}
-	producedEnumTags    map[int]struct{}
-	producedNamedTypes  map[int]struct{}
-	producedStructTags  map[int]struct{}
-	queue               list.List
-	strings             map[int]int64
-	tCache              map[tCacheKey]string
-	text                []int
-	ts                  int64
-	units               map[*c99.Declarator]int
+	bss                    int64
+	ds                     []byte
+	enqueued               map[interface{}]struct{}
+	errs                   scanner.ErrorList
+	externs                map[int]*c99.Declarator
+	filenames              map[string]struct{}
+	fset                   *token.FileSet
+	helpers                map[string]int
+	in                     []*c99.TranslationUnit
+	incompleteExternArrays map[int]*c99.Declarator
+	initializedExterns     map[int]struct{}
+	model                  c99.Model
+	needBool2int           int
+	nextLabel              int
+	num                    int
+	nums                   map[*c99.Declarator]int
+	opaqueStructTags       map[int]struct{}
+	out                    io.Writer
+	out0                   bytes.Buffer
+	producedDeclarators    map[*c99.Declarator]struct{}
+	producedEnumTags       map[int]struct{}
+	producedExterns        map[int]struct{}
+	producedStructTags     map[int]struct{}
+	queue                  list.List
+	staticDeclarators      map[int]*c99.Declarator
+	strings                map[int]int64
+	tCache                 map[tCacheKey]string
+	text                   []int
+	ts                     int64
+	units                  map[*c99.Declarator]int
 
+	escAllTLDs bool
+	mainFn     bool
 	needAlloca bool
 	needNZ32   bool //TODO -> crt
 	needNZ64   bool //TODO -> crt
@@ -80,23 +121,33 @@ type gen struct {
 
 func newGen(out io.Writer, in []*c99.TranslationUnit) *gen {
 	return &gen{
-		externs:             map[int]*c99.Declarator{},
-		helpers:             map[string]int{},
-		in:                  in,
-		nums:                map[*c99.Declarator]int{},
-		opaqueStructTags:    map[int]struct{}{},
-		out:                 out,
-		producedDeclarators: map[*c99.Declarator]struct{}{},
-		producedEnumTags:    map[int]struct{}{},
-		producedNamedTypes:  map[int]struct{}{},
-		producedStructTags:  map[int]struct{}{},
-		strings:             map[int]int64{},
-		tCache:              map[tCacheKey]string{},
-		units:               map[*c99.Declarator]int{},
+		enqueued:  map[interface{}]struct{}{},
+		externs:   map[int]*c99.Declarator{},
+		filenames: map[string]struct{}{},
+		helpers:   map[string]int{},
+		in:        in,
+		incompleteExternArrays: map[int]*c99.Declarator{},
+		initializedExterns:     map[int]struct{}{},
+		nums:                   map[*c99.Declarator]int{},
+		opaqueStructTags:       map[int]struct{}{},
+		out:                    out,
+		producedDeclarators:    map[*c99.Declarator]struct{}{},
+		producedEnumTags:       map[int]struct{}{},
+		producedExterns:        map[int]struct{}{},
+		producedStructTags:     map[int]struct{}{},
+		staticDeclarators:      map[int]*c99.Declarator{},
+		strings:                map[int]int64{},
+		tCache:                 map[tCacheKey]string{},
+		units:                  map[*c99.Declarator]int{},
 	}
 }
 
 func (g *gen) enqueue(n interface{}) {
+	if _, ok := g.enqueued[n]; ok {
+		return
+	}
+
+	g.enqueued[n] = struct{}{}
 	switch x := n.(type) {
 	case *c99.Declarator:
 		if x.Linkage == c99.LinkageNone {
@@ -105,6 +156,10 @@ func (g *gen) enqueue(n interface{}) {
 
 		if x.DeclarationSpecifier.IsStatic() {
 			g.enqueueNumbered(x)
+			return
+		}
+
+		if x.DeclarationSpecifier.IsExtern() {
 			return
 		}
 	}
@@ -123,15 +178,6 @@ func (g *gen) enqueueNumbered(n *c99.Declarator) {
 }
 
 func (g *gen) gen(cmd bool) (err error) {
-	defer func() {
-		switch e := recover(); e.(type) {
-		case nil:
-			// nop
-		default:
-			err = fmt.Errorf("%v", compact(fmt.Sprintf("PANIC: %v\n%s", e, debugStack()), 15))
-		}
-	}()
-
 	if len(g.in) == 0 {
 		return fmt.Errorf("no translation unit passed")
 	}
@@ -161,18 +207,7 @@ const %s = uintptr(0)
 			break
 		}
 
-		g.w(`
-
-func main() {
-	argv := crt.MustCalloc((len(os.Args)+1) * int(unsafe.Sizeof(uintptr(0))))
-	p := argv
-	for _, v := range os.Args {
-		*(*uintptr)(unsafe.Pointer(p)) = %[1]sCString(v)
-		p += unsafe.Sizeof(uintptr(0))
-	}
-	X_start(%[1]sNewTLS(), int32(len(os.Args)), argv)
-}
-`, crt)
+		g.w(mainSrc, crt)
 		g.define(sym)
 	default:
 		var a []string
@@ -301,6 +336,7 @@ func (g *gen) collectSymbols() error {
 						}
 
 						if !ex.Type.IsCompatible(x.Type) {
+							//typeDiff(ex.Type, x.Type)
 							todo("", g.position(ex), ex.Type, g.position(x), x.Type)
 						}
 
@@ -308,7 +344,7 @@ func (g *gen) collectSymbols() error {
 							todo("")
 						}
 
-						if prefer(ex.Type) || !prefer(x.Type) {
+						if prefer(ex) || !prefer(x) {
 							break // ok
 						}
 					}
@@ -341,7 +377,7 @@ func (g gen) escaped(n *c99.Declarator) bool {
 		return false
 	}
 
-	if n.AddressTaken {
+	if n.AddressTaken || n.IsTLD() && g.escAllTLDs {
 		return true
 	}
 
@@ -445,7 +481,7 @@ return r
 		case "preinc%db":
 			// eg.: [0: "preinc%db" 1: delta "1" 2: operand type "int32" 3: pack type "uint8" 4: op size "32" 5: bits "3" 6: bitoff "2"]
 			g.w(`(p *%[3]s) %[2]s {
-r := (%[2]s(*p>>%[7])<<(%[4]s-%[5]s)>>(%[4]s-%[5]s)) + %[1]s
+r := (%[2]s(*p>>%[6]s)<<(%[4]s-%[5]s)>>(%[4]s-%[5]s)) + %[1]s
 *p = (*p &^ ((1<<%[5]s - 1) << %[6]s)) | (%[3]s(r) << %[6]s & ((1<<%[5]s - 1) << %[6]s))
 return r<<(%[4]s-%[5]s)>>(%[4]s-%[5]s)
 }`, a[1], a[2], a[3], a[4], a[5], a[6])

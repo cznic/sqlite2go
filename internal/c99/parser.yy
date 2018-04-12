@@ -72,6 +72,7 @@ import (
 	ANDAND				"&&"
 	ANDASSIGN			"&="
 	ARROW				"->"
+	ALIGNOF				"__alignof__"
 	AUTO				"auto"
 	BOOL				"_Bool"
 	BREAK				"break"
@@ -95,7 +96,6 @@ import (
 	FOR				"for"
 	GEQ				">="
 	GOTO				"goto"
-	NON_REPL			// [0]6.10.3.4-2
 	IF				"if"
 	INC				"++"
 	INLINE				"inline"
@@ -107,6 +107,7 @@ import (
 	MODASSIGN			"%="
 	MULASSIGN			"*="
 	NEQ				"!="
+	NON_REPL			// [0]6.10.3.4-2
 	ORASSIGN			"|="
 	OROR				"||"
 	PPPASTE				"##"
@@ -228,7 +229,7 @@ import (
 %left		'+' '-' 
 %left		'%' '*' '/'
 %precedence	CAST
-%left		'!' '~' SIZEOF UNARY
+%left		'!' '~' ALIGNOF SIZEOF UNARY
 %right		'(' '.' '[' ARROW DEC INC
 
 %%
@@ -244,7 +245,7 @@ import (
 					lx.ast = &TranslationUnit{
 						ExternalDeclarationList: $2.(*ExternalDeclarationList).reverse(), 
 						FileScope: lx.scope,
-						FileSet: lx.fset,
+						FileSet: fset,
 						Model: lx.model,
 					}
 				}
@@ -267,18 +268,23 @@ import (
 			//yy:field	CallArgs	[]Operand	// Promoted arguments of Call.
 			//yy:field	Declarator	*Declarator	// Case Ident.
 			//yy:field	Operand		Operand
-			//yy:field	Scope		*Scope		// Case Ident.
+			//yy:field	Scope		*Scope		// Case Ident, CompLit.
 			//yy:field	enum		*EnumType
 			//yy:field	AssignedTo	bool		// Expression appears at the left side of assignment.
 /*yy:case PreInc     */ Expr:
                         	"++" Expr
 /*yy:case PreDec     */ |	"--" Expr
+/*yy:case AlignofType*/ |	"__alignof__" '(' TypeName ')' %prec ALIGNOF
+/*yy:case AlignofExpr*/ |	"__alignof__" Expr
 /*yy:case SizeofType */ |	"sizeof" '(' TypeName ')' %prec SIZEOF
 /*yy:case SizeofExpr */ |	"sizeof" Expr
 /*yy:case Not        */ |	'!' Expr
 /*yy:case Addrof     */ |	'&' Expr %prec UNARY
 /*yy:case PExprList  */ |	'(' ExprList ')'
 /*yy:case CompLit    */ |	'(' TypeName ')' '{' InitializerList CommaOpt '}'
+				{
+					lhs.Scope = lx.scope
+				}
 /*yy:case Cast       */ |	'(' TypeName ')' Expr %prec CAST
 /*yy:case Deref      */ |	'*' Expr %prec UNARY
 /*yy:case UnaryPlus  */ |	'+' Expr %prec UNARY
@@ -524,19 +530,19 @@ import (
 			//yy:field	AssignedTo		int			// Declarator appears at the left side of assignment.
 			//yy:field	Bits			int			// StructDeclarator: bit width when a bit field.
 			//yy:field	DeclarationSpecifier	*DeclarationSpecifier	// Nil for embedded declarators.
-			//yy:field	Field			int			// Declaration order# if struct field declarator.
 			//yy:field	Definition		*Declarator		// Declaration -> definition.
+			//yy:field	Field			int			// Declaration order# if struct field declarator.
 			//yy:field	FunctionDefinition	*FunctionDefinition	// When the declarator defines a function.
 			//yy:field	Initializer		*Initializer		// Only when part of an InitDeclarator.
 			//yy:field	Linkage			Linkage			// Linkage of the declared name, [0]6.2.2.
 			//yy:field	Parameters		[]*Declarator		// Of the function declarator.
 			//yy:field	Referenced		int
+			//yy:field	Scope			*Scope			// Declaration scope.
 			//yy:field	ScopeNum		int			// Sequential scope number within function body.
 			//yy:field	StorageDuration		StorageDuration		// Storage duration of the declared name, [0]6.2.4.
 			//yy:field	Type			Type			// Declared type.
 			//yy:field	TypeQualifiers		[]*TypeQualifier	// From the PointerOpt production, if any.
-			//yy:field	scope			*Scope			// Declare the name in scope.
-			//yy:field	vars			[]*Declarator
+			//yy:field	vars			[]*Declarator		// Function declarator only.
 			//yy:field	AddressTaken		bool
 			//yy:field	Alloca			bool			// Function declarator: Body calls __builtin_alloca
 			//yy:field	Embedded		bool			// [0]6.7.5-3: Not a full declarator.
@@ -545,7 +551,7 @@ import (
                         Declarator:
                         	PointerOpt DirectDeclarator
 				{
-					lhs.scope = lx.scope
+					lhs.Scope = lx.scope
 					if lx.scope.typedef {
 						delete(lx.scope.Idents, lhs.DirectDeclarator.nm())
 						lx.scope.insertTypedef(lx.context, lhs)
@@ -689,6 +695,7 @@ import (
                         |	InitializerList ',' Designation Initializer
 
                         // [0]6.7.8
+			//yy:field	List	[]int
                         Designation:
                         	DesignatorList '='
 

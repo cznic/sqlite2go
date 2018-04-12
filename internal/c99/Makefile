@@ -30,7 +30,7 @@ cpu: clean
 
 edit:
 	touch log
-	gvim -p Makefile *.l *.yy all_test.go log ast2.go c99.go cpp.go encoding.go enum.go etc.go lexer.go model.go operand.go type.go
+	gvim -p Makefile *.l *.yy *_test.go log ast2.go c99.go cpp.go encoding.go enum.go etc.go lexer.go model.go operand.go type.go
 
 editor: ast.go parser.go scanner.go trigraphs.go stringer.go
 	gofmt -l -s -w *.go

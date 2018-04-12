@@ -203,6 +203,8 @@ func UsualArithmeticConversions(m Model, a, b Operand) (Operand, Operand) {
 	// Otherwise, both operands are converted to the unsigned integer type
 	// corresponding to the type of the operand with signed integer type.
 	switch signed.Kind() {
+	case Long:
+		return a.ConvertTo(m, ULong), b.ConvertTo(m, ULong)
 	case LongLong:
 		return a.ConvertTo(m, ULongLong), b.ConvertTo(m, ULongLong)
 	default:
@@ -484,7 +486,12 @@ func (o Operand) div(ctx *context, n Node, p Operand) (r Operand) {
 
 	switch x := o.Value.(type) {
 	case *ir.Int64Value:
-		return Operand{Type: o.Type, Value: &ir.Int64Value{Value: x.Value / p.Value.(*ir.Int64Value).Value}}.normalize(ctx.model)
+		switch {
+		case o.Type.IsUnsigned():
+			return Operand{Type: o.Type, Value: &ir.Int64Value{Value: int64(uint64(x.Value) / uint64(p.Value.(*ir.Int64Value).Value))}}.normalize(ctx.model)
+		default:
+			return Operand{Type: o.Type, Value: &ir.Int64Value{Value: x.Value / p.Value.(*ir.Int64Value).Value}}.normalize(ctx.model)
+		}
 	case *ir.Float64Value:
 		return Operand{Type: o.Type, Value: &ir.Float64Value{Value: x.Value / p.Value.(*ir.Float64Value).Value}}.normalize(ctx.model)
 	default:
@@ -652,7 +659,7 @@ func (o Operand) integerPromotion(m Model) Operand {
 	}
 }
 
-// IsNonzero returns true when the value of o is known to be non-zero.
+// IsNonZero returns true when the value of o is known to be non-zero.
 func (o Operand) IsNonZero() bool {
 	switch x := o.Value.(type) {
 	case nil:
@@ -883,6 +890,7 @@ func (o Operand) ne(ctx *context, p Operand) (r Operand) {
 	return r.normalize(ctx.model)
 }
 
+// ConvertFloat64 converts v to t, which must be an integer type.
 func ConvertFloat64(v float64, t Type, m Model) int64 {
 	if !t.IsIntegerType() {
 		panic(fmt.Errorf("ConvertFloat64: %T", t))
@@ -967,6 +975,8 @@ func ConvertFloat64(v float64, t Type, m Model) int64 {
 	return int64(v)
 }
 
+// ConvertInt64 converts n to t, which must be an integer or enum type, doing
+// masking and/or sign extending as appropriate.
 func ConvertInt64(n int64, t Type, m Model) int64 {
 	switch x := UnderlyingType(t).(type) {
 	case *EnumType:

@@ -80,9 +80,10 @@ var (
 	// Null pointer, [0]6.3.2.3-3.
 	Null = &ir.AddressValue{}
 
-	idAlloca                 = dict.SID("__builtin_alloca")
 	idAsm                    = dict.SID("asm")
+	idBuiltinAlloca          = dict.SID("__builtin_alloca")
 	idBuiltinTypesCompatible = dict.SID("__builtin_types_compatible__") // Implements __builtin_types_compatible_p
+	idBuiltinVaList          = dict.SID("__builtin_va_list")
 	idChar                   = dict.SID("char")
 	idConst                  = dict.SID("const")
 	idDefine                 = dict.SID("define")
@@ -97,6 +98,7 @@ var (
 	idIfdef                  = dict.SID("ifdef")
 	idIfndef                 = dict.SID("ifndef")
 	idInclude                = dict.SID("include")
+	idIncludeNext            = dict.SID("include_next")
 	idLine                   = dict.SID("__LINE__")
 	idMain                   = dict.SID("main")
 	idOne                    = dict.SID("1")
@@ -105,6 +107,7 @@ var (
 	idSizeT                  = dict.SID("size_t")
 	idStatic                 = dict.SID("static")
 	idUndef                  = dict.SID("undef")
+	idUnnamed                = dict.SID("unnamed")
 	idVaArgs                 = dict.SID("__VA_ARGS__")
 	idVaList                 = dict.SID("va_list")
 	idWarning                = dict.SID("warning")
@@ -116,43 +119,44 @@ var (
 	}
 
 	keywords = map[int]rune{
-		dict.SID("_Bool"):    BOOL,
-		dict.SID("_Complex"): COMPLEX,
-		dict.SID("auto"):     AUTO,
-		dict.SID("break"):    BREAK,
-		dict.SID("case"):     CASE,
-		dict.SID("char"):     CHAR,
-		dict.SID("const"):    CONST,
-		dict.SID("continue"): CONTINUE,
-		dict.SID("default"):  DEFAULT,
-		dict.SID("do"):       DO,
-		dict.SID("double"):   DOUBLE,
-		dict.SID("else"):     ELSE,
-		dict.SID("enum"):     ENUM,
-		dict.SID("extern"):   EXTERN,
-		dict.SID("float"):    FLOAT,
-		dict.SID("for"):      FOR,
-		dict.SID("goto"):     GOTO,
-		dict.SID("if"):       IF,
-		dict.SID("inline"):   INLINE,
-		dict.SID("int"):      INT,
-		dict.SID("long"):     LONG,
-		dict.SID("register"): REGISTER,
-		dict.SID("restrict"): RESTRICT,
-		dict.SID("return"):   RETURN,
-		dict.SID("short"):    SHORT,
-		dict.SID("signed"):   SIGNED,
-		dict.SID("sizeof"):   SIZEOF,
-		dict.SID("static"):   STATIC,
-		dict.SID("struct"):   STRUCT,
-		dict.SID("switch"):   SWITCH,
-		dict.SID("typedef"):  TYPEDEF,
-		dict.SID("typeof"):   TYPEOF,
-		dict.SID("union"):    UNION,
-		dict.SID("unsigned"): UNSIGNED,
-		dict.SID("void"):     VOID,
-		dict.SID("volatile"): VOLATILE,
-		dict.SID("while"):    WHILE,
+		dict.SID("_Bool"):       BOOL,
+		dict.SID("_Complex"):    COMPLEX,
+		dict.SID("__alignof__"): ALIGNOF,
+		dict.SID("auto"):        AUTO,
+		dict.SID("break"):       BREAK,
+		dict.SID("case"):        CASE,
+		dict.SID("char"):        CHAR,
+		dict.SID("const"):       CONST,
+		dict.SID("continue"):    CONTINUE,
+		dict.SID("default"):     DEFAULT,
+		dict.SID("do"):          DO,
+		dict.SID("double"):      DOUBLE,
+		dict.SID("else"):        ELSE,
+		dict.SID("enum"):        ENUM,
+		dict.SID("extern"):      EXTERN,
+		dict.SID("float"):       FLOAT,
+		dict.SID("for"):         FOR,
+		dict.SID("goto"):        GOTO,
+		dict.SID("if"):          IF,
+		dict.SID("inline"):      INLINE,
+		dict.SID("int"):         INT,
+		dict.SID("long"):        LONG,
+		dict.SID("register"):    REGISTER,
+		dict.SID("restrict"):    RESTRICT,
+		dict.SID("return"):      RETURN,
+		dict.SID("short"):       SHORT,
+		dict.SID("signed"):      SIGNED,
+		dict.SID("sizeof"):      SIZEOF,
+		dict.SID("static"):      STATIC,
+		dict.SID("struct"):      STRUCT,
+		dict.SID("switch"):      SWITCH,
+		dict.SID("typedef"):     TYPEDEF,
+		dict.SID("typeof"):      TYPEOF,
+		dict.SID("union"):       UNION,
+		dict.SID("unsigned"):    UNSIGNED,
+		dict.SID("void"):        VOID,
+		dict.SID("volatile"):    VOLATILE,
+		dict.SID("while"):       WHILE,
 	}
 
 	tokConstVals = map[rune]int{
@@ -437,7 +441,6 @@ func strConst(t xc.Token) Operand {
 				i++
 			}
 		}
-		//TODO- return Operand{Type: &PointerType{Item: Char}, Value: &ir.StringValue{StringID: ir.StringID(dict.ID(buf.Bytes()))}}
 		return Operand{
 			Type:  &ArrayType{Item: Char, Size: Operand{Type: Int, Value: &ir.Int64Value{Value: int64(len(buf.Bytes()) + 1)}}},
 			Value: &ir.StringValue{StringID: ir.StringID(dict.ID(buf.Bytes()))},

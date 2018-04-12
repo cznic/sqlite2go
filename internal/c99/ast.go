@@ -590,19 +590,19 @@ type Declarator struct {
 	AssignedTo           int                   // Declarator appears at the left side of assignment.
 	Bits                 int                   // StructDeclarator: bit width when a bit field.
 	DeclarationSpecifier *DeclarationSpecifier // Nil for embedded declarators.
-	Field                int                   // Declaration order# if struct field declarator.
 	Definition           *Declarator           // Declaration -> definition.
+	Field                int                   // Declaration order# if struct field declarator.
 	FunctionDefinition   *FunctionDefinition   // When the declarator defines a function.
 	Initializer          *Initializer          // Only when part of an InitDeclarator.
 	Linkage              Linkage               // Linkage of the declared name, [0]6.2.2.
 	Parameters           []*Declarator         // Of the function declarator.
 	Referenced           int
+	Scope                *Scope           // Declaration scope.
 	ScopeNum             int              // Sequential scope number within function body.
 	StorageDuration      StorageDuration  // Storage duration of the declared name, [0]6.2.4.
 	Type                 Type             // Declared type.
 	TypeQualifiers       []*TypeQualifier // From the PointerOpt production, if any.
-	scope                *Scope           // Declare the name in scope.
-	vars                 []*Declarator
+	vars                 []*Declarator    // Function declarator only.
 	AddressTaken         bool
 	Alloca               bool // Function declarator: Body calls __builtin_alloca
 	Embedded             bool // [0]6.7.5-3: Not a full declarator.
@@ -662,6 +662,7 @@ func (n *DeclaratorOpt) Pos() token.Pos {
 //	Designation:
 //	        DesignatorList '='  // Case 0
 type Designation struct {
+	List           []int
 	DesignatorList *DesignatorList
 	Token          xc.Token
 }
@@ -1178,6 +1179,8 @@ type ExprCase int
 const (
 	ExprPreInc ExprCase = iota
 	ExprPreDec
+	ExprAlignofType
+	ExprAlignofExpr
 	ExprSizeofType
 	ExprSizeofExpr
 	ExprNot
@@ -1241,6 +1244,10 @@ func (n ExprCase) String() string {
 		return "ExprPreInc"
 	case ExprPreDec:
 		return "ExprPreDec"
+	case ExprAlignofType:
+		return "ExprAlignofType"
+	case ExprAlignofExpr:
+		return "ExprAlignofExpr"
 	case ExprSizeofType:
 		return "ExprSizeofType"
 	case ExprSizeofExpr:
@@ -1359,6 +1366,8 @@ func (n ExprCase) String() string {
 //	Expr:
 //	        "++" Expr                                          // Case ExprPreInc
 //	|       "--" Expr                                          // Case ExprPreDec
+//	|       "__alignof__" '(' TypeName ')'                     // Case ExprAlignofType
+//	|       "__alignof__" Expr                                 // Case ExprAlignofExpr
 //	|       "sizeof" '(' TypeName ')'                          // Case ExprSizeofType
 //	|       "sizeof" Expr                                      // Case ExprSizeofExpr
 //	|       '!' Expr                                           // Case ExprNot
@@ -1417,7 +1426,7 @@ type Expr struct {
 	CallArgs            []Operand   // Promoted arguments of Call.
 	Declarator          *Declarator // Case Ident.
 	Operand             Operand
-	Scope               *Scope // Case Ident.
+	Scope               *Scope // Case Ident, CompLit.
 	enum                *EnumType
 	AssignedTo          bool // Expression appears at the left side of assignment.
 	ArgumentExprListOpt *ArgumentExprListOpt
@@ -1448,9 +1457,9 @@ func (n *Expr) Pos() token.Pos {
 	}
 
 	switch n.Case {
-	case 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49:
+	case 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51:
 		return n.Expr.Pos()
-	case 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 50, 51, 52, 53, 54, 55:
+	case 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 52, 53, 54, 55, 56, 57:
 		return n.Token.Pos()
 	default:
 		panic("internal error")

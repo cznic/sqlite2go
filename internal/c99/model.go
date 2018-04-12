@@ -22,8 +22,10 @@ type ModelItem struct {
 	StructAlign int
 }
 
-func newModel() (m Model, err error) {
-	switch arch := runtime.GOARCH; arch {
+// NewModel returns the model appropriate for the current OS and architecture
+// or according to the environment variables GOOS and GOARCH, if set.
+func NewModel() (m Model, err error) {
+	switch arch := env("GOARCH", runtime.GOARCH); arch {
 	case "386":
 		return Model{
 			Bool:      {1, 1, 1},
@@ -71,7 +73,7 @@ func newModel() (m Model, err error) {
 			UShort:    {2, 2, 2},
 
 			Float:      {4, 4, 4},
-			Double:     {8, 8, 4},
+			Double:     {8, 8, 8},
 			LongDouble: {8, 8, 8},
 
 			FloatComplex:      {8, 8, 4},
@@ -107,8 +109,9 @@ func (m Model) Sizeof(t Type) int64 {
 	switch x := UnderlyingType(t).(type) {
 	case *ArrayType:
 		if x.Size.Type == nil || x.Size.Value == nil {
-			panic("TODO")
+			return int64(m[Ptr].Size)
 		}
+
 		return m.Sizeof(x.Item) * x.Size.Value.(*ir.Int64Value).Value
 	case *EnumType:
 		return m.Sizeof(x.Enums[0].Operand.Type)
@@ -160,6 +163,7 @@ type FieldProperties struct {
 	Type       Type
 }
 
+// Mask returns the bit mask of bit field described by f.
 func (f *FieldProperties) Mask() uint64 {
 	if f.Bits == 0 {
 		return 1<<64 - 1
@@ -185,6 +189,7 @@ func (m Model) Layout(t Type) (r []FieldProperties) {
 		r = make([]FieldProperties, len(x.Fields))
 		var off int64
 		bitoff := 0
+		zeroFix := false
 		for i, v := range x.Fields {
 			switch {
 			case v.Bits != 0:
@@ -228,6 +233,10 @@ func (m Model) Layout(t Type) (r []FieldProperties) {
 					r[i-1].Padding = int(off - z)
 				}
 				r[i] = FieldProperties{Offset: off, Size: sz, Declarator: v.Declarator, Type: v.Type}
+				if sz == 0 && i == len(x.Fields)-1 {
+					sz = 1
+					zeroFix = true
+				}
 				off += sz
 			}
 		}
@@ -254,6 +263,9 @@ func (m Model) Layout(t Type) (r []FieldProperties) {
 		}
 		z := off
 		off = roundup(off, int64(align))
+		if zeroFix {
+			z--
+		}
 		if off != z {
 			r[len(r)-1].Padding = int(off - z)
 		}
@@ -336,7 +348,11 @@ func (m *Model) packBits(bitoff, i int, off int64, r []FieldProperties) int64 {
 func (m Model) Alignof(t Type) int {
 	switch x := t.(type) {
 	case *ArrayType:
-		return m.Alignof(x.Item)
+		if x.Size.Value != nil {
+			return m.Alignof(x.Item)
+		}
+
+		return m[Ptr].Align
 	case *EnumType:
 		return m.Alignof(x.Enums[0].Operand.Type)
 	case *NamedType:
@@ -410,7 +426,11 @@ func (m Model) Alignof(t Type) int {
 func (m Model) StructAlignof(t Type) int {
 	switch x := t.(type) {
 	case *ArrayType:
-		return m.StructAlignof(x.Item)
+		if x.Size.Value != nil {
+			return m.StructAlignof(x.Item)
+		}
+
+		return m[Ptr].StructAlign
 	case *EnumType:
 		return m.StructAlignof(x.Enums[0].Operand.Type)
 	case *NamedType:
@@ -441,6 +461,12 @@ func (m Model) StructAlignof(t Type) int {
 		}
 		return m.StructAlignof(u)
 	case *TaggedStructType:
+		u := x.getType()
+		if u == x {
+			panic("TODO")
+		}
+		return m.StructAlignof(u)
+	case *TaggedUnionType:
 		u := x.getType()
 		if u == x {
 			panic("TODO")

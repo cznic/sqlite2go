@@ -86,12 +86,46 @@ func (g *gen) void(n *c99.Expr) {
 			return
 		}
 
+		if isVaList(n.Expr.Operand.Type) {
+			switch rhs := n.Expr2.Operand; {
+			case isVaList(rhs.Type): // va_copy
+				g.w("{ x := *")
+				g.value(n.Expr2, false)
+				g.w("; ")
+				g.w("*")
+				g.lvalue(n.Expr)
+				g.w(" = &x }")
+				return
+			case n.Expr2.Declarator != nil && n.Expr2.Declarator.Name() == idVaStart:
+				g.w("{ x := ap; *")
+				g.lvalue(n.Expr)
+				g.w(" = &x }")
+				return
+			case n.Expr2.Declarator != nil && n.Expr2.Declarator.Name() == idVaEnd:
+				g.w("*")
+				g.lvalue(n.Expr)
+				g.w(" = nil")
+				return
+			}
+			panic(fmt.Errorf("%v: %v = %v", g.position0(n), n.Expr.Operand, n.Expr2.Operand))
+		}
+
 		g.w("*")
 		g.lvalue(n.Expr)
 		g.w(" = ")
-		if isVaList(n.Expr.Operand.Type) && n.Expr2.Case == c99.ExprInt && n.Expr2.IsZero() {
-			g.w("nil")
-			return
+		if isVaList(n.Expr.Operand.Type) && n.Expr2.Case == c99.ExprCast {
+			g.w("/*TODO103 %v = %v */", n.Expr.Operand, n.Expr2.Operand)
+			if ec := n.Expr2; g.voidCanIgnore(ec) {
+				switch op := ec.Expr; {
+				case op.IsNonZero():
+					g.w("&%s", ap)
+					return
+				case op.IsZero():
+					g.w("nil")
+					return
+				}
+			}
+			panic(g.position0(n))
 		}
 
 		g.convert(n.Expr2, n.Expr.Operand.Type)
@@ -111,10 +145,14 @@ func (g *gen) void(n *c99.Expr) {
 				g.w(" += %d", sz)
 			}
 		case c99.TypeKind:
-			if n.Expr.Operand.Bits() != 0 {
-				//TODO ../c99/testdata/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/pr55750.c:14:3
-				todo("bit field %v", g.position0(n))
+			if op := n.Expr.Operand; op.Bits() != 0 {
+				fp := op.FieldProperties
+				g.w("%s(&", g.registerHelper("postinc%db", 1, g.typ(op.Type), g.typ(fp.PackedType), g.model.Sizeof(op.Type)*8, fp.Bits, fp.Bitoff))
+				g.value(n.Expr, true)
+				g.w(")")
+				return
 			}
+
 			if x.IsArithmeticType() {
 				g.w(" *(")
 				g.lvalue(n.Expr)
@@ -141,9 +179,14 @@ func (g *gen) void(n *c99.Expr) {
 				g.w(" -= %d", sz)
 			}
 		case c99.TypeKind:
-			if n.Expr.Operand.Bits() != 0 {
-				todo("", g.position0(n))
+			if op := n.Expr.Operand; op.Bits() != 0 {
+				fp := op.FieldProperties
+				g.w("%s(&", g.registerHelper("postinc%db", g.convertInt64(-1, x), g.typ(op.Type), g.typ(fp.PackedType), g.model.Sizeof(op.Type)*8, fp.Bits, fp.Bitoff))
+				g.value(n.Expr, true)
+				g.w(")")
+				return
 			}
+
 			if x.IsArithmeticType() {
 				g.w(" *(")
 				g.lvalue(n.Expr)
@@ -194,7 +237,7 @@ func (g *gen) void(n *c99.Expr) {
 		}
 	case c99.ExprCast: // '(' TypeName ')' Expr
 		if isVaList(n.Expr.Operand.Type) { //TODO- ?
-			g.w("%sVA%s(&", crt, g.typ(c99.UnderlyingType(n.TypeName.Type)))
+			g.w("%sVA%s(", crt, g.typ(c99.UnderlyingType(n.TypeName.Type)))
 			g.value(n.Expr, false)
 			g.w(")")
 			return
@@ -323,6 +366,15 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 				g.w("%s", g.mangleDeclarator(d))
 			}
 		}
+	case c99.ExprCompLit: // '(' TypeName ')' '{' InitializerList CommaOpt '}
+		switch d := n.Declarator; {
+		case g.escaped(d):
+			todo("", g.position(d))
+		default:
+			g.w("func() %s { %s = ", g.typ(d.Type), g.mangleDeclarator(d))
+			g.literal(d.Type, d.Initializer)
+			g.w("; return %s }()", g.mangleDeclarator(d))
+		}
 	case
 		c99.ExprEq, // Expr "==" Expr
 		c99.ExprGe, // Expr ">=" Expr
@@ -342,7 +394,7 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 
 		g.binop(n)
 	case c99.ExprCall: // Expr '(' ArgumentExprListOpt ')'
-		if d := n.Expr.Declarator; d != nil && d.Name() == idAlloca {
+		if d := n.Expr.Declarator; d != nil && d.Name() == idBuiltinAlloca {
 			g.w("alloca(&allocs, int(")
 			if n.ArgumentExprListOpt.ArgumentExprList.ArgumentExprList != nil {
 				todo("", g.position0(n))
@@ -358,40 +410,52 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 				n.Expr.Declarator = x
 				n.Expr.Operand.Type = &c99.PointerType{Item: x.Type}
 			default:
-				todo("%v: %T %q", g.position0(n), x, dict.S(n.Expr.Token.Val))
+				todo("%v: %T undefined: %q", g.position0(n), x, dict.S(n.Expr.Token.Val))
 			}
 		}
 		var ft0 c99.Type
 		if !isFnPtr(n.Expr.Operand.Type, &ft0) {
-			todo("", g.position0(n))
+			todo("%v: %v", g.position0(n), n.Expr.Operand.Type)
 		}
 		ft := c99.UnderlyingType(ft0).(*c99.FunctionType)
-		g.convert(n.Expr, ft)
-		g.w("(tls")
+		var args []*c99.Expr
 		if o := n.ArgumentExprListOpt; o != nil {
-			i := 0
 			for l := o.ArgumentExprList; l != nil; l = l.ArgumentExprList {
-				switch {
-				case i < len(ft.Params) || ft.Variadic:
-					g.w(", ")
-					if i >= len(n.CallArgs) { //TODO-
-						todo("", g.position0(l.Expr), i, n.CallArgs)
-					}
-					if t := n.CallArgs[i].Type; t != nil {
-						g.convert(l.Expr, t)
-						break
-					}
-
-					g.value(l.Expr, false)
-				default:
-					if !g.voidCanIgnore(l.Expr) && l.Expr.Case != c99.ExprIdent {
-						todo("", g.position0(l.Expr))
-					}
-				}
-				i++
+				args = append(args, l.Expr)
 			}
 		}
-		g.w(")")
+		params := ft.Params
+		if len(params) == 1 && params[0].Kind() == c99.Void {
+			params = nil
+		}
+		switch np := len(params); {
+		case len(args) > np && !ft.Variadic:
+			for _, v := range args[np:] {
+				if !g.voidCanIgnore(v) {
+					todo("", g.position0(v))
+				}
+			}
+			args = args[:np]
+			fallthrough
+		case
+			len(args) > np && ft.Variadic,
+			len(args) == np:
+
+			g.convert(n.Expr, ft)
+			g.w("(tls")
+			for i, v := range args {
+				g.w(", ")
+				switch t := n.CallArgs[i].Type; {
+				case t == nil:
+					g.value(v, false)
+				default:
+					g.convert(v, t)
+				}
+			}
+			g.w(")")
+		default:
+			todo("", g.position0(n), np, len(args), ft.Variadic)
+		}
 	case c99.ExprAddrof: // '&' Expr
 		g.uintptr(n.Expr, false)
 	case c99.ExprSelect: // Expr '.' IDENTIFIER
@@ -405,6 +469,12 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 			case fp.Bits != 0 && !packedField:
 				g.bitField(n)
 			default:
+				if n.Expr.Case == c99.ExprCall {
+					g.value(n.Expr, false)
+					g.w(".%s", mangleIdent(n.Token2.Val, true))
+					return
+				}
+
 				t := n.Operand.Type
 				if fp.Bits != 0 {
 					t = fp.PackedType
@@ -550,7 +620,7 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 		t := n.TypeName.Type
 		op := n.Expr.Operand
 		if isVaList(op.Type) {
-			g.w("%sVA%s(&", crt, g.typ(c99.UnderlyingType(t)))
+			g.w("%sVA%s(", crt, g.typ(c99.UnderlyingType(t)))
 			g.value(n.Expr, false)
 			g.w(")")
 			return
@@ -649,8 +719,7 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 			g.lvalue(n.Expr)
 			g.w(")")
 		case c99.TypeKind:
-			op := n.Expr.Operand
-			if op.Bits() != 0 {
+			if op := n.Expr.Operand; op.Bits() != 0 {
 				fp := op.FieldProperties
 				g.w("%s(&", g.registerHelper("postinc%db", g.convertInt64(-1, x), g.typ(op.Type), g.typ(fp.PackedType), g.model.Sizeof(op.Type)*8, fp.Bits, fp.Bitoff))
 				g.value(n.Expr, true)
@@ -939,6 +1008,17 @@ func (g *gen) uintptr(n *c99.Expr, packedField bool) {
 			g.uintptr(l[len(l)-1], packedField)
 			g.w("}()")
 		}
+	case c99.ExprCompLit: // '(' TypeName ')' '{' InitializerList CommaOpt '}
+		switch d := n.Declarator; {
+		case g.escaped(d):
+			g.w("func() uintptr { *(*%s)(unsafe.Pointer(%s)) = ", g.typ(d.Type), g.mangleDeclarator(d))
+			g.literal(d.Type, d.Initializer)
+			g.w("; return %s }()", g.mangleDeclarator(d))
+		default:
+			g.w("func() uintptr { %s = ", g.mangleDeclarator(d))
+			g.literal(d.Type, d.Initializer)
+			g.w("; return uintptr(unsafe.Pointer(&%s)) }()", g.mangleDeclarator(d))
+		}
 	case c99.ExprIdent: // IDENTIFIER
 		d := g.normalizeDeclarator(n.Declarator)
 		g.enqueue(d)
@@ -995,13 +1075,15 @@ func (g *gen) uintptr(n *c99.Expr, packedField bool) {
 func (g *gen) voidCanIgnore(n *c99.Expr) bool {
 	switch n.Case {
 	case
-		c99.ExprChar,       // CHARCONST
-		c99.ExprFloat,      // FLOATCONST
-		c99.ExprIdent,      // IDENTIFIER
-		c99.ExprInt,        // INTCONST
-		c99.ExprSizeofExpr, // "sizeof" Expr
-		c99.ExprSizeofType, // "sizeof" '(' TypeName ')'
-		c99.ExprString:     // STRINGLITERAL
+		c99.ExprAlignofExpr, // "__alignof__" Expr
+		c99.ExprAlignofType, // "__alignof__" '(' TypeName ')'
+		c99.ExprChar,        // CHARCONST
+		c99.ExprFloat,       // FLOATCONST
+		c99.ExprIdent,       // IDENTIFIER
+		c99.ExprInt,         // INTCONST
+		c99.ExprSizeofExpr,  // "sizeof" Expr
+		c99.ExprSizeofType,  // "sizeof" '(' TypeName ')'
+		c99.ExprString:      // STRINGLITERAL
 
 		return true
 	case c99.ExprPExprList: // '(' ExprList ')'
@@ -1117,8 +1199,23 @@ func (g *gen) constant(n *c99.Expr) {
 		switch u := c99.UnderlyingType(n.Operand.Type).(type) {
 		case c99.TypeKind:
 			switch u {
+			case c99.Double:
+				switch {
+				case x.Value == 0 && math.Copysign(1, float64(x.Value)) == -1:
+					g.w(" nz64")
+					g.needNZ64 = true
+				default:
+					g.w(" %v", float64(x.Value))
+				}
+				return
 			case c99.Float:
-				g.w(" %v", x.Value)
+				switch {
+				case x.Value == 0 && math.Copysign(1, float64(x.Value)) == -1:
+					g.w(" nz32")
+					g.needNZ32 = true
+				default:
+					g.w(" %v", x.Value)
+				}
 				return
 			default:
 				todo("", g.position0(n), u)
@@ -1212,9 +1309,6 @@ func (g *gen) constant(n *c99.Expr) {
 			switch {
 			case y.Item.Kind() == c99.Function:
 				g.w("uintptr(%v)", uintptr(x.Value))
-			case n.Operand.Type.String() == vaListType && x.Value == 1:
-				todo("TODO-")
-				//TODO- g.w(" %s", ap)
 			default:
 				g.w("uintptr("+f+")", uintptr(x.Value))
 			}
@@ -1403,6 +1497,11 @@ func (g *gen) convert(n *c99.Expr, t c99.Type) {
 			if c99.UnderlyingType(n.Operand.Type).Equal(&c99.PointerType{Item: ft}) {
 				switch {
 				case d.Type.Kind() == c99.Ptr:
+					if g.escaped(d) {
+						g.w("%s(*(*uintptr)(unsafe.Pointer(%s)))", g.registerHelper("fn%d", g.typ(ft)), g.mangleDeclarator(n.Declarator))
+						break
+					}
+
 					g.w("%s(%s)", g.registerHelper("fn%d", g.typ(ft)), g.mangleDeclarator(n.Declarator))
 				default:
 					g.w("%s", g.mangleDeclarator(n.Declarator))
@@ -1435,7 +1534,7 @@ func (g *gen) convert(n *c99.Expr, t c99.Type) {
 	}
 
 	if isVaList(n.Operand.Type) && !isVaList(t) {
-		g.w("%sVA%s(&", crt, g.typ(c99.UnderlyingType(t)))
+		g.w("%sVA%s(", crt, g.typ(c99.UnderlyingType(t)))
 		g.value(n, false)
 		g.w(")")
 		return

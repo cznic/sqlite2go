@@ -10,7 +10,6 @@ import (
 	"bufio"
 	"go/token"
 	"io"
-	"unicode/utf8"
 
 	"github.com/cznic/golex/lex"
 	"github.com/cznic/mathutil"
@@ -146,7 +145,7 @@ type lexer struct {
 }
 
 func newLexer(ctx *context, nm string, sz int, r io.Reader) (*lexer, error) {
-	file := ctx.fset.AddFile(nm, -1, sz)
+	file := fset.AddFile(nm, -1, sz)
 	t, err := newTrigraphs(ctx, file, r)
 	if err != nil {
 		return nil, err
@@ -174,7 +173,6 @@ func newLexer(ctx *context, nm string, sz int, r io.Reader) (*lexer, error) {
 func (l *lexer) Error(msg string)             { l.err(l.First, "%v", msg) }
 func (l *lexer) ReadRune() (rune, int, error) { panic("internal error 10") }
 func (l *lexer) comment(general bool)         { /*TODO*/ }
-func (l *lexer) lastPosition() token.Position { return l.fset.PositionFor(l.last.Pos(), true) }
 func (l *lexer) parseExpr() bool              { return l.parse(CONSTANT_EXPRESSION) }
 
 func (l *lexer) Lex(lval *yySymType) (r int) {
@@ -227,62 +225,7 @@ func (l *lexer) ReadChar() (c lex.Char, size int, err error) {
 	}
 
 	ch := l.t.scan()
-	c = lex.NewChar(l.t.First.Pos(), rune(ch))
-	switch {
-	case ch <= 0x7f: // 1
-		return c, 1, nil
-	case ch <= 0xc1: // invalid
-		c.Rune = utf8.RuneError
-		return c, 1, nil
-	case ch <= 0xdf: // 110xxxxx 10xxxxxx
-		ch2 := l.t.scan()
-		if ch2&0xc0 != 0x80 {
-			c.Rune = utf8.RuneError
-			return c, 2, nil
-		}
-
-		c.Rune = rune(ch&0x1f)<<6 | rune(ch2)&0x3f
-		return c, 2, nil
-	case ch <= 0xef: // 1110xxxx 10xxxxxx 10xxxxxx
-		ch2 := l.t.scan()
-		if ch2&0xc0 != 0x80 {
-			c.Rune = utf8.RuneError
-			return c, 2, nil
-		}
-
-		ch3 := l.t.scan()
-		if ch3&0xc0 != 0x80 {
-			c.Rune = utf8.RuneError
-			return c, 3, nil
-		}
-
-		c.Rune = rune(ch&0xf)<<12 | rune(ch2)&0x3f<<6 | rune(ch3)&0x3f
-		return c, 3, nil
-	case ch <= 0xf4: // 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
-		ch2 := l.t.scan()
-		if ch2&0xc0 != 0x80 {
-			c.Rune = utf8.RuneError
-			return c, 2, nil
-		}
-
-		ch3 := l.t.scan()
-		if ch3&0xc0 != 0x80 {
-			c.Rune = utf8.RuneError
-			return c, 3, nil
-		}
-
-		ch4 := l.t.scan()
-		if ch4&0xc0 != 0x80 {
-			c.Rune = utf8.RuneError
-			return c, 4, nil
-		}
-
-		c.Rune = rune(ch&0x7)<<18 | rune(ch2)&0x3f<<12 | rune(ch3)&0x3f<<6 | rune(ch4)&0x3f
-		return c, 4, nil
-	default: // invalid
-		c.Rune = utf8.RuneError
-		return c, 1, nil
-	}
+	return lex.NewChar(l.t.First.Pos(), rune(ch)), 1, nil
 }
 
 func (l *lexer) Reduced(rule, state int, lval *yySymType) (stop bool) {

@@ -11,7 +11,7 @@
 
 //go:generate rm -f parser.go
 //go:generate goyacc -o /dev/null -xegen xegen parser.y
-//go:generate goyacc -o parser.go -fs -xe xegen -dlvalf "%v" -dlval "PrettyString(lval.Token)" parser.y
+//go:generate goyacc -o parser.go -pool -fs -xe xegen -dlvalf "%v" -dlval "PrettyString(lval.Token)" parser.y
 //go:generate rm -f xegen
 
 //go:generate stringer -output stringer.go -type=cond,Linkage,StorageDuration enum.go
@@ -32,95 +32,33 @@ import (
 	"go/scanner"
 	"go/token"
 	"io"
+	"io/ioutil"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
 
 	"github.com/cznic/ir"
+	"github.com/cznic/strutil"
 )
 
-/* Bit fields
-
--------------------------------------------------------------------------------
-6.2.6 Representations of types
-6.2.6.1 General
--------------------------------------------------------------------------------
-
-3.
-Values stored in unsigned bit-fields and objects of type unsigned char shall be
-represented using a pure binary notation. 40)
-
-4.
-Values stored in bit-fields consist of m bits, where m is the size specified
-for the bit-field. The object representation is the set of m bits the bit-field
-comprises in the addressable storage unit holding it.
-
-6.2.7 Compatible type and composite type
-For two structures or unions, corresponding bit-fields shall have the same
-widths.
-
--------------------------------------------------------------------------------
-6.3.1 Arithmetic operands
-6.3.1.1 Boolean, characters, and integers
--------------------------------------------------------------------------------
-
-2.
-The following may be used in an expression wherever an int or unsigned int may
-be used:
-
-	— An object or expression with an integer type whose integer conversion
-	rank is less than or equal to the rank of int and unsigned int.
-
-	— A bit-field of type _Bool, int, signed int, or unsigned int.
-
--------------------------------------------------------------------------------
-6.5.3.2 Address and indirection operators
--------------------------------------------------------------------------------
-
-1
-The operand of the unary & operator shall be either a function designator, the
-result of a [] or unary * operator, or an lvalue that designates an object that
-is not a bit-field and is not declared with the register storage-class
-specifier.
-
-6.5.3.4 The sizeof operator
-Constraints
-
-1
-The sizeof operator shall not be applied to an expression that has function
-type or an incomplete type, to the parenthesized name of such a type, or to an
-expression that designates a bit-field member.
-
--------------------------------------------------------------------------------
-6.7.2.1 Structure and union specifiers
--------------------------------------------------------------------------------
-
-9
-A bit-field is interpreted as a signed or unsigned integer type consisting of
-the specified number of bits. 107) If the value 0 or 1 is stored into a
-nonzero-width bit-field of type _Bool, the value of the bit-field shall compare
-equal to the value stored.
-
-10
-An implementation may allocate any addressable storage unit large enough to
-hold a bit- field. If enough space remains, a bit-field that immediately
-follows another bit-field in a structure shall be packed into adjacent bits of
-the same unit. If insufficient space remains, whether a bit-field that does not
-fit is put into the next unit or overlaps adjacent units is
-implementation-defined. The order of allocation of bit-fields within a unit
-(high-order to low-order or low-order to high-order) is implementation-defined.
-The alignment of the addressable storage unit is unspecified.
-
-11
-A bit-field declaration with no declarator, but only a colon and a width,
-indicates an unnamed bit-field. 108) As a special case, a bit-field structure
-member with a width of 0 indicates that no further bit-field is to be packed
-into the unit in which the previous bit- field, if any, was placed.
-
-*/
-
 const (
+	// CRT0Source is the source code of the C startup code.
+	CRT0Source = `int main();
+
+__FILE_TYPE__ __stdfiles[3];
+char **environ;
+void *stdin = &__stdfiles[0], *stdout = &__stdfiles[1], *stderr = &__stdfiles[2];
+
+void _start(int argc, char **argv)
+{
+	__register_stdfiles(stdin, stdout, stderr, &environ);
+	__builtin_exit(((int (*)(int, char **))main) (argc, argv));
+}	
+`
 	cacheSize = 500
 )
 
@@ -128,12 +66,182 @@ var (
 	_ Source = (*FileSource)(nil)
 	_ Source = (*StringSource)(nil)
 
-	// Parser debug hook.
-	YYDebug = &yyDebug
+	// YYDebug points to parser's yyDebug variable.
+	YYDebug        = &yyDebug
+	traceMacroDefs bool
 
 	cache   = make(map[cacheKey][]uint32, cacheSize)
-	cacheMu sync.Mutex
+	cacheMu sync.Mutex // Guards cache, fset
+	fset    = token.NewFileSet()
+
+	packageDir string
+	headers    string
 )
+
+func init() {
+	ip, err := strutil.ImportPath()
+	if err != nil {
+		panic(err)
+	}
+
+	if packageDir, err = findRepo(ip); err != nil {
+		panic(err)
+	}
+
+	headers = filepath.Join(packageDir, "headers", fmt.Sprintf("%v_%v", env("GOOS", runtime.GOOS), env("GOARCH", runtime.GOARCH)))
+}
+
+func findRepo(s string) (string, error) {
+	s = filepath.FromSlash(s)
+	for _, v := range strings.Split(strutil.Gopath(), string(os.PathListSeparator)) {
+		p := filepath.Join(v, "src", s)
+		fi, err := os.Lstat(p)
+		if err != nil {
+			continue
+		}
+
+		if fi.IsDir() {
+			wd, err := os.Getwd()
+			if err != nil {
+				return "", err
+			}
+
+			if p, err = filepath.Rel(wd, p); err != nil {
+				return "", err
+			}
+
+			if p, err = filepath.Abs(p); err != nil {
+				return "", err
+			}
+
+			return p, nil
+		}
+	}
+	return "", fmt.Errorf("%q: cannot find repository", s)
+}
+
+// Builtin returns the Source for built-in and predefined stuff or an error, if any.
+func Builtin() (Source, error) { return NewFileSource(filepath.Join(headers, "builtin.h")) }
+
+// Crt0 returns the Source for built-in and predefined stuff or an error, if any.
+func Crt0() (Source, error) { return NewStringSource("crt0.c", CRT0Source), nil }
+
+// MustBuiltin is like Builtin but panics on error.
+func MustBuiltin() Source { return MustFileSource(filepath.Join(headers, "builtin.h")) }
+
+// MustCrt0 is like Crt0 but panics on error.
+func MustCrt0() Source {
+	s, err := Crt0()
+	if err != nil {
+		panic(err)
+	}
+
+	return s
+}
+
+// MustFileSource is like NewFileSource but panics on error.
+func MustFileSource(nm string) *FileSource { return MustFileSource2(nm, true) }
+
+// MustFileSource2 is like NewFileSource but panics on error.
+func MustFileSource2(nm string, cacheable bool) *FileSource {
+	src, err := NewFileSource2(nm, cacheable)
+	if err != nil {
+		wd, _ := os.Getwd()
+		panic(fmt.Errorf("%v: %v (wd %v)", nm, err, wd))
+	}
+
+	return src
+}
+
+// Paths returns the system header search paths, or an error, if any. If local
+// is true the package-local, cached header search paths are returned.
+func Paths(local bool) ([]string, error) {
+	p := filepath.Join(headers, "paths")
+	b, err := ioutil.ReadFile(p)
+	if err != nil {
+		return nil, err
+	}
+
+	a := strings.Split(string(b), "\n")
+	for i, v := range a {
+		switch {
+		case local:
+			a[i] = filepath.Join(headers, strings.TrimSpace(v))
+		default:
+			a[i] = strings.TrimSpace(v)
+		}
+	}
+	return a, nil
+}
+
+// HostConfig executes HostCppConfig with the cpp argument set to "cpp". For
+// more info please see the documentation of HostCppConfig.
+func HostConfig(opts ...string) (predefined string, includePaths, sysIncludePaths []string, err error) {
+	return HostCppConfig("cpp", opts...)
+}
+
+// HostCppConfig returns the system C preprocessor configuration, or an error,
+// if any.  The configuration is obtained by running the cpp command. For the
+// predefined macros list the '-dM' options is added. For the include paths
+// lists, the option '-v' is added and the output is parsed to extract the
+// "..." include and <...> include paths. To add any other options to cpp, list
+// them in opts.
+//
+// The function relies on a POSIX compatible C preprocessor installed.
+// Execution of HostConfig is not free, so caching the results is recommended
+// whenever possible.
+func HostCppConfig(cpp string, opts ...string) (predefined string, includePaths, sysIncludePaths []string, err error) {
+	args := append(append([]string{"-dM"}, opts...), os.DevNull)
+	// cross-compile e.g. win64 -> win32
+	if env("GOARCH", runtime.GOARCH) == "386" {
+		args = append(args, "-m32")
+	}
+	pre, err := exec.Command(cpp, args...).Output()
+	if err != nil {
+		return "", nil, nil, err
+	}
+
+	args = append(append([]string{"-v"}, opts...), os.DevNull)
+	out, err := exec.Command(cpp, args...).CombinedOutput()
+	if err != nil {
+		return "", nil, nil, err
+	}
+
+	sep := "\n"
+	if env("GOOS", runtime.GOOS) == "windows" {
+		sep = "\r\n"
+	}
+
+	a := strings.Split(string(out), sep)
+	for i := 0; i < len(a); {
+		switch a[i] {
+		case "#include \"...\" search starts here:":
+		loop:
+			for i = i + 1; i < len(a); {
+				switch v := a[i]; {
+				case strings.HasPrefix(v, "#") || v == "End of search list.":
+					break loop
+				default:
+					includePaths = append(includePaths, strings.TrimSpace(v))
+					i++
+				}
+			}
+		case "#include <...> search starts here:":
+			for i = i + 1; i < len(a); {
+				switch v := a[i]; {
+				case strings.HasPrefix(v, "#") || v == "End of search list.":
+					return string(pre), includePaths, sysIncludePaths, nil
+				default:
+					sysIncludePaths = append(sysIncludePaths, strings.TrimSpace(v))
+					i++
+				}
+			}
+		default:
+			i++
+		}
+	}
+	return "", nil, nil, fmt.Errorf("failed parsing %s -v output", cpp)
+}
 
 type cacheKey struct {
 	name  string
@@ -144,6 +252,7 @@ type cacheKey struct {
 func FlushCache() {
 	cacheMu.Lock()
 	cache = make(map[cacheKey][]uint32, cacheSize)
+	fset = token.NewFileSet()
 	cacheMu.Unlock()
 }
 
@@ -152,11 +261,15 @@ type TranslationUnit struct {
 	ExternalDeclarationList *ExternalDeclarationList
 	FileScope               *Scope
 	FileSet                 *token.FileSet
+	Macros                  map[int]*Macro
 	Model                   Model
 }
 
 // Tweaks amend the behavior of the parser.
 type Tweaks struct {
+	TrackExpand   func(string)
+	TrackIncludes func(string)
+
 	EnableAnonymousStructFields bool // struct{int;}
 	EnableBinaryLiterals        bool // 0b101010 == 42
 	EnableEmptyStructs          bool // struct{}
@@ -178,13 +291,22 @@ type Tweaks struct {
 // consists of sources which must include any predefined/builtin stuff.
 //
 // The returned scope is the file scope of the Translation unit.
-func Translate(fset *token.FileSet, tweaks *Tweaks, includePaths, sysIncludePaths []string, sources ...Source) (*TranslationUnit, error) {
-	model, err := newModel()
+func Translate(tweaks *Tweaks, includePaths, sysIncludePaths []string, sources ...Source) (tu *TranslationUnit, err error) {
+	returned := false
+
+	defer func() {
+		e := recover()
+		if !returned && err == nil {
+			err = fmt.Errorf("PANIC: %v\n%s", e, debugStack())
+		}
+	}()
+
+	model, err := NewModel()
 	if err != nil {
 		return nil, err
 	}
 
-	ctx, err := newContext(fset, tweaks)
+	ctx, err := newContext(tweaks)
 	if err != nil {
 		return nil, err
 	}
@@ -192,12 +314,11 @@ func Translate(fset *token.FileSet, tweaks *Tweaks, includePaths, sysIncludePath
 	ctx.model = model
 	ctx.includePaths = append([]string(nil), includePaths...)
 	ctx.sysIncludePaths = append([]string(nil), sysIncludePaths...)
-	t, err := ctx.parse(sources)
-	if err != nil {
+	if tu, err = ctx.parse(sources); err != nil {
 		return nil, err
 	}
 
-	if err := t.ExternalDeclarationList.check(ctx); err != nil {
+	if err := tu.ExternalDeclarationList.check(ctx); err != nil {
 		return nil, err
 	}
 
@@ -205,7 +326,8 @@ func Translate(fset *token.FileSet, tweaks *Tweaks, includePaths, sysIncludePath
 		return nil, err
 	}
 
-	return t, nil
+	returned = true
+	return tu, nil
 }
 
 // Translation unit context.
@@ -213,7 +335,6 @@ type context struct {
 	errors       scanner.ErrorList
 	exampleAST   interface{}
 	exampleRule  int
-	fset         *token.FileSet
 	includePaths []string
 	model        Model
 	scope        *Scope
@@ -222,9 +343,8 @@ type context struct {
 	tweaks          *Tweaks
 }
 
-func newContext(fset *token.FileSet, t *Tweaks) (*context, error) {
+func newContext(t *Tweaks) (*context, error) {
 	return &context{
-		fset:   fset,
 		scope:  newScope(nil),
 		tweaks: t,
 	}, nil
@@ -235,7 +355,7 @@ func (c *context) newScope()                                   { c.scope = newSc
 
 func (c *context) position(n Node) (r token.Position) {
 	if n != nil {
-		return c.fset.PositionFor(n.Pos(), true)
+		return fset.PositionFor(n.Pos(), true)
 	}
 
 	return r
@@ -243,7 +363,7 @@ func (c *context) position(n Node) (r token.Position) {
 
 func (c *context) errPos(pos token.Pos, msg string, args ...interface{}) {
 	c.Lock()
-	c.errors.Add(c.fset.PositionFor(pos, true), fmt.Sprintf(msg, args...))
+	c.errors.Add(fset.PositionFor(pos, true), fmt.Sprintf(msg, args...))
 	c.Unlock()
 }
 
@@ -261,7 +381,7 @@ func (c *context) error() error {
 	return err
 }
 
-func (c *context) parse(in []Source) (*TranslationUnit, error) {
+func (c *context) parse(in []Source) (_ *TranslationUnit, err error) {
 	cpp := newCPP(c)
 	r, err := cpp.parse(in...)
 	if err != nil {
@@ -276,12 +396,25 @@ func (c *context) parse(in []Source) (*TranslationUnit, error) {
 	p := newTokenPipe(1024)
 	lx.tc = p
 
+	var cppErr error
+	ch := make(chan struct{})
 	go func() {
-		defer p.close()
+		returned := false
 
-		if err := cpp.eval(r, p); err != nil {
-			c.err(nopos, "%v", err)
+		defer func() {
+			p.close()
+			e := recover()
+			if !returned && cppErr == nil {
+				cppErr = fmt.Errorf("PANIC: %v\n%s", e, debugStack())
+				c.err(nopos, "%v", cppErr)
+			}
+			ch <- struct{}{}
+		}()
+
+		if cppErr = cpp.eval(r, p); cppErr != nil {
+			c.err(nopos, "%v", cppErr)
 		}
+		returned = true
 	}()
 
 	ok := lx.parse(TRANSLATION_UNIT)
@@ -294,10 +427,17 @@ func (c *context) parse(in []Source) (*TranslationUnit, error) {
 	}
 
 	if c.scope.Parent != nil {
-		panic("internal error 7")
+		panic("internal error")
 	}
 
-	return lx.ast.(*TranslationUnit), nil
+	<-ch
+	if cppErr != nil {
+		return nil, cppErr
+	}
+
+	tu := lx.ast.(*TranslationUnit)
+	tu.Macros = cpp.macros
+	return tu, nil
 }
 
 func (c *context) popScope() (old, new *Scope) {
@@ -364,6 +504,7 @@ type Source interface {
 	Name() string                       // Result will be used in reporting source code positions.
 	ReadCloser() (io.ReadCloser, error) // Where to read the source from
 	Size() (int64, error)               // Report the size of the source in bytes.
+	String() string
 }
 
 // FileSource is a Source reading from a named file.
@@ -373,16 +514,21 @@ type FileSource struct {
 	path string
 	key  cacheKey
 	size int64
+
+	cacheable bool
 }
 
 // NewFileSource returns a newly created *FileSource reading from name.
-func NewFileSource(name string) (*FileSource, error) {
+func NewFileSource(name string) (*FileSource, error) { return NewFileSource2(name, true) }
+
+// NewFileSource2 returns a newly created *FileSource reading from name.
+func NewFileSource2(name string, cacheable bool) (*FileSource, error) {
 	f, err := os.Open(name)
 	if err != nil {
 		return nil, err
 	}
 
-	r := &FileSource{f: f, path: name}
+	r := &FileSource{f: f, path: name, cacheable: cacheable}
 	fi, err := f.Stat()
 	if err != nil {
 		return nil, err
@@ -393,8 +539,14 @@ func NewFileSource(name string) (*FileSource, error) {
 	return r, nil
 }
 
+func (s *FileSource) String() string { return s.Name() }
+
 // Cache implements Source.
 func (s *FileSource) Cache(a []uint32) {
+	if !s.cacheable {
+		return
+	}
+
 	cacheMu.Lock()
 	if len(cache) > cacheSize {
 		for k := range cache {
@@ -408,6 +560,10 @@ func (s *FileSource) Cache(a []uint32) {
 
 // Cached implements Source.
 func (s *FileSource) Cached() (r []uint32) {
+	if !s.cacheable {
+		return nil
+	}
+
 	cacheMu.Lock()
 	var ok bool
 	r, ok = cache[s.key]
@@ -451,11 +607,28 @@ type StringSource struct {
 // having the presumed name.
 func NewStringSource(name, src string) *StringSource { return &StringSource{name: name, src: src} }
 
+func (s *StringSource) String() string { return s.Name() }
+
 // Cache implements Source.
-func (s *StringSource) Cache([]uint32) {}
+func (s *StringSource) Cache(a []uint32) {
+	cacheMu.Lock()
+	if len(cache) > cacheSize {
+		for k := range cache {
+			delete(cache, k)
+			break
+		}
+	}
+	cache[cacheKey{mtime: -1, name: s.src}] = a
+	cacheMu.Unlock()
+}
 
 // Cached implements Source.
-func (s *StringSource) Cached() []uint32 { return nil }
+func (s *StringSource) Cached() (r []uint32) {
+	cacheMu.Lock()
+	r = cache[cacheKey{mtime: -1, name: s.src}]
+	cacheMu.Unlock()
+	return r
+}
 
 // Close implements io.ReadCloser.
 func (s *StringSource) Close() error { return nil }

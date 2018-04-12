@@ -119,7 +119,12 @@ func (t TypeKind) IsPointerType() bool {
 		return false
 	}
 
-	panic(t)
+	switch t {
+	case Void:
+		return false
+	default:
+		panic(t)
+	}
 }
 
 // IsIntegerType implements Type.
@@ -180,12 +185,11 @@ func (t TypeKind) IsScalarType() bool {
 
 // IsVoidPointerType implements Type.
 func (t TypeKind) IsVoidPointerType() bool {
-	switch t {
-	case Int:
+	if t != Ptr {
 		return false
-	default:
-		panic(t)
 	}
+
+	panic(t)
 }
 
 // IsArithmeticType implements Type.
@@ -233,103 +237,24 @@ func (t TypeKind) IsCompatible(u Type) bool {
 // Equal implements Type.
 func (t TypeKind) Equal(u Type) bool {
 	switch x := u.(type) {
-	case *ArrayType:
-		switch t {
-		case
-			Double,
-			Int,
-			UInt,
-			Void:
+	case
+		*ArrayType,
+		*EnumType,
+		*FunctionType,
+		*PointerType,
+		*StructType,
+		*TaggedEnumType,
+		*TaggedStructType,
+		*TaggedUnionType,
+		*UnionType:
 
+		if t.IsScalarType() || t == Void {
 			return false
-		default:
-			panic(t)
 		}
-	case *EnumType:
-		switch t {
-		case
-			Char,
-			Int,
-			UInt,
-			Void:
 
-			return false
-		default:
-			panic(fmt.Errorf("\n%v\n%v", PrettyString(t), PrettyString(x)))
-		}
-	case *FunctionType:
-		switch t {
-		case Void:
-			return false
-		default:
-			panic(t)
-		}
+		panic(t)
 	case *NamedType:
 		return t.Equal(x.Type)
-	case *PointerType:
-		switch t {
-		case
-			Char,
-			Double,
-			Float,
-			Int,
-			Long,
-			LongLong,
-			Short,
-			UInt,
-			ULong,
-			ULongLong,
-			UShort,
-			UChar,
-			Void:
-
-			return false
-		default:
-			panic(t)
-		}
-	case *StructType:
-		switch t {
-		case
-			Char,
-			Int,
-			UChar,
-			Void:
-
-			return false
-		default:
-			panic(t)
-		}
-	case *TaggedEnumType:
-		switch t {
-		case
-			Char,
-			Int:
-
-			return false
-		default:
-			panic(t)
-		}
-	case *TaggedStructType:
-		switch t {
-		case
-			Char,
-			Int,
-			SChar,
-			UChar,
-			UInt,
-			Void:
-
-			return false
-		default:
-			panic(t)
-		}
-	case *TaggedUnionType:
-		switch t {
-		case Void:
-			return false
-		default:
-			panic(t)
-		}
 	case TypeKind:
 		switch x {
 		case
@@ -352,13 +277,6 @@ func (t TypeKind) Equal(u Type) bool {
 			return t == x
 		default:
 			panic(x)
-		}
-	case *UnionType:
-		switch t {
-		case Void, UChar:
-			return false
-		default:
-			panic(t)
 		}
 	default:
 		panic(fmt.Errorf("%T", x))
@@ -507,15 +425,11 @@ func (t *ArrayType) Equal(u Type) bool {
 
 		return false
 	case TypeKind:
-		switch x {
-		case
-			Int,
-			Void:
-
+		if x.IsScalarType() || x == Void {
 			return false
-		default:
-			panic(x)
 		}
+
+		panic(x)
 	default:
 		panic(fmt.Errorf("%T %v", x, x))
 	}
@@ -546,7 +460,7 @@ func (t *ArrayType) IsScalarType() bool { return false }
 func (t *ArrayType) String() string {
 	switch {
 	case t.Size.Type != nil && t.Size.Value != nil:
-		return fmt.Sprintf("array %v of %v", t.Size.Value, t.Item)
+		return fmt.Sprintf("array of %v %v", t.Size.Value, t.Item)
 	default:
 		return fmt.Sprintf("array of %v", t.Item)
 	}
@@ -568,7 +482,7 @@ func (t *EnumType) find(nm int) *EnumerationConstant {
 }
 
 // IsUnsigned implements Type.
-func (t *EnumType) IsUnsigned() bool { return false }
+func (t *EnumType) IsUnsigned() bool { return t.Enums[0].Operand.Type.IsUnsigned() }
 
 // IsVoidPointerType implements Type.
 func (t *EnumType) IsVoidPointerType() bool { panic("TODO") }
@@ -578,7 +492,7 @@ func (t *EnumType) IsArithmeticType() bool { return true }
 
 // IsCompatible implements Type.
 func (t *EnumType) IsCompatible(u Type) bool {
-	switch x := UnderlyingType(u).(type) {
+	switch x := underlyingType(u, true).(type) {
 	case *EnumType:
 		if len(t.Enums) != len(x.Enums) {
 			return false
@@ -672,6 +586,7 @@ type FunctionType struct {
 	Params   []Type
 	Result   Type
 	Variadic bool
+	params   []int
 }
 
 // IsUnsigned implements Type.
@@ -787,7 +702,9 @@ func (t *NamedType) IsVoidPointerType() bool { panic("TODO") }
 func (t *NamedType) IsArithmeticType() bool { return t.Type.IsArithmeticType() }
 
 // IsCompatible implements Type.
-func (t *NamedType) IsCompatible(u Type) bool { return t.Type.IsCompatible(u) }
+func (t *NamedType) IsCompatible(u Type) (r bool) {
+	return UnderlyingType(t.Type).IsCompatible(UnderlyingType(u))
+}
 
 // Equal implements Type.
 func (t *NamedType) Equal(u Type) bool {
@@ -815,6 +732,9 @@ func (t *NamedType) Equal(u Type) bool {
 	case *TaggedStructType:
 		v := x.getType()
 		return v != x && t.Type.Equal(v)
+	case *TaggedUnionType:
+		v := x.getType()
+		return v != x && t.Type.Equal(v)
 	case TypeKind:
 		switch x {
 		case
@@ -838,6 +758,8 @@ func (t *NamedType) Equal(u Type) bool {
 		default:
 			panic(x)
 		}
+	case *UnionType:
+		return t.Type.Equal(x)
 	default:
 		panic(fmt.Errorf("%T: %v, %v", x, t.Type, u))
 	}
@@ -898,7 +820,9 @@ func (t *PointerType) IsCompatible(u Type) bool {
 		// incomplete or object type. A pointer to any incomplete or object
 		// type may be converted to a pointer to void and back again; the
 		// result shall compare equal to the original pointer.
-		return t.Item == Void || x.Item == Void || ai != nil && ai.IsCompatible(x.Item) || t.Item.IsCompatible(x.Item)
+		return t.Item == Void || x.Item == Void ||
+			ai != nil && ai.IsCompatible(x.Item) ||
+			underlyingType(t.Item, true).IsCompatible(underlyingType(x.Item, true))
 	case *StructType:
 		return false
 	case TypeKind:
@@ -1043,7 +967,9 @@ type StructType struct{ structBase }
 func (t *StructType) IsUnsigned() bool { panic("TODO") }
 
 // Field returns the properties of field nm or nil if the field does not exist.
-func (t *StructType) Field(nm int) *FieldProperties { return t.findField(nm) }
+func (t *StructType) Field(nm int) *FieldProperties {
+	return t.findField(nm)
+}
 
 // IsVoidPointerType implements Type.
 func (t *StructType) IsVoidPointerType() bool { panic("TODO") }
@@ -1073,7 +999,8 @@ func (t *StructType) IsCompatible(u Type) bool {
 	// have the same widths.
 	switch x := UnderlyingType(u).(type) {
 	case *StructType:
-		if len(t.Fields) != len(x.Fields) || t.Tag != x.Tag {
+		//TODO if len(t.Fields) != len(x.Fields) || t.Tag != x.Tag { // Fails in _sqlite/src/test_fs.c
+		if len(t.Fields) != len(x.Fields) {
 			return false
 		}
 
@@ -1210,12 +1137,11 @@ func (t *TaggedEnumType) Equal(u Type) bool {
 			return y.Equal(u)
 		}
 	case TypeKind:
-		switch x {
-		case Int:
+		if x.IsScalarType() {
 			return false
-		default:
-			panic(fmt.Errorf("%v", x))
 		}
+
+		panic(fmt.Errorf("%v", x))
 	default:
 		panic(fmt.Errorf("%T", x))
 	}
@@ -1230,7 +1156,7 @@ func (t *TaggedEnumType) IsCompatible(u Type) bool {
 	case x == t:
 		panic("TODO")
 	default:
-		return x.IsCompatible(u)
+		return underlyingType(x, true).IsCompatible(underlyingType(u, true))
 	}
 }
 
@@ -1259,16 +1185,12 @@ func (t *TaggedEnumType) assign(ctx *context, op Operand) Operand {
 		op.Type = t
 		return op
 	case TypeKind:
-		switch x {
-		case
-			Char,
-			Int:
-
+		if x.IsIntegerType() {
 			op.Type = t
 			return op
-		default:
-			panic(x)
 		}
+
+		panic(x)
 	default:
 		panic(fmt.Errorf("%T", x))
 	}
@@ -1305,7 +1227,19 @@ func (t *TaggedStructType) IsVoidPointerType() bool { panic("TODO") }
 func (t *TaggedStructType) IsArithmeticType() bool { return false }
 
 // IsCompatible implements Type.
-func (t *TaggedStructType) IsCompatible(u Type) bool { return t.Equal(u) }
+func (t *TaggedStructType) IsCompatible(u Type) bool {
+	if t == u {
+		return true
+	}
+
+	if x, ok := u.(*TaggedStructType); ok && t.Tag == x.Tag {
+		return true
+	}
+
+	a := UnderlyingType(t)
+	b := UnderlyingType(u)
+	return UnderlyingType(a).IsCompatible(UnderlyingType(b))
+}
 
 // Equal implements Type.
 func (t *TaggedStructType) Equal(u Type) bool {
@@ -1534,6 +1468,13 @@ func (t *UnionType) Equal(u Type) bool {
 		return t.Equal(x.Type)
 	case *PointerType:
 		return false
+	case *TaggedUnionType:
+		v := x.Type
+		if v == x {
+			panic(x)
+		}
+
+		return t.Equal(v)
 	case TypeKind:
 		switch x {
 		case
@@ -1568,13 +1509,20 @@ func (t *UnionType) Kind() TypeKind { return Union }
 // assign implements Type.
 func (t *UnionType) assign(ctx *context, op Operand) Operand {
 	switch x := op.Type.(type) {
+	case *NamedType:
+		if !t.IsCompatible(x.Type) {
+			panic("TODO")
+		}
+
+		return Operand{Type: t}
 	case *UnionType:
 		if !t.IsCompatible(x) {
 			panic("TODO")
 		}
+
 		return Operand{Type: t}
 	default:
-		panic(x)
+		panic(fmt.Errorf("%T %v", x, x))
 	}
 }
 
@@ -1613,6 +1561,10 @@ func AdjustedParameterType(t Type) Type {
 		case *ArrayType:
 			return &PointerType{t}
 		case *NamedType:
+			if isVaList(x) {
+				return x
+			}
+
 			u = x.Type
 		case
 			*EnumType,
@@ -1653,7 +1605,9 @@ func AdjustedParameterType(t Type) Type {
 }
 
 // UnderlyingType returns the concrete type of t, if posible.
-func UnderlyingType(t Type) Type {
+func UnderlyingType(t Type) Type { return underlyingType(t, false) }
+
+func underlyingType(t Type, enums bool) Type {
 	for {
 		switch x := t.(type) {
 		case
@@ -1665,6 +1619,10 @@ func UnderlyingType(t Type) Type {
 
 			return x
 		case *EnumType:
+			if enums {
+				return x
+			}
+
 			return x.Enums[0].Operand.Type
 		case *NamedType:
 			if x.Type == nil {

@@ -21,9 +21,10 @@ import (
 	"strings"
 	"testing"
 	"unicode"
+	"unicode/utf8"
 
-	"github.com/cznic/ccir"
 	"github.com/cznic/golex/lex"
+	"github.com/cznic/xc"
 )
 
 func caller(s string, va ...interface{}) {
@@ -75,27 +76,26 @@ func use(...interface{}) {}
 func init() {
 	use(caller, caller3, dbg, TODO, toksDump) //TODOOK
 	flag.IntVar(&yyDebug, "yydebug", 0, "")
+	flag.BoolVar(&traceMacroDefs, "macros", false, "")
 }
 
 // ============================================================================
 
-const (
-	inj = `
-		#define _CCGO 1
-		#define __arch__ %s
-		#define __os__ %s
-		#include <builtin.h>
-		%s
-`
-	predef = ""
-)
-
 var (
 	oRE = flag.String("re", "", "")
 
-	shellc   = filepath.FromSlash("../../_sqlite/sqlite-amalgamation-3210000/shell.c")
-	sqlite3c = filepath.FromSlash("../../_sqlite/sqlite-amalgamation-3210000/sqlite3.c")
+	shellc      = filepath.FromSlash("../../_sqlite/sqlite-amalgamation-3210000/shell.c")
+	sqlite3c    = filepath.FromSlash("../../_sqlite/sqlite-amalgamation-3210000/sqlite3.c")
+	searchPaths []string
 )
+
+func init() {
+	var err error
+	searchPaths, err = Paths(true)
+	if err != nil {
+		panic(err)
+	}
+}
 
 func testUCNTable(t *testing.T, tab []rune, fOk, fOther func(rune) bool, fcategory func(rune) bool, tag string) {
 	m := map[rune]struct{}{}
@@ -260,7 +260,7 @@ nextTest:
 }
 
 func TestLexer(t *testing.T) {
-	ctx, err := newContext(token.NewFileSet(), &Tweaks{})
+	ctx, err := newContext(&Tweaks{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -340,7 +340,7 @@ func TestLexer(t *testing.T) {
 }
 
 func TestLexerTrigraphs(t *testing.T) {
-	ctx, err := newContext(token.NewFileSet(), &Tweaks{EnableTrigraphs: true})
+	ctx, err := newContext(&Tweaks{EnableTrigraphs: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -420,7 +420,7 @@ func TestLexerTrigraphs(t *testing.T) {
 }
 
 func exampleAST(rule int, src string) interface{} {
-	ctx, err := newContext(token.NewFileSet(), &Tweaks{
+	ctx, err := newContext(&Tweaks{
 		EnableAnonymousStructFields: true,
 		EnableEmptyStructs:          true,
 		EnableOmitFuncDeclSpec:      true,
@@ -431,11 +431,14 @@ func exampleAST(rule int, src string) interface{} {
 
 	ctx.exampleRule = rule
 	src = strings.TrimSpace(src)
+	r, n := utf8.DecodeRuneInString(src)
+	src = src[n:]
 	l, err := newLexer(ctx, fmt.Sprintf("example%v.c", rule), len(src), strings.NewReader(src))
 	if err != nil {
 		return fmt.Sprintf("TODO: %v", err) //TODOOK
 	}
 
+	l.unget(xc.Token{Char: lex.Char{Rune: r}})
 	yyParse(l)
 	if err := ctx.error(); err != nil {
 		return fmt.Sprintf("TODO: %v", err) //TODOOK
@@ -451,7 +454,7 @@ func exampleAST(rule int, src string) interface{} {
 func testCPPParseSource(ctx *context, src Source) (*cpp, tokenReader, error) {
 	if ctx == nil {
 		var err error
-		if ctx, err = newContext(token.NewFileSet(), &Tweaks{}); err != nil {
+		if ctx, err = newContext(&Tweaks{}); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -465,17 +468,8 @@ func testCPPParseSource(ctx *context, src Source) (*cpp, tokenReader, error) {
 	return c, r, nil
 }
 
-func mustFileSource(nm string) *FileSource {
-	src, err := NewFileSource(nm)
-	if err != nil {
-		panic(fmt.Errorf("%v: %v", nm, err))
-	}
-
-	return src
-}
-
 func testCPPParseFile(ctx *context, nm string) (*cpp, tokenReader, error) {
-	return testCPPParseSource(ctx, mustFileSource(nm))
+	return testCPPParseSource(ctx, MustFileSource(nm))
 }
 
 func testCPPParseString(ctx *context, name, src string) (*cpp, tokenReader, error) {
@@ -483,7 +477,7 @@ func testCPPParseString(ctx *context, name, src string) (*cpp, tokenReader, erro
 }
 
 func TestCPPParse0(t *testing.T) {
-	ctx, err := newContext(token.NewFileSet(), &Tweaks{})
+	ctx, err := newContext(&Tweaks{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -512,7 +506,7 @@ func TestCPPExpand(t *testing.T) {
 		re = regexp.MustCompile(s)
 	}
 
-	model, err := newModel()
+	model, err := NewModel()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -530,7 +524,7 @@ func TestCPPExpand(t *testing.T) {
 			return nil
 		}
 
-		ctx, err := newContext(token.NewFileSet(), &Tweaks{
+		ctx, err := newContext(&Tweaks{
 			cppExpandTest: true,
 		})
 		if err != nil {
@@ -545,26 +539,26 @@ func TestCPPExpand(t *testing.T) {
 
 		c, r, err := testCPPParseFile(ctx, path)
 		if err != nil {
-			t.Fatal(errString(err))
+			t.Fatal(ErrString(err))
 		}
 
 		var tb tokenBuffer
 		if err := c.eval(r, &tb); err != nil {
-			t.Fatal(errString(err))
+			t.Fatal(ErrString(err))
 		}
 
 		switch {
 		case strings.Contains(filepath.ToSlash(path), "/mustfail/"):
 			err := c.error()
 			if err != nil {
-				t.Logf(errString(err))
+				t.Logf(ErrString(err))
 				return nil
 			}
 
 			t.Fatalf("unexpected success: %s", path)
 		default:
 			if c.error() != nil {
-				t.Fatal(errString(err))
+				t.Fatal(ErrString(err))
 			}
 		}
 
@@ -616,34 +610,32 @@ func (b *tokenBuffer) Bytes(fset *token.FileSet) []byte {
 }
 
 func TestPreprocessSQLite(t *testing.T) {
-	builtin := fmt.Sprintf(inj, runtime.GOARCH, runtime.GOOS, predef)
-
-	model, err := newModel()
+	model, err := NewModel()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	ctx, err := newContext(token.NewFileSet(), &Tweaks{})
+	ctx, err := newContext(&Tweaks{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	ctx.model = model
 	cpp := newCPP(ctx)
-	cpp.includePaths = []string{"@", ccir.LibcIncludePath}
-	cpp.sysIncludePaths = []string{ccir.LibcIncludePath}
-	r, err := cpp.parse(NewStringSource("<builtin>", builtin), mustFileSource(sqlite3c))
+	cpp.includePaths = []string{"@"}
+	cpp.sysIncludePaths = searchPaths
+	r, err := cpp.parse(MustBuiltin(), MustFileSource(sqlite3c))
 	if err != nil {
 		t.Fatalf("%v: %v", sqlite3c, err)
 	}
 
 	var w tokenBuffer
 	if err := cpp.eval(r, &w); err != nil {
-		t.Fatalf("%v: %v", sqlite3c, errString(err))
+		t.Fatalf("%v: %v", sqlite3c, ErrString(err))
 	}
 
 	if err := cpp.error(); err != nil {
-		t.Fatalf("%v: %v", sqlite3c, errString(err))
+		t.Fatalf("%v: %v", sqlite3c, ErrString(err))
 	}
 
 	if n := len(cpp.lx.ungetBuffer); n != 0 {
@@ -652,12 +644,12 @@ func TestPreprocessSQLite(t *testing.T) {
 }
 
 func TestParseSQLite(t *testing.T) {
-	model, err := newModel()
+	model, err := NewModel()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	ctx, err := newContext(token.NewFileSet(), &Tweaks{
+	ctx, err := newContext(&Tweaks{
 		EnableAnonymousStructFields: true,
 		EnableEmptyStructs:          true,
 	})
@@ -666,25 +658,21 @@ func TestParseSQLite(t *testing.T) {
 	}
 
 	ctx.model = model
-	ctx.includePaths = []string{"@", ccir.LibcIncludePath}
-	ctx.sysIncludePaths = []string{ccir.LibcIncludePath}
-	if _, err := ctx.parse(
-		[]Source{
-			NewStringSource("<builtin>", fmt.Sprintf(inj, runtime.GOARCH, runtime.GOOS, predef)),
-			mustFileSource(sqlite3c),
-		},
-	); err != nil {
-		t.Fatalf("%v", errString(err))
+	ctx.includePaths = []string{"@"}
+	ctx.sysIncludePaths = searchPaths
+	if _, err := ctx.parse([]Source{MustBuiltin(), MustFileSource(sqlite3c)}); err != nil {
+		dbg("%T %v", err, PrettyString(err))
+		t.Fatalf("%v", ErrString(err))
 	}
 }
 
 func TestFunc(t *testing.T) {
-	model, err := newModel()
+	model, err := NewModel()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	ctx, err := newContext(token.NewFileSet(), &Tweaks{InjectFinalNL: true})
+	ctx, err := newContext(&Tweaks{InjectFinalNL: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -694,7 +682,7 @@ func TestFunc(t *testing.T) {
 		[]Source{NewStringSource("testfunc.c", `int (*foo(char bar))(double baz){}`)},
 	)
 	if err != nil {
-		t.Fatalf("%v", errString(err))
+		t.Fatalf("%v", ErrString(err))
 	}
 
 	if err := tu.ExternalDeclarationList.check(ctx); err != nil {
@@ -752,15 +740,14 @@ func TestFunc(t *testing.T) {
 
 func TestTypecheckSQLite(t *testing.T) {
 	if _, err := Translate(
-		token.NewFileSet(),
 		&Tweaks{
 			EnableAnonymousStructFields: true,
 			EnableEmptyStructs:          true,
 		},
-		[]string{"@", ccir.LibcIncludePath},
-		[]string{ccir.LibcIncludePath},
-		NewStringSource("<builtin>", fmt.Sprintf(inj, runtime.GOARCH, runtime.GOOS, predef)),
-		mustFileSource(sqlite3c),
+		[]string{"@"},
+		searchPaths,
+		MustBuiltin(),
+		MustFileSource(sqlite3c),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -768,16 +755,15 @@ func TestTypecheckSQLite(t *testing.T) {
 
 func TestTypecheckSQLiteShell(t *testing.T) {
 	if _, err := Translate(
-		token.NewFileSet(),
 		&Tweaks{
 			EnableAnonymousStructFields: true,
 			EnableEmptyStructs:          true,
 		},
-		[]string{"@", ccir.LibcIncludePath},
-		[]string{ccir.LibcIncludePath},
-		NewStringSource("<builtin>", fmt.Sprintf(inj, runtime.GOARCH, runtime.GOOS, predef)),
-		mustFileSource(filepath.Join(ccir.LibcIncludePath, "crt0.c")),
-		mustFileSource(shellc),
+		[]string{"@"},
+		searchPaths,
+		MustBuiltin(),
+		MustCrt0(),
+		MustFileSource(shellc),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -799,20 +785,20 @@ func TestTypecheckTCCTests(t *testing.T) {
 		}
 
 		if _, err := Translate(
-			token.NewFileSet(),
 			&Tweaks{
-				EnableBinaryLiterals:       true,
-				EnableEmptyStructs:         true,
-				EnableImplicitDeclarations: true,
-				EnableReturnExprInVoidFunc: true,
+				EnableBinaryLiterals:        true,
+				EnableEmptyStructs:          true,
+				EnableImplicitDeclarations:  true,
+				EnableReturnExprInVoidFunc:  true,
+				EnableAnonymousStructFields: true,
 			},
-			[]string{"@", ccir.LibcIncludePath},
-			[]string{ccir.LibcIncludePath},
-			NewStringSource("<builtin>", fmt.Sprintf(inj, runtime.GOARCH, runtime.GOOS, predef)),
-			mustFileSource(filepath.Join(ccir.LibcIncludePath, "crt0.c")),
-			mustFileSource(pth),
+			[]string{"@"},
+			searchPaths,
+			MustBuiltin(),
+			MustCrt0(),
+			MustFileSource(pth),
 		); err != nil {
-			t.Fatal(err)
+			t.Fatal(ErrString(err))
 		}
 	}
 }

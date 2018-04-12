@@ -8,6 +8,7 @@
 package c99
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"go/token"
@@ -53,8 +54,8 @@ type tokenPipe struct {
 
 func newTokenPipe(n int) *tokenPipe { return &tokenPipe{ch: make(chan xc.Token, n)} }
 
-func (*tokenPipe) unget(xc.Token)     { panic("internal error 2") }
-func (*tokenPipe) ungets(...xc.Token) { panic("internal error 3") }
+func (*tokenPipe) unget(xc.Token)     { panic("internal error") }
+func (*tokenPipe) ungets(...xc.Token) { panic("internal error") }
 
 func (p *tokenPipe) close() {
 	if len(p.s) != 0 {
@@ -103,13 +104,19 @@ func (p *tokenPipe) write(toks ...xc.Token) {
 }
 
 type tokenBuffer struct {
-	toks []xc.Token
+	toks0 []xc.Token
+	toks  []xc.Token
 	ungetBuffer
 
 	last rune
 }
 
-func (b *tokenBuffer) write(t ...xc.Token) { b.toks = append(b.toks, t...) }
+func (b *tokenBuffer) write(t ...xc.Token) {
+	b.toks = append(b.toks, t...)
+	if b.toks0 == nil || &b.toks0[0] != &b.toks[0] {
+		b.toks0 = b.toks
+	}
+}
 
 func (b *tokenBuffer) read() (t xc.Token) {
 	if len(b.ungetBuffer) != 0 {
@@ -123,6 +130,9 @@ func (b *tokenBuffer) read() (t xc.Token) {
 
 	t = b.toks[0]
 	b.toks = b.toks[1:]
+	if len(b.toks) == 0 {
+		b.toks = b.toks0[:0]
+	}
 	if t.Rune == '#' && (b.last == '\n' || b.last == 0) {
 		t.Rune = DIRECTIVE
 	}
@@ -178,26 +188,60 @@ func (c conds) pop() conds        { return c[:len(c)-1] }
 func (c conds) push(n cond) conds { return append(c, n) }
 func (c conds) tos() cond         { return c[len(c)-1] }
 
-type macro struct {
-	def  xc.Token
-	fp   []int
-	repl []xc.Token
+// Macro represents a preprocessor Macro.
+type Macro struct {
+	Args            []int      // Numeric IDs of argument identifiers.
+	DefTok          xc.Token   // Macro name definition token.
+	ReplacementToks []xc.Token // The tokens that replace the macro. R/O
 
-	fnLike   bool
-	ident    bool
-	variadic bool
+	IsFnLike   bool // Whether the macro is function like.
+	IsVariadic bool // Whether the macro is variadic.
+	ident      bool
 }
 
-func newMacro(def xc.Token, repl []xc.Token) *macro { return &macro{def: def, repl: repl} }
+func newMacro(def xc.Token, repl []xc.Token) *Macro {
+	return &Macro{DefTok: def, ReplacementToks: append([]xc.Token(nil), repl...)}
+}
 
-func (m *macro) param(ap [][]xc.Token, nm int, out *[]xc.Token) bool {
+// Eval attempts to evaluate m, which must be a simple macro, like `#define foo numeric-literal`.
+func (m *Macro) Eval(model Model, macros map[int]*Macro) (op Operand, err error) {
+	returned := false
+
+	defer func() {
+		e := recover()
+		if !returned && err == nil {
+			err = fmt.Errorf("PANIC: %v\n%s", e, debugStack())
+		}
+	}()
+
+	if m.IsFnLike {
+		return op, fmt.Errorf("cannot evaluate function-like macro")
+	}
+
+	ctx, err := newContext(&Tweaks{})
+	if err != nil {
+		return op, err
+	}
+
+	ctx.model = model
+	c := newCPP(ctx)
+	c.macros = macros
+	if op, _ = c.constExpr(m.ReplacementToks); op.Type == nil {
+		return op, fmt.Errorf("cannot evaluate macro")
+	}
+
+	returned = true
+	return op, nil
+}
+
+func (m *Macro) param(ap [][]xc.Token, nm int, out *[]xc.Token) bool {
 	*out = nil
 	if nm == idVaArgs {
-		if !m.variadic {
+		if !m.IsVariadic {
 			return false
 		}
 
-		if i := len(m.fp); i < len(ap) {
+		if i := len(m.Args); i < len(ap) {
 			o := *out
 			for i, v := range ap[i:] {
 				if i != 0 {
@@ -215,8 +259,8 @@ func (m *macro) param(ap [][]xc.Token, nm int, out *[]xc.Token) bool {
 		return true
 	}
 
-	if len(m.fp) != 0 && nm == m.fp[len(m.fp)-1] && m.variadic && !m.ident {
-		if i := len(m.fp) - 1; i < len(ap) {
+	if len(m.Args) != 0 && nm == m.Args[len(m.Args)-1] && m.IsVariadic && !m.ident {
+		if i := len(m.Args) - 1; i < len(ap) {
 			o := *out
 			for i, v := range ap[i:] {
 				if i != 0 {
@@ -234,7 +278,7 @@ func (m *macro) param(ap [][]xc.Token, nm int, out *[]xc.Token) bool {
 		return true
 	}
 
-	for i, v := range m.fp {
+	for i, v := range m.Args {
 		if v == nm {
 			*out = ap[i]
 			return true
@@ -252,7 +296,8 @@ type cpp struct {
 	hideSet      map[int]int // name: hidden if != 0.
 	includeLevel int
 	lx           *lexer
-	macros       map[int]*macro // name ID: macro
+	macros       map[int]*Macro // name ID: macro
+	toks         []xc.Token
 }
 
 func newCPP(ctx *context) *cpp {
@@ -266,7 +311,7 @@ func newCPP(ctx *context) *cpp {
 		context: ctx,
 		hideSet: map[int]int{},
 		lx:      lx,
-		macros:  map[int]*macro{},
+		macros:  map[int]*Macro{},
 	}
 	return r
 }
@@ -304,14 +349,13 @@ func (c *cpp) parse(src ...Source) (tokenReader, error) {
 		}
 
 		if err := func() (err error) {
+			returned := false
+
 			defer func() {
-				switch e := recover(); x := e.(type) {
-				case nil:
-					// nop
-				case error:
-					err = newPanicError(fmt.Errorf("%s: PANIC: %v\n%s", lx.lastPosition(), errString(x), debugStack()))
-				default:
-					err = newPanicError(fmt.Errorf("%s: PANIC: %v\n%s", lx.lastPosition(), e, debugStack()))
+				e := recover()
+				if !returned && err == nil {
+					err = fmt.Errorf("PANIC: %v\n%s", e, debugStack())
+					c.err(nopos, "%v", err)
 				}
 				if e := r.Close(); e != nil && err == nil {
 					err = e
@@ -370,6 +414,7 @@ func (c *cpp) parse(src ...Source) (tokenReader, error) {
 			}
 			v.Cache(pf)
 			tu = append(tu, pf)
+			returned = true
 			return nil
 		}(); err != nil {
 			return nil, err
@@ -378,20 +423,12 @@ func (c *cpp) parse(src ...Source) (tokenReader, error) {
 	return &cppReader{tu: tu}, nil
 }
 func (c *cpp) eval(r tokenReader, w tokenWriter) (err error) {
-	defer func() {
-		switch e := recover(); x := e.(type) {
-		case nil:
-		case error:
-			err = newPanicError(fmt.Errorf("%T: PANIC: %v\n%s", c, errString(x), debugStack()))
-		default:
-			err = newPanicError(fmt.Errorf("%T: PANIC: %v\n%s", c, e, debugStack()))
-		}
-	}()
-	c.macros[idFile] = &macro{repl: []xc.Token{{Char: lex.NewChar(0, STRINGLITERAL)}}}
-	c.macros[idLine] = &macro{repl: []xc.Token{{Char: lex.NewChar(0, INTCONST)}}}
-	if cs := c.expand(r, w, conds(nil).push(condZero)); len(cs) != 1 || cs.tos() != condZero {
-		panic(cs)
+	c.macros[idFile] = &Macro{ReplacementToks: []xc.Token{{Char: lex.NewChar(0, STRINGLITERAL)}}}
+	c.macros[idLine] = &Macro{ReplacementToks: []xc.Token{{Char: lex.NewChar(0, INTCONST)}}}
+	if cs := c.expand(r, w, conds(nil).push(condZero), 0); len(cs) != 1 || cs.tos() != condZero {
+		return fmt.Errorf("unexpected top of condition stack value: %v", cs)
 	}
+
 	return nil
 }
 
@@ -420,7 +457,7 @@ func (c *cpp) eval(r tokenReader, w tokenWriter) (err error) {
 // 	note TS must be T^HS • TS’
 // 	return T^HS • expand(TS’);
 // }
-func (c *cpp) expand(r tokenReader, w tokenWriter, cs conds) conds {
+func (c *cpp) expand(r tokenReader, w tokenWriter, cs conds, lvl int) conds {
 	for {
 		t := r.read()
 		switch t.Rune {
@@ -432,6 +469,9 @@ func (c *cpp) expand(r tokenReader, w tokenWriter, cs conds) conds {
 			t.Rune = '\n'
 			t.Val = 0
 			w.write(t)
+			if f := c.tweaks.TrackExpand; f != nil && lvl == 0 {
+				f("\n")
+			}
 		case IDENTIFIER:
 			if !cs.on() {
 				break
@@ -445,12 +485,12 @@ func (c *cpp) expand(r tokenReader, w tokenWriter, cs conds) conds {
 			}
 
 			m := c.macros[nm]
-			if m != nil && !m.fnLike {
+			if m != nil && !m.IsFnLike {
 				switch nm {
 				case idFile:
-					m.repl[0].Val = dict.SID(fmt.Sprintf("%q", c.position(t).Filename))
+					m.ReplacementToks[0].Val = dict.SID(fmt.Sprintf("%q", c.position(t).Filename))
 				case idLine:
-					m.repl[0].Val = dict.SID(fmt.Sprint(c.position(t).Line))
+					m.ReplacementToks[0].Val = dict.SID(fmt.Sprint(c.position(t).Line))
 				}
 				// ------------------------------------------ C
 				c.hideSet[nm]++
@@ -463,7 +503,7 @@ func (c *cpp) expand(r tokenReader, w tokenWriter, cs conds) conds {
 				continue
 			}
 
-			if m != nil && m.fnLike {
+			if m != nil && m.IsFnLike {
 				// ------------------------------------------ D
 				var sentinels []xc.Token
 			again:
@@ -499,6 +539,9 @@ func (c *cpp) expand(r tokenReader, w tokenWriter, cs conds) conds {
 			}
 
 			w.write(t)
+			if f := c.tweaks.TrackExpand; f != nil && lvl == 0 {
+				f(TokSrc(t))
+			}
 		case SENTINEL:
 			if !cs.on() {
 				panic("internal error 5")
@@ -515,6 +558,9 @@ func (c *cpp) expand(r tokenReader, w tokenWriter, cs conds) conds {
 			}
 
 			w.write(t)
+			if f := c.tweaks.TrackExpand; f != nil && lvl == 0 {
+				f(TokSrc(t))
+			}
 		}
 	}
 }
@@ -528,8 +574,7 @@ func (c *cpp) sanitize(toks []xc.Token) []xc.Token {
 	return toks
 }
 
-func (c *cpp) actuals(m *macro, r tokenReader) (out [][]xc.Token) {
-	//defer func() { dbg("", out) }()
+func (c *cpp) actuals(m *Macro, r tokenReader) (out [][]xc.Token) {
 	var lvl, n int
 	for {
 		t := r.read()
@@ -549,7 +594,7 @@ func (c *cpp) actuals(m *macro, r tokenReader) (out [][]xc.Token) {
 				for i, v := range out {
 					out[i] = trimSpace(v)
 				}
-				for len(out) < len(m.fp) {
+				for len(out) < len(m.Args) {
 					out = append(out, nil)
 				}
 				return out
@@ -573,7 +618,7 @@ func (c *cpp) actuals(m *macro, r tokenReader) (out [][]xc.Token) {
 func (c *cpp) expands(toks []xc.Token) (out []xc.Token) {
 	var r, w tokenBuffer
 	r.toks = toks
-	c.expand(&r, &w, conds(nil).push(condZero))
+	c.expand(&r, &w, conds(nil).push(condZero), 1)
 	return w.toks
 }
 
@@ -631,9 +676,9 @@ func (c *cpp) expands(toks []xc.Token) (out []xc.Token) {
 // 	note IS must be T^HS’ • IS’
 // 	return subst(IS’,FP,AP,HS,OS • THS’);
 // }
-func (c *cpp) subst(m *macro, ap [][]xc.Token) (out []xc.Token) {
+func (c *cpp) subst(m *Macro, ap [][]xc.Token) (out []xc.Token) {
 	// dbg("%s %v %v", m.def.S(), m.variadic, ap)
-	repl := m.repl
+	repl := m.ReplacementToks
 	var arg []xc.Token
 	for {
 		if len(repl) == 0 {
@@ -659,7 +704,8 @@ func (c *cpp) subst(m *macro, ap [][]xc.Token) (out []xc.Token) {
 			// -------------------------------------------------- C
 			if len(arg) == 0 {
 				// ------------------------------------------ D
-				panic("TODO")
+				repl = repl[2:]
+				continue
 			}
 
 			// -------------------------------------------------- E
@@ -819,12 +865,16 @@ func (c *cpp) stringize(s []xc.Token) xc.Token {
 	return xc.Token{}
 }
 
-func (c *cpp) directive(r tokenReader, w tokenWriter, cs conds) conds {
+func (c *cpp) directive(r tokenReader, w tokenWriter, cs conds) (y conds) {
 	line := c.line(r)
 	if len(line) == 0 {
 		return cs
 	}
 
+	if f := c.tweaks.TrackExpand; f != nil {
+		s0 := fmt.Sprint(cs)
+		defer func() { f(fmt.Sprintf("#%s // %v->%v %v", toksDump(line, ""), s0, y, c.position(line[0]))) }()
+	}
 	switch t := line[0]; t.Rune {
 	case ccEOF:
 		// nop
@@ -844,7 +894,7 @@ func (c *cpp) directive(r tokenReader, w tokenWriter, cs conds) conds {
 		case idElif:
 			switch cs.tos() {
 			case condIfOff:
-				if c.constExpr(line[1:]) {
+				if _, ok := c.constExpr(line[1:]); ok {
 					return cs.pop().push(condIfOn)
 				}
 			case condIfOn:
@@ -870,14 +920,14 @@ func (c *cpp) directive(r tokenReader, w tokenWriter, cs conds) conds {
 				break
 			}
 
-			panic(fmt.Errorf("%v", c.position(t)))
+			panic(fmt.Errorf("%v: ERROR: %v", c.position(t), toksDump(line, "")))
 		case idIf:
 			if !cs.on() {
 				return cs.push(condIfSkip)
 			}
 
-			switch {
-			case c.constExpr(line[1:]):
+			switch _, ok := c.constExpr(line[1:]); {
+			case ok:
 				return cs.push(condIfOn)
 			default:
 				return cs.push(condIfOff)
@@ -934,7 +984,10 @@ func (c *cpp) directive(r tokenReader, w tokenWriter, cs conds) conds {
 			}
 
 			return cs.push(condIfOn)
-		case idInclude:
+		case
+			idIncludeNext,
+			idInclude:
+
 			if !cs.on() {
 				break
 			}
@@ -1012,12 +1065,15 @@ func (c *cpp) directive(r tokenReader, w tokenWriter, cs conds) conds {
 
 			line = trimSpace(line[1:])
 			if len(line) == 0 {
+				panic("TODO")
 			}
 
 			if len(line) > 1 {
+				panic("TODO")
 			}
 
 			if line[0].Rune != IDENTIFIER {
+				panic("TODO")
 			}
 
 			delete(c.macros, line[0].Val)
@@ -1028,7 +1084,7 @@ func (c *cpp) directive(r tokenReader, w tokenWriter, cs conds) conds {
 
 			panic(fmt.Errorf("%v", c.position(t)))
 		default:
-			panic(fmt.Errorf("%v", c.position(t)))
+			panic(fmt.Errorf("%v %v", c.position(t), PrettyString(t)))
 		}
 	default:
 		panic(PrettyString(t))
@@ -1045,13 +1101,28 @@ func (c *cpp) include(n Node, nm string, paths []string, w tokenWriter) {
 
 	defer func() { c.includeLevel-- }()
 
+	dir := filepath.Dir(c.position(n).Filename)
 	var path string
+	if n.(xc.Token).Val == idIncludeNext {
+		for i, v := range paths {
+			if v == dir {
+				paths = paths[i+1:]
+				break
+			}
+		}
+	}
 	for _, v := range paths {
 		if v == "@" {
-			v = filepath.Dir(c.position(n).Filename)
+			v = dir
 		}
 
-		p := filepath.Join(v, nm)
+		var p string
+		switch {
+		case strings.HasPrefix(nm, "./"):
+			p = nm
+		default:
+			p = filepath.Join(v, nm)
+		}
 		fi, err := os.Stat(p)
 		if err != nil || fi.IsDir() {
 			continue
@@ -1062,7 +1133,8 @@ func (c *cpp) include(n Node, nm string, paths []string, w tokenWriter) {
 	}
 
 	if path == "" {
-		panic(fmt.Errorf("%v: %q %q", c.position(n), nm, paths))
+		wd, _ := os.Getwd()
+		panic(fmt.Errorf("%v: nm %q, paths %q, wd %q", c.position(n), nm, paths, wd))
 	}
 
 	s, err := NewFileSource(path)
@@ -1071,15 +1143,18 @@ func (c *cpp) include(n Node, nm string, paths []string, w tokenWriter) {
 		return
 	}
 
+	if f := c.tweaks.TrackIncludes; f != nil {
+		f(path)
+	}
 	r, err := c.parse(s)
 	if err != nil {
 		c.err(n, "%s", err.Error())
 	}
 
-	c.expand(r, w, conds(nil).push(condZero))
+	c.expand(r, w, conds(nil).push(condZero), 0)
 }
 
-func (c *cpp) constExpr(toks []xc.Token) (y bool) {
+func (c *cpp) constExpr(toks []xc.Token) (op Operand, y bool) {
 	toks = trimAllSpace(toks)
 	for i, v := range toks { // [0]6.10.1-1
 		if v.Rune == IDENTIFIER && v.Val == idDefined {
@@ -1106,7 +1181,7 @@ func (c *cpp) constExpr(toks []xc.Token) (y bool) {
 			}
 		}
 	}
-	toks = c.expands(trimAllSpace(toks))
+	toks = trimAllSpace(c.expands(trimAllSpace(toks)))
 	for i, v := range toks {
 		if v.Rune == IDENTIFIER {
 			toks[i].Rune = INTCONST
@@ -1116,22 +1191,20 @@ func (c *cpp) constExpr(toks []xc.Token) (y bool) {
 	c.lx.ungetBuffer = c.lx.ungetBuffer[:0]
 	c.lx.ungets(toks...)
 	if !c.lx.parseExpr() {
-		return false
+		return Operand{}, false
 	}
 
 	e := c.lx.ast.(*ConstExpr)
 	v := e.eval(c.context)
 	if v.Type != Int {
-		return false
+		return v, false
 	}
 
 	switch x := v.Value.(type) {
-	case nil:
-		return false
 	case *ir.Int64Value:
-		return x.Value != 0
+		return v, x.Value != 0
 	default:
-		panic(fmt.Errorf("%T", x))
+		return v, false
 	}
 }
 
@@ -1146,7 +1219,7 @@ func (c *cpp) define(line []xc.Token) {
 
 func (c *cpp) defineMacro(line []xc.Token) {
 	if len(line) == 0 {
-		panic("internal error 6")
+		panic("internal error")
 	}
 
 	if line[0].Rune == ' ' {
@@ -1176,14 +1249,17 @@ func (c *cpp) defineMacro(line []xc.Token) {
 		}
 
 		if ex := c.macros[nm]; ex != nil {
-			if c.identicalReplacementLists(repl, ex.repl) {
+			if c.identicalReplacementLists(repl, ex.ReplacementToks) {
 				return
 			}
 
-			c.err(t, "replacement lists differ")
+			c.err(t, "%q replacement lists differ: %q, %q", dict.S(nm), toksDump(ex.ReplacementToks, ""), toksDump(repl, ""))
 			return
 		}
 
+		if traceMacroDefs {
+			fmt.Fprintf(os.Stderr, "#define %s %s\n", dict.S(nm), toksDump(repl, ""))
+		}
 		c.macros[nm] = newMacro(t, repl)
 	default:
 		panic(PrettyString(t))
@@ -1220,12 +1296,12 @@ func (c *cpp) defineFnMacro(nmTok xc.Token, line []xc.Token) {
 			ident = false
 		case ')':
 			m := newMacro(nmTok, trimSpace(line[i+1:]))
-			m.fnLike = true
+			m.IsFnLike = true
 			m.ident = ident
-			m.variadic = variadic
-			m.fp = params
+			m.IsVariadic = variadic
+			m.Args = params
 			if ex := c.macros[nmTok.Val]; ex != nil {
-				if c.identicalParamLists(params, ex.fp) && c.identicalReplacementLists(m.repl, ex.repl) && m.variadic == ex.variadic {
+				if c.identicalParamLists(params, ex.Args) && c.identicalReplacementLists(m.ReplacementToks, ex.ReplacementToks) && m.IsVariadic == ex.IsVariadic {
 					return
 				}
 
@@ -1233,6 +1309,13 @@ func (c *cpp) defineFnMacro(nmTok xc.Token, line []xc.Token) {
 				return
 			}
 
+			if traceMacroDefs {
+				var a [][]byte
+				for _, v := range m.Args {
+					a = append(a, dict.S(v))
+				}
+				fmt.Fprintf(os.Stderr, "#define %s(%s) %s\n", dict.S(nmTok.Val), bytes.Join(a, []byte(", ")), toksDump(m.ReplacementToks, ""))
+			}
 			c.macros[nmTok.Val] = m
 			return
 		case ',':
@@ -1265,16 +1348,27 @@ func (c *cpp) identicalParamLists(a, b []int) bool {
 	return true
 }
 
-func (c *cpp) line(r tokenReader) (toks []xc.Token) {
+func (c *cpp) line(r tokenReader) []xc.Token {
+	c.toks = c.toks[:0]
 	for {
 		switch t := r.read(); t.Rune {
 		case '\n', ccEOF:
-			for len(toks) != 0 && toks[0].Rune == ' ' {
-				toks = toks[1:]
+			if len(c.toks) == 0 || c.toks[0].Rune != ' ' {
+				return c.toks
 			}
-			return toks
+
+			for i, v := range c.toks {
+				if v.Rune != ' ' {
+					n := copy(c.toks, c.toks[i:])
+					c.toks = c.toks[:n]
+					return c.toks
+				}
+			}
+
+			c.toks = c.toks[:0]
+			return c.toks
 		default:
-			toks = append(toks, t)
+			c.toks = append(c.toks, t)
 		}
 	}
 }

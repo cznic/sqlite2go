@@ -34,7 +34,7 @@ type DeclarationSpecifier struct {
 	typeSpecifiers         []TypeSpecifierCase
 }
 
-func (d *DeclarationSpecifier) typ() Type {
+func (d *DeclarationSpecifier) typ(ctx *context) Type {
 	if d.typeSpecifiers == nil {
 		d.typeSpecifiers = make([]TypeSpecifierCase, len(d.TypeSpecifiers))
 		for i, v := range d.TypeSpecifiers {
@@ -183,6 +183,8 @@ func (d *DeclarationSpecifier) typ() Type {
 		return UInt
 	case d.is(TypeSpecifierLong, TypeSpecifierLong):
 		return LongLong
+	case d.is(TypeSpecifierLong, TypeSpecifierSigned):
+		return Long
 	case d.is(TypeSpecifierLong, TypeSpecifierUnsigned):
 		return ULong
 	case d.is(TypeSpecifierLong, TypeSpecifierLong, TypeSpecifierSigned):
@@ -215,7 +217,7 @@ func (d *DeclarationSpecifier) is(a ...TypeSpecifierCase) bool {
 	return true
 }
 
-// IsTypedef return true when the storage class specifier "typedef" is present.
+// IsTypedef reports whether the storage class specifier "typedef" is present.
 func (d *DeclarationSpecifier) IsTypedef() bool {
 	if d == nil {
 		return false
@@ -229,7 +231,7 @@ func (d *DeclarationSpecifier) IsTypedef() bool {
 	return false
 }
 
-// IsStatic return true when the storage class specifier "static" is present.
+// IsStatic reports whether the storage class specifier "static" is present.
 func (d *DeclarationSpecifier) IsStatic() bool {
 	if d == nil {
 		return false
@@ -243,7 +245,8 @@ func (d *DeclarationSpecifier) IsStatic() bool {
 	return false
 }
 
-func (d *DeclarationSpecifier) isExtern() bool {
+// IsExtern reports whether the storage class specifier "extern" is present.
+func (d *DeclarationSpecifier) IsExtern() bool {
 	if d == nil {
 		return false
 	}
@@ -298,6 +301,12 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		if !n.Operand.isScalarType() {
 			panic(ctx.position(n))
 		}
+	case ExprAlignofType: // "__alignof__" '(' TypeName ')'
+		t := n.TypeName.check(ctx)
+		n.Operand = Operand{Type: Int, Value: &ir.Int64Value{Value: int64(ctx.model.Alignof(t))}}
+	case ExprAlignofExpr: // "__alignof__" Expr
+		op := n.Expr.eval(ctx, false, fn)
+		n.Operand = Operand{Type: Int, Value: &ir.Int64Value{Value: int64(ctx.model.Alignof(underlyingType(op.Type, false)))}}
 	case ExprSizeofType: // "sizeof" '(' TypeName ')'
 		t := n.TypeName.check(ctx)
 		n.Operand = ctx.sizeof(t)
@@ -310,6 +319,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			*PointerType,
 			*StructType,
 			*TaggedStructType,
+			*TaggedUnionType,
 			*UnionType:
 
 			n.Operand = ctx.sizeof(t)
@@ -362,10 +372,32 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		n.Operand.Value = op.Value
 	case ExprPExprList: // '(' ExprList ')'
 		n.Operand = n.ExprList.eval(ctx, arr2ptr, fn)
+		n.Declarator = n.ExprList.declarator(ctx)
 	case ExprCompLit: // '(' TypeName ')' '{' InitializerList CommaOpt '}'
 		t := n.TypeName.check(ctx)
 		n.Operand = Operand{Type: t}
-		// TODO check InitDeclaratorList
+		if n.InitializerList == nil {
+			n.InitializerList = &InitializerList{}
+		}
+		n.InitializerList.check(ctx, t, nil)
+		nmTok := n.Token
+		nmTok.Char.Rune = IDENTIFIER
+		nmTok.Val = idUnnamed
+		d := &Declarator{
+			DirectDeclarator: &DirectDeclarator{
+				Case:  DirectDeclaratorIdent,
+				Token: nmTok,
+			},
+			Initializer: &Initializer{
+				Case:            InitializerCompLit,
+				InitializerList: n.InitializerList,
+			},
+			Referenced: 1,
+			Scope:      n.Scope,
+			Type:       t,
+		}
+		n.Declarator = d
+		fn.vars = append(fn.vars, d)
 	case ExprCast: // '(' TypeName ')' Expr
 		// [0]6.5.4
 		t := n.TypeName.check(ctx)
@@ -376,11 +408,21 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		}
 
 		if !t.IsScalarType() {
-			panic(ctx.position(n))
+			if isVaList(t) {
+				if !op.isIntegerType() {
+					panic("TODO")
+				}
+
+				// va_start, va_end
+				n.Operand.Type = t
+				break
+			}
+
+			panic(fmt.Errorf("%v: %v, (%v)%v, not a scalar", ctx.position(n), n.Case, t, op))
 		}
 
-		if !op.isScalarType() {
-			panic(ctx.position(n))
+		if !op.isScalarType() && !isVaList(op.Type) {
+			panic(fmt.Errorf("%v: %v, (%v)%v, not a scalar", ctx.position(n), n.Case, t, op))
 		}
 
 	more:
@@ -416,7 +458,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 				panic(x)
 			}
 		default:
-			panic(x)
+			panic(fmt.Errorf("%v: %v", ctx.position(n), x))
 		}
 		if n.Expr.Operand.Value != nil {
 			op := n.Expr.Operand.ConvertTo(ctx.model, t)
@@ -424,6 +466,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		}
 	case ExprDeref: // '*' Expr
 		// [0]6.5.3
+		if !arr2ptr && n.Expr.Case == ExprCall { // int *f(); int *p = &*f();
+			arr2ptr = true
+		}
 		op := n.Expr.eval(ctx, arr2ptr, fn)
 		for t, done := op.Type, false; !done; {
 			switch x := t.(type) {
@@ -433,7 +478,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 				n.Operand = Operand{Type: x.Item}
 				done = true
 			default:
-				panic(ctx.position(n))
+				panic(fmt.Errorf("%v: ExprDeref %v", ctx.position(n), op))
 			}
 		}
 	case ExprUnaryPlus: // '+' Expr
@@ -484,6 +529,9 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			lhs.isArithmeticType() && rhs.isArithmeticType():
 
 			n.Operand = lhs.ne(ctx, rhs)
+			// fmt.Printf("TODO497 %v\n", ctx.position(n))
+			// n.Operand = n.Operand.normalize(ctx.model)
+			// n.DumpOperands("· ") //TODO-
 		case
 			// one operand is a pointer and the other is a null
 			// pointer constant.
@@ -655,6 +703,11 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 				if t == x {
 					panic(fmt.Errorf("%v: %q", ctx.position(n), dict.S(x.Tag)))
 				}
+			case *TaggedUnionType:
+				t = x.getType()
+				if t == x {
+					panic(fmt.Errorf("%v: %q", ctx.position(n), dict.S(x.Tag)))
+				}
 			case *UnionType:
 				ctx.model.Layout(x)
 				fp := x.Field(n.Token2.Val)
@@ -672,6 +725,66 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 				panic(x)
 			}
 		}
+	case ExprSelect: // Expr '.' IDENTIFIER
+		n.Expr.AssignedTo = n.AssignedTo
+		op := n.Expr.eval(ctx, arr2ptr, fn)
+		if d := n.Expr.Declarator; d != nil && n.AssignedTo {
+			d.AssignedTo++
+		}
+		t := op.Type
+	out3:
+		for {
+			switch x := t.(type) {
+			case *NamedType:
+				t = x.Type
+			case *StructType:
+				ctx.model.Layout(x)
+				fp := x.Field(n.Token2.Val)
+				if fp == nil {
+					panic(ctx.position(n))
+				}
+
+				n.Operand = Operand{Type: fp.Declarator.Type}
+				n.Operand.FieldProperties = fp
+				if d := n.Expr.Declarator; d != nil && (n.Operand.Type.Kind() == Array || fp.Bits != 0) {
+					d.AddressTaken = true
+				}
+				break out3
+			case *TaggedStructType:
+				y := x.getType()
+				if x == y {
+					panic("TODO")
+				}
+
+				t = y
+			case *TaggedUnionType:
+				y := x.getType()
+				if x == y {
+					panic("TODO")
+				}
+
+				t = y
+			case *UnionType:
+				ctx.model.Layout(x)
+				fp := x.Field(n.Token2.Val)
+				if fp == nil {
+					panic(ctx.position(n))
+				}
+
+				n.Operand = Operand{Type: fp.Declarator.Type}
+				n.Operand.FieldProperties = fp
+				if d := n.Expr.Declarator; d != nil && (n.Operand.Type.Kind() == Array || fp.Bits != 0) {
+					d.AddressTaken = true
+				}
+				break out3
+			default:
+				//dbg("%v: %T", ctx.position(n), x)
+				panic(x)
+			}
+		}
+		if d := n.Expr.Declarator; d != nil {
+			d.Referenced++
+		}
 	case ExprDivAssign: // Expr "/=" Expr
 		// [0]6.5.16.2
 		n.Expr.eval(ctx, arr2ptr, fn).div(ctx, n, n.Expr2.eval(ctx, arr2ptr, fn))
@@ -688,7 +801,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		}
 	case ExprEq: // Expr "==" Expr
 		lhs := n.Expr.eval(ctx, arr2ptr, fn)
-		switch x := UnderlyingType(lhs.Type).(type) {
+		switch x := underlyingType(lhs.Type, true).(type) {
 		case *EnumType:
 			n.Expr2.enum = x
 		}
@@ -891,13 +1004,20 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			case len(args) == 0 && len(t.Params) == 1 && t.Params[0] == Void:
 				// ok
 			case len(t.Params) == 0:
-				break out2
+				// ok
 			default:
 				panic(ctx.position(n))
 			}
 
 			for i, rhs := range args {
-				ops[i] = AdjustedParameterType(t.Params[i]).assign(ctx, rhs)
+				switch {
+				case i >= len(t.Params): // Allow void f(); f(42);
+					ops[i] = ctx.model.defaultArgumentPromotion(rhs)
+				case isVaList(t.Params[i]) && isVaList(rhs.Type):
+					ops[i] = rhs
+				default:
+					ops[i] = AdjustedParameterType(t.Params[i]).assign(ctx, rhs)
+				}
 			}
 			break out2
 		}
@@ -959,66 +1079,6 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			//dbg("", lhs, rhs)
 			panic(ctx.position(n))
 		}
-	case ExprSelect: // Expr '.' IDENTIFIER
-		n.Expr.AssignedTo = n.AssignedTo
-		op := n.Expr.eval(ctx, arr2ptr, fn)
-		if d := n.Expr.Declarator; d != nil && n.AssignedTo {
-			d.AssignedTo++
-		}
-		t := op.Type
-	out3:
-		for {
-			switch x := t.(type) {
-			case *NamedType:
-				t = x.Type
-			case *StructType:
-				ctx.model.Layout(x)
-				fp := x.Field(n.Token2.Val)
-				if fp == nil {
-					panic(ctx.position(n))
-				}
-
-				n.Operand = Operand{Type: fp.Declarator.Type}
-				n.Operand.FieldProperties = fp
-				if d := n.Expr.Declarator; d != nil && (n.Operand.Type.Kind() == Array || fp.Bits != 0) {
-					d.AddressTaken = true
-				}
-				break out3
-			case *TaggedStructType:
-				y := x.getType()
-				if x == y {
-					panic("TODO")
-				}
-
-				t = y
-			case *TaggedUnionType:
-				y := x.getType()
-				if x == y {
-					panic("TODO")
-				}
-
-				t = y
-			case *UnionType:
-				ctx.model.Layout(x)
-				fp := x.Field(n.Token2.Val)
-				if fp == nil {
-					panic(ctx.position(n))
-				}
-
-				n.Operand = Operand{Type: fp.Declarator.Type}
-				n.Operand.FieldProperties = fp
-				if d := n.Expr.Declarator; d != nil && (n.Operand.Type.Kind() == Array || fp.Bits != 0) {
-					d.AddressTaken = true
-				}
-				break out3
-			default:
-				//dbg("%v: %T", ctx.position(n), x)
-				panic(x)
-			}
-		}
-		if d := n.Expr.Declarator; d != nil {
-			d.Referenced++
-		}
 	case ExprDiv: // Expr '/' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).div(ctx, n, n.Expr2.eval(ctx, arr2ptr, fn)) // [0]6.5.5
 	case ExprLt: // Expr '<' Expr
@@ -1035,11 +1095,12 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 				n.Operand.Type = d.Type
 			}
 		}
-		switch x := UnderlyingType(n.Operand.Type).(type) {
+		switch x := underlyingType(n.Operand.Type, true).(type) {
 		case *EnumType:
 			n.Expr2.enum = x
 		}
-		n.Operand.Type.assign(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
+		rhs := n.Expr2.eval(ctx, arr2ptr, fn)
+		n.Operand.Type.assign(ctx, rhs)
 	case ExprGt: // Expr '>' Expr
 		n.Operand = n.Expr.eval(ctx, arr2ptr, fn).gt(ctx, n.Expr2.eval(ctx, arr2ptr, fn))
 		if n.Expr.Equals(n.Expr2) {
@@ -1099,9 +1160,10 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 				n.Operand.Value = Null
 				done = true
 			}
+		case a.Type.Kind() == Void && b.Type.Kind() == Void: // assert
+			n.Operand = Operand{Type: Void}
 		default:
-			//dbg("", a, b)
-			panic(ctx.position(n))
+			panic(fmt.Errorf("%v: %v, %v", ctx.position(n), a, b))
 		}
 		if done {
 			break
@@ -1162,7 +1224,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 					nm = nm2
 				} else {
 					if !ctx.tweaks.EnableImplicitDeclarations {
-						panic(fmt.Errorf("%v", ctx.position(n)))
+						panic(fmt.Errorf("%v: undefined %q", ctx.position(n), dict.S(nm)))
 					}
 				}
 			}
@@ -1191,7 +1253,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 				n.Operand = Operand{Type: t0}
 			case *FunctionType:
 				n.Operand = Operand{Type: t0}
-				if nm == idAlloca {
+				if nm == idBuiltinAlloca {
 					fn.Alloca = true
 				}
 			case *NamedType:
@@ -1231,7 +1293,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 				return Operand{}
 			}
 
-			panic(fmt.Errorf("%v: undefined: %s", ctx.position(n), dict.S(nm)))
+			panic(fmt.Errorf("%v: undefined: %q", ctx.position(n), dict.S(nm)))
 		default:
 
 			//dbg("%s", dict.S(nm))
@@ -1395,7 +1457,7 @@ loop2:
 		v, err = strconv.ParseFloat(s, 64)
 	}
 	if err != nil {
-		panic(ctx.position(n))
+		panic(fmt.Errorf("%v: %v", ctx.position(n), err))
 	}
 
 	// [0]6.4.4.2
@@ -1456,11 +1518,11 @@ func (n *TypeName) check(ctx *context) Type {
 	ds := &DeclarationSpecifier{}
 	n.SpecifierQualifierList.check(ctx, ds)
 	if n.AbstractDeclaratorOpt == nil {
-		n.Type = ds.typ()
+		n.Type = ds.typ(ctx)
 		return n.Type
 	}
 
-	n.AbstractDeclaratorOpt.check(ctx, ds, ds.typ())
+	n.AbstractDeclaratorOpt.check(ctx, ds, ds.typ(ctx))
 	n.Type = n.AbstractDeclaratorOpt.AbstractDeclarator.Type
 	return n.Type
 }
@@ -1480,6 +1542,14 @@ func (n *ExprList) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		}
 	}
 	return n.Operand
+}
+
+func (n *ExprList) declarator(ctx *context) (r *Declarator) {
+	for l := n; ; l = l.ExprList {
+		if l.ExprList == nil {
+			return l.Expr.Declarator
+		}
+	}
 }
 
 func (n *ExprOpt) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
@@ -1507,17 +1577,6 @@ func (n *DirectDeclarator) nm() int {
 }
 
 func (n *ExternalDeclarationList) check(ctx *context) (err error) {
-	defer func() {
-		switch e := recover(); x := e.(type) {
-		case nil:
-			// nop
-		case error:
-			err = newPanicError(fmt.Errorf("PANIC: %v\n%s", errString(x), debugStack()))
-		default:
-			err = newPanicError(fmt.Errorf("PANIC: %v\n%s", e, debugStack()))
-		}
-	}()
-
 	for ; n != nil; n = n.ExternalDeclarationList {
 		n.ExternalDeclaration.check(ctx)
 	}
@@ -1527,7 +1586,7 @@ func (n *ExternalDeclarationList) check(ctx *context) (err error) {
 func (n *ExternalDeclaration) check(ctx *context) {
 	switch n.Case {
 	case ExternalDeclarationDecl: // Declaration
-		n.Declaration.check(ctx, nil, nil)
+		n.Declaration.check(ctx, nil, nil, nil)
 	case ExternalDeclarationFunc: // FunctionDefinition
 		n.FunctionDefinition.check(ctx)
 	default:
@@ -1547,22 +1606,51 @@ func (n *FunctionDefinition) check(ctx *context) {
 		if len(ds.TypeSpecifiers) == 0 { // [0]6.7.2-2
 			panic("TODO")
 		}
-	case FunctionDefinitionInt: // DeclarationSpecifiers Declarator DeclarationListOpt FunctionBody
+	case FunctionDefinitionInt: // Declarator DeclarationListOpt FunctionBody
 		ds.typeSpecifiers = []TypeSpecifierCase{TypeSpecifierInt}
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	}
-	n.Declarator.check(ctx, ds, ds.typ(), false, nil, nil)
-	if n.Declarator.Type.Kind() != Function {
-		panic("TODO")
+	switch o := n.DeclarationListOpt; {
+	case o != nil:
+		sc := n.Declarator.fpScope(ctx)
+		params := n.DeclarationListOpt.check(ctx, sc)
+		n.Declarator.check0(ctx, ds, ds.typ(ctx), false, nil, nil, params)
+		if n.Declarator.Type.Kind() != Function {
+			panic("TODO")
+		}
+
+		d := n.Declarator
+		n.FunctionBody.check(ctx, n.Declarator)
+		for _, v := range d.ParameterNames() {
+			p, _ := sc.Idents[v].(*Declarator)
+			d.Parameters = append(d.Parameters, p)
+		}
+	default:
+		n.Declarator.check(ctx, ds, ds.typ(ctx), false, nil, nil)
+		if n.Declarator.Type.Kind() != Function {
+			panic("TODO")
+		}
+
+		d := n.Declarator
+		sc := d.fpScope(ctx)
+		n.FunctionBody.check(ctx, n.Declarator)
+		for _, v := range d.ParameterNames() {
+			p, _ := sc.Idents[v].(*Declarator)
+			d.Parameters = append(d.Parameters, p)
+		}
 	}
-	n.FunctionBody.check(ctx, n.Declarator)
-	d := n.Declarator
-	sc := d.fpScope(ctx)
-	for _, v := range d.ParameterNames() {
-		p, _ := sc.Idents[v].(*Declarator)
-		d.Parameters = append(d.Parameters, p)
+}
+
+func (n *DeclarationListOpt) check(ctx *context, scope *Scope) (r []*Declarator) {
+	if n == nil {
+		return
 	}
+
+	for l := n.DeclarationList; l != nil; l = l.DeclarationList {
+		r = append(r, l.Declaration.check(ctx, nil, nil, scope)...)
+	}
+	return r
 }
 
 func (n *FunctionBody) check(ctx *context, fn *Declarator) {
@@ -1698,7 +1786,7 @@ func (n *BlockItemList) check(ctx *context, fn *Declarator, seq *int, sc []int, 
 func (n *BlockItem) check(ctx *context, fn *Declarator, seq *int, sc []int, inSwitch *SelectionStmt, inLoop bool) {
 	switch n.Case {
 	case BlockItemDecl: // Declaration
-		n.Declaration.check(ctx, sc, fn)
+		n.Declaration.check(ctx, sc, fn, nil)
 	case BlockItemStmt: // Stmt
 		n.Stmt.check(ctx, fn, seq, sc, inSwitch, inLoop)
 	default:
@@ -1758,9 +1846,6 @@ func (n *SelectionStmt) check(ctx *context, fn *Declarator, seq *int, sc []int, 
 		if !n.ExprList.eval(ctx, true, fn).isScalarType() {
 			panic("TODO")
 		}
-		// fmt.Printf("TODO1687 %v\n", ctx.position(n))
-		// n.Operand = n.Operand.normalize(ctx.model)
-		// n.ExprList.dumpOperands("· ") //TODO-
 		n.Stmt.check(ctx, fn, seq, sc, inSwitch, inLoop)
 		n.Stmt2.check(ctx, fn, seq, sc, inSwitch, inLoop)
 	case SelectionStmtIf: // "if" '(' ExprList ')' Stmt
@@ -1856,41 +1941,45 @@ func (n *ExprStmt) check(ctx *context, fn *Declarator) {
 	n.ExprListOpt.eval(ctx, true, fn)
 }
 
-func (n *Declaration) check(ctx *context, sc []int, fn *Declarator) {
+func (n *Declaration) check(ctx *context, sc []int, fn *Declarator, scope *Scope) []*Declarator {
 	// DeclarationSpecifiers InitDeclaratorListOpt ';'
 	ds := &DeclarationSpecifier{}
 	n.DeclarationSpecifiers.check(ctx, ds)
 	if len(ds.TypeSpecifiers) == 0 { // [0]6.7.2-2
 		panic("TODO")
 	}
-	n.InitDeclaratorListOpt.check(ctx, ds, sc, fn)
+	return n.InitDeclaratorListOpt.check(ctx, ds, sc, fn, scope)
 }
 
-func (n *InitDeclaratorListOpt) check(ctx *context, ds *DeclarationSpecifier, sc []int, fn *Declarator) {
+func (n *InitDeclaratorListOpt) check(ctx *context, ds *DeclarationSpecifier, sc []int, fn *Declarator, scope *Scope) []*Declarator {
 	if n == nil {
-		return
+		return nil
 	}
 
-	n.InitDeclaratorList.check(ctx, ds, sc, fn)
+	return n.InitDeclaratorList.check(ctx, ds, sc, fn, scope)
 }
 
-func (n *InitDeclaratorList) check(ctx *context, ds *DeclarationSpecifier, sc []int, fn *Declarator) {
+func (n *InitDeclaratorList) check(ctx *context, ds *DeclarationSpecifier, sc []int, fn *Declarator, scope *Scope) (r []*Declarator) {
 	for ; n != nil; n = n.InitDeclaratorList {
-		n.InitDeclarator.check(ctx, ds, sc, fn)
+		r = append(r, n.InitDeclarator.check(ctx, ds, sc, fn, scope))
 	}
+	return r
 }
 
-func (n *InitDeclarator) check(ctx *context, ds *DeclarationSpecifier, sc []int, fn *Declarator) {
+func (n *InitDeclarator) check(ctx *context, ds *DeclarationSpecifier, sc []int, fn *Declarator, scope *Scope) *Declarator {
+	if scope != nil {
+		n.Declarator.Scope = scope
+	}
 	switch n.Case {
 	case InitDeclaratorBase: // Declarator
-		n.Declarator.check(ctx, ds, ds.typ(), !ds.IsTypedef(), sc, fn)
+		n.Declarator.check(ctx, ds, ds.typ(ctx), !ds.IsTypedef(), sc, fn)
 	case InitDeclaratorInit: // Declarator '=' Initializer
-		if ds.IsTypedef() {
+		if ds.IsTypedef() || ds.IsExtern() {
 			panic(ctx.position(n)) // error
 		}
-		n.Declarator.check(ctx, ds, ds.typ(), true, sc, fn)
-		n.Initializer.check(ctx, n.Declarator.Type, fn)
-		ex := n.Declarator.scope.Idents[n.Declarator.Name()].(*Declarator)
+		n.Declarator.check(ctx, ds, ds.typ(ctx), true, sc, fn)
+		n.Initializer.check(ctx, n.Declarator.Type, fn, false)
+		ex := n.Declarator.Scope.Idents[n.Declarator.Name()].(*Declarator)
 		switch {
 		case ex.Initializer == nil:
 			ex.Initializer = n.Initializer
@@ -1902,9 +1991,10 @@ func (n *InitDeclarator) check(ctx *context, ds *DeclarationSpecifier, sc []int,
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	}
+	return n.Declarator
 }
 
-func (n *Initializer) check(ctx *context, t Type, fn *Declarator) (r Operand) {
+func (n *Initializer) check(ctx *context, t Type, fn *Declarator, field bool) (r Operand) {
 	// [0]6.7.8
 	switch n.Case {
 	case InitializerCompLit: // '{' InitializerList CommaOpt '}'
@@ -1949,7 +2039,7 @@ func (n *Initializer) check(ctx *context, t Type, fn *Declarator) (r Operand) {
 			panic(ctx.position(n))
 		}
 
-		if t.Kind() == Array && t.(*ArrayType).Item == Char && op.isPointerType() && op.Type.(*PointerType).Item == Char {
+		if t.Kind() == Array && (t.(*ArrayType).Item == Char || t.(*ArrayType).Item == UChar) && op.isPointerType() && op.Type.(*PointerType).Item == Char {
 			// 14. An array of character type may be initialized by
 			// a character string literal, optionally enclosed in
 			// braces. Successive characters of the character
@@ -1957,7 +2047,7 @@ func (n *Initializer) check(ctx *context, t Type, fn *Declarator) (r Operand) {
 			// character if there is room or if the array is of
 			// unknown size) initialize the elements of the array.
 			x := t.(*ArrayType)
-			if x.Size.Type == nil {
+			if !field && x.Size.Type == nil {
 				switch y := op.Value.(type) {
 				case *ir.StringValue:
 					x.Size = newIntConst(ctx, n, uint64(len(dict.S(int(y.StringID)))+1), UInt, ULong, ULongLong)
@@ -1968,9 +2058,9 @@ func (n *Initializer) check(ctx *context, t Type, fn *Declarator) (r Operand) {
 			return op
 		}
 
-		panic(fmt.Errorf("%v: TODO %v %v", ctx.position(n), t, op))
+		panic(fmt.Errorf("%v: TODO Initializer %v %v", ctx.position(n), t, op))
 	default:
-		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
+		panic(fmt.Errorf("%v: TODO Initializer %v", ctx.position(n), n.Case))
 	}
 }
 
@@ -1993,7 +2083,7 @@ func (n *InitializerList) check(ctx *context, t Type, fn *Declarator) Operand {
 					panic(fmt.Errorf("%v: TODO", ctx.position(n.Initializer)))
 				}
 
-				r.Values = append(r.Values, n.Initializer.check(ctx, x.Item, fn))
+				r.Values = append(r.Values, n.Initializer.check(ctx, x.Item, fn, false))
 				if index > maxIndex {
 					maxIndex = index
 				}
@@ -2010,7 +2100,12 @@ func (n *InitializerList) check(ctx *context, t Type, fn *Declarator) Operand {
 			field := 0
 			for ; n != nil; n = n.InitializerList {
 				if n.Designation != nil {
-					panic(fmt.Errorf("%v: TODO", ctx.position(n.Initializer)))
+					dst := n.Designation.check(ctx, x)
+					if len(dst) != 1 {
+						panic(ctx.position(n))
+					}
+
+					field = dst[0]
 				}
 
 				for x.Fields[field].Bits < 0 {
@@ -2018,7 +2113,7 @@ func (n *InitializerList) check(ctx *context, t Type, fn *Declarator) Operand {
 				}
 				switch {
 				case field < len(x.Fields):
-					r.Values = append(r.Values, n.Initializer.check(ctx, x.Fields[field].Type, fn))
+					r.Values = append(r.Values, n.Initializer.check(ctx, x.Fields[field].Type, fn, true))
 					field++
 				default:
 					panic(fmt.Errorf("%v: TODO", ctx.position(n.Initializer)))
@@ -2036,6 +2131,29 @@ func (n *InitializerList) check(ctx *context, t Type, fn *Declarator) Operand {
 			if t == x {
 				panic("TODO")
 			}
+		case TypeKind:
+			switch {
+			case x.IsArithmeticType():
+				switch n.Case {
+				case 0: //  /* empty */
+					if x.IsIntegerType() {
+						return Operand{Type: t, Value: &ir.Int64Value{}}
+					}
+
+					switch t {
+					case Double, LongDouble:
+						return Operand{Type: t, Value: &ir.Float64Value{}}
+					case Float:
+						return Operand{Type: t, Value: &ir.Float64Value{}}
+					default:
+						panic(fmt.Errorf("%v: %v", ctx.position(n), t))
+					}
+				default:
+					panic(n.Case)
+				}
+			default:
+				panic("TODO")
+			}
 		case *UnionType:
 			field := 0
 			for ; n != nil; n = n.InitializerList {
@@ -2051,7 +2169,7 @@ func (n *InitializerList) check(ctx *context, t Type, fn *Declarator) Operand {
 				}
 				switch {
 				case field < len(x.Fields):
-					r.Values = append(r.Values, n.Initializer.check(ctx, x.Fields[field].Type, fn))
+					r.Values = append(r.Values, n.Initializer.check(ctx, x.Fields[field].Type, fn, true))
 					field++
 				default:
 					panic(fmt.Errorf("%v: TODO", ctx.position(n.Initializer)))
@@ -2065,18 +2183,66 @@ func (n *InitializerList) check(ctx *context, t Type, fn *Declarator) Operand {
 	}
 }
 
+func (n *Designation) check(ctx *context, t Type) (r []int) {
+	switch x := underlyingType(t, true).(type) {
+	case *StructType:
+		ctx.model.Layout(x)
+		for l := n.DesignatorList; l != nil; l = l.DesignatorList {
+			switch n := l.Designator; n.Case {
+			case DesignatorField: // '.' IDENTIFIER
+				nm := n.Token2.Val
+				f := x.Field(nm)
+				if f.Type == nil {
+					panic("TODO")
+				}
+
+				if fi := f.Declarator.Field; fi > len(x.Fields) || x.Fields[fi].Name != nm {
+					panic("TODO")
+				}
+
+				r = append(r, f.Declarator.Field)
+			case DesignatorIndex: // '[' ConstExpr ']'
+				panic("TODO")
+			default:
+				panic("TODO")
+			}
+		}
+		n.List = r
+	default:
+		panic(fmt.Errorf("%v: %T", ctx.position(n), x))
+	}
+	return r
+}
+
 func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObject bool, sc []int, fn *Declarator) (r Type) {
+	return n.check0(ctx, ds, t, isObject, sc, fn, nil)
+}
+
+func (n *Declarator) check0(ctx *context, ds *DeclarationSpecifier, t Type, isObject bool, sc []int, fn *Declarator, fnParams []*Declarator) (r Type) {
 	// PointerOpt DirectDeclarator
 	if l := len(sc); l != 0 {
 		n.ScopeNum = sc[l-1]
 	}
 	n.DeclarationSpecifier = ds
-	if fn != nil && !n.Embedded {
-		fn.vars = append(fn.vars, n)
-	}
 	t = n.PointerOpt.check(ctx, t, &n.TypeQualifiers)
 	n.Type = n.DirectDeclarator.check(ctx, t, sc, fn)
 	isFunction := n.Type.Kind() == Function && !ds.IsTypedef()
+	if fn != nil && !n.Embedded && !isFunction {
+		fn.vars = append(fn.vars, n)
+	}
+	if isFunction && fnParams != nil {
+		t := underlyingType(n.Type, true).(*FunctionType)
+		if n := len(t.Params); n != 0 && n != len(fnParams) {
+			panic("TODO")
+		}
+
+		n.Parameters = nil
+		t.Params = t.Params[:0]
+		for _, v := range fnParams {
+			v.IsFunctionParameter = true
+			t.Params = append(t.Params, v.Type)
+		}
+	}
 	if n.Embedded {
 		return n.Type
 	}
@@ -2087,16 +2253,20 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 		// 3. If the declaration of a file scope identifier for an
 		// object or a function contains the storage-class specifier
 		// static, the identifier has internal linkage.
-		(isObject || isFunction) && n.scope == ctx.scope && ds.IsStatic():
+		(isObject || isFunction) && n.Scope == ctx.scope && ds.IsStatic():
 
 		n.Linkage = LinkageInternal
 	case
-		// 4. For an identifier declared with the storage-class specifier extern in a scope in which a
-		// prior declaration of that identifier is visible, if the prior declaration specifies internal or
-		// external linkage, the linkage of the identifier at the later declaration is the same as the
-		// linkage specified at the prior declaration. If no prior declaration is visible, or if the prior
-		// declaration specifies no linkage, then the identifier has external linkage.
-		(isObject || isFunction) && ds.isExtern():
+		// 4. For an identifier declared with the storage-class
+		// specifier extern in a scope in which a prior declaration of
+		// that identifier is visible, if the prior declaration
+		// specifies internal or external linkage, the linkage of the
+		// identifier at the later declaration is the same as the
+		// linkage specified at the prior declaration. If no prior
+		// declaration is visible, or if the prior declaration
+		// specifies no linkage, then the identifier has external
+		// linkage.
+		(isObject || isFunction) && ds.IsExtern():
 
 		n.Linkage = LinkageExternal
 	case
@@ -2106,7 +2276,7 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 		// extern. If the declaration of an identifier for an object
 		// has file scope and no storage-class specifier, its linkage
 		// is external.
-		(isObject || isFunction) && n.scope == ctx.scope && len(ds.StorageClassSpecifiers) == 0:
+		(isObject || isFunction) && (n.Scope == ctx.scope || isFunction) && len(ds.StorageClassSpecifiers) == 0:
 
 		n.Linkage = LinkageExternal
 	case
@@ -2117,7 +2287,7 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 		// storage-class specifier extern.
 		!(isObject || isFunction),
 		n.IsFunctionParameter,
-		n.scope != ctx.scope && !ds.isExtern():
+		n.Scope != ctx.scope && !ds.IsExtern():
 
 		n.Linkage = LinkageNone
 	default:
@@ -2148,10 +2318,21 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 		panic(ctx.position(n))
 	}
 
+	if (ds.IsExtern() || isFunction) && n.Scope != ctx.scope {
+		if ds.IsExtern() {
+			n.insert(ctx, isFunction)
+		}
+		n.Scope = ctx.scope
+	}
+	n.insert(ctx, isFunction)
+	return n.Type
+}
+
+func (n *Declarator) insert(ctx *context, isFunction bool) {
 	nm := n.Name()
-	switch ex := n.scope.Idents[n.Name()]; ex := ex.(type) {
+	switch ex := n.Scope.Idents[n.Name()]; ex := ex.(type) {
 	case nil:
-		n.scope.insertDeclarator(ctx, n)
+		n.Scope.insertDeclarator(ctx, n)
 	case *Declarator:
 		switch ex.Linkage {
 		case LinkageNone:
@@ -2168,24 +2349,30 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 		case LinkageExternal:
 			switch n.Linkage {
 			case LinkageExternal:
+				if isFunction && (n.Scope.Parent != nil || n.FunctionDefinition == nil) {
+					break
+				}
+
 				if !ex.Type.IsCompatible(n.Type) {
-					if !(n.Name() == idMain && n.scope.Parent == nil && n.Type.Kind() == Function) {
+					if !(n.Name() == idMain && n.Scope.Parent == nil && n.Type.Kind() == Function) {
+						//IncompatibleTypeDiff(ex.Type, n.Type) //TODO-
 						panic(fmt.Errorf("%v: %v\n%v: %v", ctx.position(ex), ex.Type, ctx.position(n), n.Type))
 					}
 					break
 				}
 
-				if prefer(n.Type) || !prefer(ex.Type) {
-					n.scope.Idents[nm] = n
+				if prefer(n) || !prefer(ex) {
+					n.Scope.Idents[nm] = n
 				}
 			default:
-				panic(n.Linkage)
+				panic(fmt.Errorf("%v: %v %v", ctx.position(n), n.Linkage, isFunction))
 			}
 		case LinkageInternal:
 			switch n.Linkage {
 			case LinkageInternal:
 				if !ex.Type.IsCompatible(n.Type) {
-					panic(ctx.position(n))
+					//IncompatibleTypeDiff(ex.Type, n.Type) //TODO-
+					panic(fmt.Errorf("%v: %v\n%v: %v", ctx.position(ex), ex.Type, ctx.position(n), n.Type))
 				}
 			default:
 				// Keep it internal.
@@ -2202,7 +2389,7 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 				}
 
 				ex.Definition = n
-				n.scope.Idents[nm] = n
+				n.Scope.Idents[nm] = n
 			case ex.FunctionDefinition != nil:
 				n.Definition = ex
 			}
@@ -2216,15 +2403,13 @@ func (n *Declarator) check(ctx *context, ds *DeclarationSpecifier, t Type, isObj
 			}
 
 			ex.Definition = n
-			n.scope.Idents[nm] = n
+			n.Scope.Idents[nm] = n
 		case ex.Initializer != nil:
 			n.Definition = ex
 		}
 	default:
 		panic(ctx.position(n))
 	}
-
-	return n.Type
 }
 
 func (n *PointerOpt) check(ctx *context, t Type, tq *[]*TypeQualifier) Type {
@@ -2268,16 +2453,9 @@ func (n *DirectDeclarator) check(ctx *context, t Type, sc []int, fn *Declarator)
 	case DirectDeclaratorParen: // '(' Declarator ')'
 		return n.Declarator.check(ctx, nil, t, false, sc, fn)
 	case DirectDeclaratorIdentList: // DirectDeclarator '(' IdentifierListOpt ')'
-		var params []Type
-		var variadic bool
-		names := n.IdentifierListOpt.check()
-		if len(names) != 0 {
-			panic(fmt.Errorf("K&R C %v", ctx.position(n)))
-		}
 		t := &FunctionType{
-			Params:   params,
-			Result:   t,
-			Variadic: variadic,
+			params: n.IdentifierListOpt.check(),
+			Result: t,
 		}
 		return n.DirectDeclarator.check(ctx, t, sc, fn)
 	case DirectDeclaratorParamList: // DirectDeclarator '(' ParameterTypeList ')'
@@ -2361,9 +2539,9 @@ func (n *ParameterDeclaration) check(ctx *context) Type {
 	case ParameterDeclarationAbstract: // DeclarationSpecifiers AbstractDeclaratorOpt
 		ds := &DeclarationSpecifier{}
 		n.DeclarationSpecifiers.check(ctx, ds)
-		n.AbstractDeclaratorOpt.check(ctx, ds, ds.typ())
+		n.AbstractDeclaratorOpt.check(ctx, ds, ds.typ(ctx))
 		if n.AbstractDeclaratorOpt == nil {
-			return ds.typ()
+			return ds.typ(ctx)
 		}
 
 		return n.AbstractDeclaratorOpt.AbstractDeclarator.Type
@@ -2371,7 +2549,7 @@ func (n *ParameterDeclaration) check(ctx *context) Type {
 		ds := &DeclarationSpecifier{}
 		n.DeclarationSpecifiers.check(ctx, ds)
 		n.Declarator.IsFunctionParameter = true
-		return n.Declarator.check(ctx, ds, ds.typ(), true, nil, nil)
+		return n.Declarator.check(ctx, ds, ds.typ(ctx), true, nil, nil)
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	}
@@ -2522,18 +2700,31 @@ func (n *EnumSpecifier) check(ctx *context) { // [0]6.7.2.2
 		t := n.EnumeratorList.check(ctx, n.scope)
 		t.Tag = n.Tag
 		n.typ = t
+		var min int64
 		var max uint64
-		for i, v := range t.Enums {
+		for _, v := range t.Enums {
 			w := v.Operand.Value.(*ir.Int64Value).Value
 			u := uint64(w)
-			if i < 0 {
+			if !v.Operand.Type.IsUnsigned() && w < 0 {
+				if w < min {
+					min = w
+				}
 				u = uint64(-w)
 			}
 			if u > max {
 				max = u
 			}
 		}
-		x := newIntConst(ctx, n, max, Char, Int, UInt, Long, ULong, LongLong, ULongLong)
+		var x Operand
+		switch {
+		case min < 0:
+			if u := uint64(-min); u > max {
+				max = u
+			}
+			x = newIntConst(ctx, n, max, Char, Int, Long, LongLong, ULongLong)
+		default:
+			x = newIntConst(ctx, n, max, UChar, UInt, ULong, ULongLong)
+		}
 		for i := range t.Enums {
 			t.Enums[i].Operand.Type = x.Type
 		}
@@ -2571,7 +2762,7 @@ func (n *Enumerator) check(ctx *context, s *Scope, iota *int64) *EnumerationCons
 	switch n.Case {
 	case EnumeratorBase: // EnumerationConstant
 		*iota++
-		c.Operand = Operand{Value: &ir.Int64Value{Value: *iota}}
+		c.Operand = Operand{Value: &ir.Int64Value{Value: *iota}, Type: Int}
 		s.insertEnumerationConstant(ctx, c)
 		return c
 	case EnumeratorInit: // EnumerationConstant '=' ConstExpr
@@ -2605,14 +2796,14 @@ func (n *StructOrUnionSpecifier) check(ctx *context) {
 			panic(ctx.position(n))
 		}
 	case StructOrUnionSpecifierEmpty: // StructOrUnion IdentifierOpt '{' '}'
-		if tag != 0 {
-			panic(ctx.position(n)) // declare tag
-		}
 		switch n.StructOrUnion.Case {
 		case StructOrUnionStruct:
 			n.typ = &StructType{structBase{Tag: tag}}
 		default:
 			panic(ctx.position(n))
+		}
+		if tag != 0 {
+			n.scope.Parent.insertStructTag(ctx, n)
 		}
 	case StructOrUnionSpecifierDefine: // StructOrUnion IdentifierOpt '{' StructDeclarationList '}'
 		switch n.StructOrUnion.Case {
@@ -2621,7 +2812,7 @@ func (n *StructOrUnionSpecifier) check(ctx *context) {
 		default:
 			n.typ = &UnionType{structBase{Tag: tag, Fields: n.StructDeclarationList.check(ctx), scope: n.scope}}
 		}
-		if n.IdentifierOpt != nil {
+		if tag != 0 {
 			n.scope.Parent.insertStructTag(ctx, n)
 		}
 	default:
@@ -2650,7 +2841,7 @@ func (n *StructDeclaration) check(ctx *context, field *int) []Field {
 		ds := &DeclarationSpecifier{}
 		n.SpecifierQualifierList.check(ctx, ds)
 		*field++
-		return []Field{{Type: ds.typ()}}
+		return []Field{{Type: ds.typ(ctx)}}
 	default:
 		panic(fmt.Errorf("%v: TODO %v", ctx.position(n), n.Case))
 	}
@@ -2667,14 +2858,14 @@ func (n *StructDeclaratorList) check(ctx *context, ds *DeclarationSpecifier, fie
 func (n *StructDeclarator) check(ctx *context, ds *DeclarationSpecifier, field int) Field {
 	switch n.Case {
 	case StructDeclaratorBase: // Declarator
-		f := Field{Type: n.Declarator.check(ctx, ds, ds.typ(), false, nil, nil), Name: n.Declarator.Name(), Declarator: n.Declarator}
+		f := Field{Type: n.Declarator.check(ctx, ds, ds.typ(ctx), false, nil, nil), Name: n.Declarator.Name(), Declarator: n.Declarator}
 		n.Declarator.IsField = true
 		n.Declarator.Field = field
 		return f
 	case StructDeclaratorBits: // DeclaratorOpt ':' ConstExpr
 		var d *Declarator
 		var nm int
-		t := ds.typ()
+		t := ds.typ(ctx)
 		if n.DeclaratorOpt != nil {
 			d = n.DeclaratorOpt.Declarator
 			nm = d.Name()
@@ -2744,7 +2935,7 @@ func (n *DeclarationSpecifiersOpt) check(ctx *context, ds *DeclarationSpecifier)
 }
 
 // IsTLD reports whether n is declared in file scope.
-func (n *Declarator) IsTLD() bool { return n.scope.Parent == nil }
+func (n *Declarator) IsTLD() bool { return n.Scope.Parent == nil }
 
 func (n *Expr) isSideEffectsFree() bool {
 	switch n.Case {
@@ -2844,6 +3035,7 @@ func (n *ExprList) isSideEffectsFree() bool {
 	return true
 }
 
+// IsNonZero reports whether n is provably non zero.
 func (n *ExprList) IsNonZero() bool {
 	for n.ExprList != nil {
 		n = n.ExprList
@@ -2851,6 +3043,7 @@ func (n *ExprList) IsNonZero() bool {
 	return n.Expr.IsNonZero()
 }
 
+// IsNonZero reports whether n is provably non zero.
 func (n *Expr) IsNonZero() bool {
 	if n.Operand.IsNonZero() {
 		return true
@@ -2939,6 +3132,7 @@ func (n *Expr) IsNonZero() bool {
 	}
 }
 
+// IsZero reports whether n is provably zero.
 func (n *ExprList) IsZero() bool {
 	for n.ExprList != nil {
 		n = n.ExprList
@@ -2946,6 +3140,7 @@ func (n *ExprList) IsZero() bool {
 	return n.Expr.IsZero()
 }
 
+// IsZero reports whether n is provably zero.
 func (n *Expr) IsZero() bool {
 	if n.Operand.IsZero() {
 		return true
@@ -2957,6 +3152,7 @@ func (n *Expr) IsZero() bool {
 		ExprAddrof,     // '&' Expr
 		ExprCall,       // Expr '(' ArgumentExprListOpt ')'
 		ExprChar,       // CHARCONST
+		ExprCompLit,    // '(' TypeName ')' '{' InitializerList CommaOpt '}' //TODO we can do better
 		ExprCpl,        // '~' Expr
 		ExprDeref,      // '*' Expr
 		ExprDiv,        // Expr '/' Expr
@@ -3044,6 +3240,7 @@ func (n *ExprList) equals2(m *Expr) bool {
 	return n.Expr.Equals(m)
 }
 
+// Equals reports whether s equals m.
 func (n *Expr) Equals(m *Expr) bool {
 	if n.Operand.Type != m.Operand.Type || n.Operand.Value != m.Operand.Value || !n.isSideEffectsFree() || !m.isSideEffectsFree() {
 		return false
@@ -3064,7 +3261,7 @@ func (n *Expr) Equals(m *Expr) bool {
 		ExprPSelect, // Expr "->" IDENTIFIER
 		ExprSelect:  // Expr '.' IDENTIFIER
 
-		return n.Expr.Equals(m.Expr) && n.Token.Val == m.Expr.Token.Val && n.Expr.Token2.Val == m.Expr.Token2.Val
+		return n.Expr.Equals(m.Expr) && n.Token.Val == m.Token.Val && n.Token2.Val == m.Token2.Val
 	case ExprIdent: // IDENTIFIER
 		return n.Token.Val == m.Token.Val
 	case ExprPExprList: // '(' ExprList ')'
@@ -3090,7 +3287,6 @@ func (n *Expr) Equals(m *Expr) bool {
 		ExprMul, // Expr '*' Expr
 		ExprNe,  // Expr "==" Expr
 		ExprOr,  // Expr '|' Expr
-		ExprSub, // Expr '-' Expr
 		ExprXor: // Expr '^' Expr
 
 		return n.Expr.Equals(m.Expr) && n.Expr2.Equals(m.Expr2) || n.Expr.Equals(m.Expr2) && n.Expr2.Equals(m.Expr)
@@ -3101,7 +3297,8 @@ func (n *Expr) Equals(m *Expr) bool {
 		ExprLOr,  // Expr "||" Expr
 		ExprLsh,  // Expr "<<" Expr
 		ExprMod,  // Expr '%' Expr
-		ExprRsh:  // Expr ">>" Expr
+		ExprRsh,  // Expr ">>" Expr
+		ExprSub:  // Expr '-' Expr
 
 		return n.Expr.Equals(m.Expr) && n.Expr2.Equals(m.Expr2)
 	case ExprCall: // Expr '(' ArgumentExprListOpt ')'
@@ -3128,6 +3325,89 @@ func (n *Expr) Equals(m *Expr) bool {
 	}
 }
 
-func (n *EnumerationConstant) equal(m *EnumerationConstant) bool {
+func (n *EnumerationConstant) equal(m *EnumerationConstant) (r bool) {
 	return n.Token.Val == m.Token.Val && n.Operand.Value.(*ir.Int64Value).Value == m.Operand.Value.(*ir.Int64Value).Value
+}
+
+// DumpOperands dumps the operands of n to stdout.
+func (n *ExprList) DumpOperands(s string) {
+	for l := n; l != nil; l = l.ExprList {
+		l.Expr.DumpOperands(s + "· ")
+	}
+}
+
+// DumpOperands dumps the operands of n to stdout.
+func (n *Expr) DumpOperands(s string) {
+	z := ""
+	switch {
+	case n.IsZero():
+		z = ".Z"
+	case n.IsNonZero():
+		z = ".NZ"
+	}
+	fmt.Printf("%s%v%v %v\n", s, n.Case, z, n.Operand)
+	switch n.Case {
+	case
+		ExprAddrof,
+		ExprCast,
+		ExprCpl,
+		ExprDeref,
+		ExprIndex,
+		ExprNot,
+		ExprPSelect,
+		ExprPostDec,
+		ExprPostInc,
+		ExprPreDec,
+		ExprPreInc,
+		ExprSelect,
+		ExprSizeofExpr,
+		ExprUnaryMinus,
+		ExprUnaryPlus:
+
+		n.Expr.DumpOperands(s + "· ")
+	case
+		ExprAdd,
+		ExprAnd,
+		ExprAndAssign,
+		ExprAssign,
+		ExprDiv,
+		ExprEq,
+		ExprGe,
+		ExprGt,
+		ExprLAnd,
+		ExprLOr,
+		ExprLe,
+		ExprLsh,
+		ExprLt,
+		ExprMod,
+		ExprMul,
+		ExprNe,
+		ExprOr,
+		ExprOrAssign,
+		ExprRsh,
+		ExprSub,
+		ExprXor,
+		ExprXorAssign:
+
+		n.Expr.DumpOperands(s + "· ")
+		n.Expr2.DumpOperands(s + "· ")
+	case ExprPExprList:
+		n.ExprList.DumpOperands(s + "· ")
+	case ExprCond:
+		n.Expr.DumpOperands(s + "· ")
+		n.ExprList.DumpOperands(s + "· ")
+		n.Expr2.DumpOperands(s + "· ")
+	case
+		ExprCall,
+		ExprChar,
+		ExprFloat,
+		ExprIdent,
+		ExprInt,
+		ExprSizeofType,
+		ExprString:
+
+		// nop
+	default:
+		panic(n.Case.String())
+	}
 }

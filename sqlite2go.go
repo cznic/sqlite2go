@@ -57,7 +57,6 @@ import (
 	"bytes"
 	"fmt"
 	"go/scanner"
-	"go/token"
 	"io"
 	"os"
 	"path/filepath"
@@ -65,7 +64,6 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/cznic/ccir"
 	"github.com/cznic/sqlite2go/internal/c99"
 	"github.com/cznic/sqlite2go/internal/ccgo"
 	"github.com/cznic/strutil"
@@ -109,16 +107,6 @@ Options
 
     Generate the standalone SQLite shell program in package main.
 `
-
-	inject = `
-#define _CCGO 1
-#define __arch__ %s
-#define __os__ %s
-#include <builtin.h>
-%s
-%s
-`
-
 	copyright = `/*
 
 SQLite Is Public Domain
@@ -152,6 +140,11 @@ uncontaminated with licensed code from other projects.
 )
 
 func main() {
+	searchPaths, err := c99.Paths(true)
+	if err != nil {
+		panic(err)
+	}
+
 	defer func() {
 		switch e := recover(); x := e.(type) {
 		case nil:
@@ -191,15 +184,13 @@ func main() {
 		}
 	}()
 
-	fset := token.NewFileSet()
 	tweaks := &c99.Tweaks{
 		EnableAnonymousStructFields: true,
 		EnableEmptyStructs:          true,
 		IgnorePragmas:               true,
 		InjectFinalNL:               true,
 	}
-	inc := []string{"@", ccir.LibcIncludePath}
-	sysInc := []string{ccir.LibcIncludePath}
+	inc := []string{"@"}
 	repo := findRepo()
 
 	var additionalInject string
@@ -211,33 +202,36 @@ func main() {
 
 	predefSource := c99.NewStringSource(
 		"<predefine>",
-		fmt.Sprintf(
-			inject, env("GOARCH", runtime.GOARCH), env("GOOS", runtime.GOOS), strings.Join(opts.D, "\n"), `
+		`
 #define HAVE_FDATASYNC 1
 #define HAVE_ISNAN 1
 #define HAVE_USLEEP 1
 #define __typeof__ typeof
 `+additionalInject,
-		),
 	)
+	builtinSoure, err := c99.Builtin()
+	if err != nil {
+		exit(1, "%s", errString(err))
+	}
+
 	sqliteSource, err := c99.NewFileSource(filepath.Join(repo, filepath.FromSlash("_sqlite/sqlite-amalgamation-3210000/sqlite3.c")))
 	if err != nil {
 		exit(1, "%s", errString(err))
 	}
 
-	sqlite, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, sqliteSource)
+	sqlite, err := c99.Translate(tweaks, inc, searchPaths, builtinSoure, predefSource, sqliteSource)
 	if err != nil {
 		exit(1, "%s", errString(err))
 	}
 
 	switch {
 	case opts.shell:
-		crt0Source, err := c99.NewFileSource(filepath.Join(ccir.LibcIncludePath, "crt0.c"))
+		crt0Source, err := c99.Crt0()
 		if err != nil {
 			exit(1, "%s", errString(err))
 		}
 
-		crt0, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, crt0Source)
+		crt0, err := c99.Translate(tweaks, inc, searchPaths, builtinSoure, predefSource, crt0Source)
 		if err != nil {
 			exit(1, "%s", errString(err))
 		}
@@ -247,7 +241,7 @@ func main() {
 			exit(1, "%s", errString(err))
 		}
 
-		shell, err := c99.Translate(fset, tweaks, inc, sysInc, predefSource, shellSource)
+		shell, err := c99.Translate(tweaks, inc, searchPaths, builtinSoure, predefSource, shellSource)
 		if err != nil {
 			exit(1, "%s", errString(err))
 		}
@@ -258,7 +252,6 @@ func main() {
 package main
 
 import (
-	"math"
 	"os"
 	"unsafe"
 
