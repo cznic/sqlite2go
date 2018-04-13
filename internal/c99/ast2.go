@@ -3275,10 +3275,11 @@ func (n *Expr) Equals(m *Expr) bool {
 	case ExprInt: // INTCONST
 		return true
 	case // unary
-		ExprCast,  // '(' TypeName ')' Expr
-		ExprCpl,   // '~' Expr
-		ExprDeref, // '*' Expr
-		ExprNot:   // '!' Expr
+		ExprCast,      // '(' TypeName ')' Expr
+		ExprCpl,       // '~' Expr
+		ExprDeref,     // '*' Expr
+		ExprNot,       // '!' Expr
+		ExprUnaryPlus: // '+' Expr
 
 		return n.Expr.Equals(m.Expr)
 	case ExprIndex: // Expr '[' ExprList ']'
