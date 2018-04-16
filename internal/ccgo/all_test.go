@@ -213,7 +213,7 @@ func init() {
 // ============================================================================
 
 const (
-	testTimeout = 10 * time.Second
+	testTimeout = 60 * time.Second
 )
 
 var (
@@ -1836,7 +1836,7 @@ out:
 		var gccT0 time.Time
 		var gccT time.Duration
 		func() {
-			ctx, cancel := context.WithTimeout(context.Background(), testTimeout/3)
+			ctx, cancel := context.WithTimeout(context.Background(), testTimeout/10)
 
 			defer cancel()
 

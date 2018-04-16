@@ -595,6 +595,13 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 		}
 
 		g.needBool2int++
+		if n.Expr.Equals(n.Expr2) {
+			g.w(" bool2int(")
+			g.value(n.Expr, false)
+			g.w(" != 0)")
+			return
+		}
+
 		g.w(" bool2int((")
 		g.value(n.Expr, false)
 		g.w(" != 0) || (")
