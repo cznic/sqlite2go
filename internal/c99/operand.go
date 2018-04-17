@@ -616,6 +616,17 @@ func (o Operand) integerPromotion(m Model) Operand {
 		case *TaggedEnumType:
 			t = x.getType().(*EnumType).Enums[0].Operand.Type
 		case TypeKind:
+			// github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/bf-sign-2.c
+			//
+			// This test checks promotion of bitfields.  Bitfields
+			// should be promoted very much like chars and shorts:
+			//
+			// Bitfields (signed or unsigned) should be promoted to
+			// signed int if their value will fit in a signed int,
+			// otherwise to an unsigned int if their value will fit
+			// in an unsigned int, otherwise we don't promote them
+			// (ANSI/ISO does not specify the behavior of bitfields
+			// larger than an unsigned int).
 			if x.IsIntegerType() && o.Bits() != 0 {
 				bits := m[Int].Size * 8
 				switch {

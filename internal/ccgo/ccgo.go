@@ -86,6 +86,7 @@ type gen struct {
 	errs                   scanner.ErrorList
 	externs                map[int]*c99.Declarator
 	filenames              map[string]struct{}
+	fixArgs                map[*c99.Declarator]int
 	fset                   *token.FileSet
 	helpers                map[string]int
 	in                     []*c99.TranslationUnit
@@ -124,6 +125,7 @@ func newGen(out io.Writer, in []*c99.TranslationUnit) *gen {
 		enqueued:  map[interface{}]struct{}{},
 		externs:   map[int]*c99.Declarator{},
 		filenames: map[string]struct{}{},
+		fixArgs:   map[*c99.Declarator]int{},
 		helpers:   map[string]int{},
 		in:        in,
 		incompleteExternArrays: map[int]*c99.Declarator{},

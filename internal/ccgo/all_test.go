@@ -16,7 +16,10 @@ package ccgo
 //
 //	TCC	cc 51 ccgo 51 build 51 run 51 ok 51
 //	Other	cc 18 ccgo 18 build 18 run 18 ok 18
-//	GCC	cc 1107 ccgo 1089 build 1087 run 1087 ok 1087
+//	--- FAIL: TestGCC (583.45s)
+//		all_test.go:617: ../c99/testdata/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/20040709-1.c: exit status 1
+//		all_test.go:617: ../c99/testdata/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/20040709-2.c: exit status 1
+//		all_test.go:644: cc 1107 ccgo 1091 build 1091 run 1089 ok 1089
 //	Shell	cc 1 ccgo 1 build 1 run 1 ok 1
 //	--- FAIL: TestTCL (3241.93s)
 //		all_test.go:1354:
@@ -360,7 +363,7 @@ import (
 	*ccgo++
 
 	if out, err := exec.Command("go", "build", "-o", filepath.Join(dir, "main"), f.Name()).CombinedOutput(); err != nil {
-		//dbg("build: %v", errString(err)) //TODO-
+		// dbg("build: %v", errString(err)) //TODO-
 		if !*oBuild {
 			return nil, nil
 		}

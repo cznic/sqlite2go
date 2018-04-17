@@ -394,7 +394,8 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 
 		g.binop(n)
 	case c99.ExprCall: // Expr '(' ArgumentExprListOpt ')'
-		if d := n.Expr.Declarator; d != nil && d.Name() == idBuiltinAlloca {
+		var d *c99.Declarator
+		if d = n.Expr.Declarator; d != nil && d.Name() == idBuiltinAlloca {
 			g.w("alloca(&allocs, int(")
 			if n.ArgumentExprListOpt.ArgumentExprList.ArgumentExprList != nil {
 				todo("", g.position0(n))
@@ -408,6 +409,7 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 			switch x := n.Expr.Scope.LookupIdent(n.Expr.Token.Val).(type) {
 			case *c99.Declarator:
 				n.Expr.Declarator = x
+				d = x
 				n.Expr.Operand.Type = &c99.PointerType{Item: x.Type}
 			default:
 				todo("%v: %T undefined: %q", g.position0(n), x, dict.S(n.Expr.Token.Val))
@@ -425,11 +427,18 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 			}
 		}
 		params := ft.Params
-		if len(params) == 1 && params[0].Kind() == c99.Void {
+		variadic := ft.Variadic
+		switch {
+		case len(params) == 1 && params[0].Kind() == c99.Void: // void foo(void) can have no args at call site
 			params = nil
+		case len(ft.Params) == 0: // void foo() can be called with any number of args
+			variadic = true
+			if len(args) != 0 && d != nil {
+				g.fixArgs[d] = len(args)
+			}
 		}
 		switch np := len(params); {
-		case len(args) > np && !ft.Variadic:
+		case len(args) > np && !variadic:
 			for _, v := range args[np:] {
 				if !g.voidCanIgnore(v) {
 					todo("", g.position0(v))
@@ -438,7 +447,7 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 			args = args[:np]
 			fallthrough
 		case
-			len(args) > np && ft.Variadic,
+			len(args) > np && variadic,
 			len(args) == np:
 
 			g.convert(n.Expr, ft)
@@ -1352,8 +1361,8 @@ func (g *gen) voidArithmeticAsop(n *c99.Expr) {
 		mask = (uint64(1)<<uint(fp.Bits) - 1) << uint(fp.Bitoff)
 		g.w("{ p := &")
 		g.value(n.Expr, true)
-		sz := int(g.model.Sizeof(lhs.Type) * 8)
-		g.w("; *p = (*p &^ %#x) | (%s((%s(*p>>%d)<<%d>>%[5]d) ", mask, g.typ(fp.PackedType), g.typ(op.Type), fp.Bitoff, sz-fp.Bits)
+		opBits := int(g.model.Sizeof(op.Type) * 8)
+		g.w("; *p = (*p &^ %#x) | (%s((%s(*p>>%d)<<%d>>%[5]d) ", mask, g.typ(fp.PackedType), g.typ(op.Type), fp.Bitoff, opBits-fp.Bits)
 	case n.Expr.Declarator != nil:
 		g.w(" *(")
 		g.lvalue(n.Expr)

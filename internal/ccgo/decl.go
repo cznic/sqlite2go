@@ -273,9 +273,12 @@ func (g *gen) functionDefinition(n *c99.Declarator) {
 	}
 	params := n.Parameters
 	var escParams []*c99.Declarator
+	_, ok := g.fixArgs[n]
 	switch {
 	case len(t.Params) == 1 && t.Params[0].Kind() == c99.Void:
 		// nop
+	case ok:
+		g.w(", _ ...interface{}")
 	default:
 		for i, v := range t.Params {
 			var param *c99.Declarator

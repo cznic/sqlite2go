@@ -208,7 +208,7 @@ func (m Model) Layout(t Type) (r []FieldProperties) {
 					}
 
 					n := bitoff + v.Bits
-					if n > 32 {
+					if n > 64 { //TODO 32 on 32-bit architectures?
 						off = m.packBits(bitoff, i-1, off, r)
 						r[i] = FieldProperties{Offset: off, Bits: v.Bits, Declarator: v.Declarator, Type: v.Type}
 						bitoff = v.Bits

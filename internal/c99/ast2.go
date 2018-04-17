@@ -280,6 +280,7 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 		}
 	}()
 
+outer:
 	switch n.Case {
 	case ExprPreInc: // "++" Expr
 		// [0]6.5.3.1
@@ -918,42 +919,66 @@ func (n *Expr) eval(ctx *context, arr2ptr bool, fn *Declarator) Operand {
 			}
 		}
 	case ExprCall: // Expr '(' ArgumentExprListOpt ')'
-		if n.Expr.Case == ExprIdent && n.Expr.Token.Val == idBuiltinTypesCompatible {
-			// using #define __builtin_types_compatible_p(type1, type2) __builtin_types_compatible__((type1){}, (type2){})
-			o := n.ArgumentExprListOpt
-			if o == nil {
-				panic("missing arguments of __builtin_types_compatible_p")
-			}
+		if n.Expr.Case == ExprIdent {
+			switch n.Expr.Token.Val {
+			case idBuiltinTypesCompatible:
+				// using #define __builtin_types_compatible_p(type1, type2) __builtin_types_compatible__((type1){}, (type2){})
+				o := n.ArgumentExprListOpt
+				if o == nil {
+					panic("missing arguments of __builtin_types_compatible_p")
+				}
 
-			args := o.ArgumentExprList
-			arg1 := args.Expr
-			if arg1.Case != ExprCompLit { // '(' TypeName ')' '{' InitializerList CommaOpt '}'
-				panic("invalid argument of __builtin_types_compatible__p")
-			}
+				args := o.ArgumentExprList
+				arg1 := args.Expr
+				if arg1.Case != ExprCompLit { // '(' TypeName ')' '{' InitializerList CommaOpt '}'
+					panic("invalid argument of __builtin_types_compatible__p")
+				}
 
-			args = args.ArgumentExprList
-			if args == nil {
-				panic("missing argument of __builtin_types_compatible_p")
-			}
+				args = args.ArgumentExprList
+				if args == nil {
+					panic("missing argument of __builtin_types_compatible_p")
+				}
 
-			arg2 := args.Expr
-			if arg2.Case != ExprCompLit { // '(' TypeName ')' '{' InitializerList CommaOpt '}'
-				panic("invalid argument of __builtin_types_compatible__")
-			}
+				arg2 := args.Expr
+				if arg2.Case != ExprCompLit { // '(' TypeName ')' '{' InitializerList CommaOpt '}'
+					panic("invalid argument of __builtin_types_compatible__")
+				}
 
-			if args.ArgumentExprList != nil {
-				panic("too many arguments of __builtin_types_compatible_p")
-			}
+				if args.ArgumentExprList != nil {
+					panic("too many arguments of __builtin_types_compatible_p")
+				}
 
-			t := arg1.eval(ctx, arr2ptr, fn).Type
-			u := arg2.eval(ctx, arr2ptr, fn).Type
-			var v int64
-			if t.IsCompatible(u) {
-				v = 1
+				t := arg1.eval(ctx, arr2ptr, fn).Type
+				u := arg2.eval(ctx, arr2ptr, fn).Type
+				var v int64
+				if t.IsCompatible(u) {
+					v = 1
+				}
+				n.Case = ExprInt
+				n.Operand.Type = Int
+				n.Operand.Value = &ir.Int64Value{Value: v}
+				break outer
+			case idBuiltinClasifyType:
+				o := n.ArgumentExprListOpt
+				if o == nil {
+					panic("missing argument of __builtin_classify_type")
+				}
+
+				args := o.ArgumentExprList
+				if args.ArgumentExprList != nil {
+					panic("too many arguments of __builtin_classify_type")
+				}
+
+				op := args.Expr.eval(ctx, arr2ptr, fn)
+				v := noTypeClass
+				if x, ok := classifyType[op.Type.Kind()]; ok {
+					v = x
+				}
+				n.Case = ExprInt
+				n.Operand.Type = Int
+				n.Operand.Value = &ir.Int64Value{Value: int64(v)}
+				break outer
 			}
-			n.Operand.Type = Int
-			n.Operand.Value = &ir.Int64Value{Value: v}
-			break
 		}
 
 		// [0]6.5.2.2
