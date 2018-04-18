@@ -785,12 +785,18 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 			g.value(n.Expr2, false)
 			g.w("))")
 		case c99.TypeKind:
-			if x.IsArithmeticType() {
-				g.w("%s(", g.registerHelper("add%d", "+", g.typ(x)))
-				g.lvalue(n.Expr)
-				g.w(", ")
-				g.convert(n.Expr2, x)
-				g.w(")")
+			if x.IsIntegerType() {
+				switch op := n.Expr.Operand; {
+				case op.Bits() != 0:
+					todo("", g.position0(n))
+				default:
+					pro, _ := c99.UsualArithmeticConversions(g.model, n.Expr.Operand, n.Expr2.Operand)
+					g.w("%s(", g.registerHelper("add%d", "+", g.typ(x), g.typ(n.Expr2.Operand.Type), g.typ(pro.Type)))
+					g.lvalue(n.Expr)
+					g.w(", ")
+					g.value(n.Expr2, false)
+					g.w(")")
+				}
 				return
 			}
 			todo("", g.position0(n), x)
@@ -800,12 +806,18 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 	case c99.ExprSubAssign: // Expr "-=" Expr
 		switch x := c99.UnderlyingType(n.Expr.Operand.Type).(type) {
 		case c99.TypeKind:
-			if x.IsArithmeticType() {
-				g.w("%s(", g.registerHelper("sub%d", "-", g.typ(x)))
-				g.lvalue(n.Expr)
-				g.w(", ")
-				g.convert(n.Expr2, x)
-				g.w(")")
+			if x.IsIntegerType() {
+				switch op := n.Expr.Operand; {
+				case op.Bits() != 0:
+					todo("", g.position0(n))
+				default:
+					pro, _ := c99.UsualArithmeticConversions(g.model, n.Expr.Operand, n.Expr2.Operand)
+					g.w("%s(", g.registerHelper("sub%d", "-", g.typ(x), g.typ(n.Expr2.Operand.Type), g.typ(pro.Type)))
+					g.lvalue(n.Expr)
+					g.w(", ")
+					g.value(n.Expr2, false)
+					g.w(")")
+				}
 				return
 			}
 			todo("", g.position0(n), x)
@@ -819,16 +831,18 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 				switch op := n.Expr.Operand; {
 				case op.Bits() != 0:
 					fp := op.FieldProperties
-					g.w("%s(&", g.registerHelper("or%db", "|", g.typ(op.Type), g.typ(fp.PackedType), g.model.Sizeof(op.Type)*8, fp.Bits, fp.Bitoff))
+					pro, _ := c99.UsualArithmeticConversions(g.model, n.Expr.Operand, n.Expr2.Operand)
+					g.w("%s(&", g.registerHelper("or%db", "|", g.typ(n.Expr.Operand.Type), g.typ(n.Expr2.Operand.Type), g.typ(pro.Type), g.typ(fp.PackedType), fp.Bitoff, g.model.Sizeof(pro.Type)*8, fp.Bits))
 					g.value(n.Expr, true)
 					g.w(", ")
-					g.convert(n.Expr2, n.Operand.Type)
+					g.value(n.Expr2, false)
 					g.w(")")
 				default:
-					g.w("%s(", g.registerHelper("or%d", "|", g.typ(x)))
+					pro, _ := c99.UsualArithmeticConversions(g.model, n.Expr.Operand, n.Expr2.Operand)
+					g.w("%s(", g.registerHelper("or%d", "|", g.typ(x), g.typ(n.Expr2.Operand.Type), g.typ(pro.Type)))
 					g.lvalue(n.Expr)
 					g.w(", ")
-					g.convert(n.Expr2, x)
+					g.value(n.Expr2, false)
 					g.w(")")
 				}
 				return
@@ -844,16 +858,18 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 				switch op := n.Expr.Operand; {
 				case op.Bits() != 0:
 					fp := op.FieldProperties
-					g.w("%s(&", g.registerHelper("and%db", "&", g.typ(op.Type), g.typ(fp.PackedType), g.model.Sizeof(op.Type)*8, fp.Bits, fp.Bitoff))
+					pro, _ := c99.UsualArithmeticConversions(g.model, n.Expr.Operand, n.Expr2.Operand)
+					g.w("%s(&", g.registerHelper("and%db", "&", g.typ(n.Expr.Operand.Type), g.typ(n.Expr2.Operand.Type), g.typ(pro.Type), g.typ(fp.PackedType), fp.Bitoff, g.model.Sizeof(pro.Type)*8, fp.Bits))
 					g.value(n.Expr, true)
 					g.w(", ")
-					g.convert(n.Expr2, n.Operand.Type)
+					g.value(n.Expr2, false)
 					g.w(")")
 				default:
-					g.w("%s(", g.registerHelper("and%d", "&", g.typ(x)))
+					pro, _ := c99.UsualArithmeticConversions(g.model, n.Expr.Operand, n.Expr2.Operand)
+					g.w("%s(", g.registerHelper("and%d", "&", g.typ(x), g.typ(n.Expr2.Operand.Type), g.typ(pro.Type)))
 					g.lvalue(n.Expr)
 					g.w(", ")
-					g.convert(n.Expr2, x)
+					g.value(n.Expr2, false)
 					g.w(")")
 				}
 				return
@@ -869,16 +885,18 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 				switch op := n.Expr.Operand; {
 				case op.Bits() != 0:
 					fp := op.FieldProperties
-					g.w("%s(&", g.registerHelper("xor%db", "^", g.typ(op.Type), g.typ(fp.PackedType), g.model.Sizeof(op.Type)*8, fp.Bits, fp.Bitoff))
+					pro, _ := c99.UsualArithmeticConversions(g.model, n.Expr.Operand, n.Expr2.Operand)
+					g.w("%s(&", g.registerHelper("xor%db", "^", g.typ(n.Expr.Operand.Type), g.typ(n.Expr2.Operand.Type), g.typ(pro.Type), g.typ(fp.PackedType), fp.Bitoff, g.model.Sizeof(pro.Type)*8, fp.Bits))
 					g.value(n.Expr, true)
 					g.w(", ")
-					g.convert(n.Expr2, n.Operand.Type)
+					g.value(n.Expr2, false)
 					g.w(")")
 				default:
-					g.w("%s(", g.registerHelper("xor%d", "^", g.typ(x)))
+					pro, _ := c99.UsualArithmeticConversions(g.model, n.Expr.Operand, n.Expr2.Operand)
+					g.w("%s(", g.registerHelper("xor%d", "^", g.typ(x), g.typ(n.Expr2.Operand.Type), g.typ(pro.Type)))
 					g.lvalue(n.Expr)
 					g.w(", ")
-					g.convert(n.Expr2, x)
+					g.value(n.Expr2, false)
 					g.w(")")
 				}
 				return
@@ -904,12 +922,18 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 	case c99.ExprMulAssign: // Expr "*=" Expr
 		switch x := c99.UnderlyingType(n.Expr.Operand.Type).(type) {
 		case c99.TypeKind:
-			if x.IsArithmeticType() {
-				g.w("%s(", g.registerHelper("mul%d", "*", g.typ(x)))
-				g.lvalue(n.Expr)
-				g.w(", ")
-				g.convert(n.Expr2, x)
-				g.w(")")
+			if x.IsIntegerType() {
+				switch op := n.Expr.Operand; {
+				case op.Bits() != 0:
+					todo("", g.position0(n))
+				default:
+					pro, _ := c99.UsualArithmeticConversions(g.model, n.Expr.Operand, n.Expr2.Operand)
+					g.w("%s(", g.registerHelper("mul%d", "*", g.typ(x), g.typ(n.Expr2.Operand.Type), g.typ(pro.Type)))
+					g.lvalue(n.Expr)
+					g.w(", ")
+					g.value(n.Expr2, false)
+					g.w(")")
+				}
 				return
 			}
 			todo("", g.position0(n), x)
@@ -919,12 +943,18 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 	case c99.ExprDivAssign: // Expr "/=" Expr
 		switch x := c99.UnderlyingType(n.Expr.Operand.Type).(type) {
 		case c99.TypeKind:
-			if x.IsArithmeticType() {
-				g.w("%s(", g.registerHelper("div%d", "/", g.typ(x)))
-				g.lvalue(n.Expr)
-				g.w(", ")
-				g.convert(n.Expr2, x)
-				g.w(")")
+			if x.IsIntegerType() {
+				switch op := n.Expr.Operand; {
+				case op.Bits() != 0:
+					todo("", g.position0(n))
+				default:
+					pro, _ := c99.UsualArithmeticConversions(g.model, n.Expr.Operand, n.Expr2.Operand)
+					g.w("%s(", g.registerHelper("div%d", "/", g.typ(x), g.typ(n.Expr2.Operand.Type), g.typ(pro.Type)))
+					g.lvalue(n.Expr)
+					g.w(", ")
+					g.value(n.Expr2, false)
+					g.w(")")
+				}
 				return
 			}
 			todo("", g.position0(n), x)
@@ -934,12 +964,18 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 	case c99.ExprModAssign: // Expr "%=" Expr
 		switch x := c99.UnderlyingType(n.Expr.Operand.Type).(type) {
 		case c99.TypeKind:
-			if x.IsArithmeticType() {
-				g.w("%s(", g.registerHelper("mod%d", "%", g.typ(x)))
-				g.lvalue(n.Expr)
-				g.w(", ")
-				g.convert(n.Expr2, x)
-				g.w(")")
+			if x.IsIntegerType() {
+				switch op := n.Expr.Operand; {
+				case op.Bits() != 0:
+					todo("", g.position0(n))
+				default:
+					pro, _ := c99.UsualArithmeticConversions(g.model, n.Expr.Operand, n.Expr2.Operand)
+					g.w("%s(", g.registerHelper("mod%d", "%", g.typ(x), g.typ(n.Expr2.Operand.Type), g.typ(pro.Type)))
+					g.lvalue(n.Expr)
+					g.w(", ")
+					g.value(n.Expr2, false)
+					g.w(")")
+				}
 				return
 			}
 			todo("", g.position0(n), x)
@@ -949,12 +985,17 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 	case c99.ExprRshAssign: // Expr ">>=" Expr
 		switch x := c99.UnderlyingType(n.Expr.Operand.Type).(type) {
 		case c99.TypeKind:
-			if x.IsArithmeticType() {
-				g.w("%s(", g.registerHelper("rsh%d", ">>", g.typ(x), g.shiftMod(x)))
-				g.lvalue(n.Expr)
-				g.w(", ")
-				g.convert(n.Expr2, x)
-				g.w(")")
+			if x.IsIntegerType() {
+				switch op := n.Expr.Operand; {
+				case op.Bits() != 0:
+					todo("", g.position0(n))
+				default:
+					g.w("%s(", g.registerHelper("rsh%d", ">>", g.typ(n.Expr.Operand.Type), g.typ(x)))
+					g.lvalue(n.Expr)
+					g.w(", uint(")
+					g.value(n.Expr2, false)
+					g.w(")%%%d)", g.shiftMod(x))
+				}
 				return
 			}
 			todo("", g.position0(n), x)
@@ -1361,8 +1402,9 @@ func (g *gen) voidArithmeticAsop(n *c99.Expr) {
 		mask = (uint64(1)<<uint(fp.Bits) - 1) << uint(fp.Bitoff)
 		g.w("{ p := &")
 		g.value(n.Expr, true)
-		opBits := int(g.model.Sizeof(op.Type) * 8)
-		g.w("; *p = (*p &^ %#x) | (%s((%s(*p>>%d)<<%d>>%[5]d) ", mask, g.typ(fp.PackedType), g.typ(op.Type), fp.Bitoff, opBits-fp.Bits)
+		bits := int(g.model.Sizeof(fp.Type) * 8)
+		//TODO- g.w("; *p = (*p &^ %#x) | (%s((%s(*p>>%d)<<%d>>%[5]d) ", mask, g.typ(fp.PackedType), g.typ(op.Type), fp.Bitoff, opBits-fp.Bits)
+		g.w("; *p = (*p &^ %#x) | (%s((%s(%s(*p>>%d)<<%d>>%[6]d)) ", mask, g.typ(fp.PackedType), g.typ(op.Type), g.typ(fp.Type), fp.Bitoff, bits-fp.Bits)
 	case n.Expr.Declarator != nil:
 		g.w(" *(")
 		g.lvalue(n.Expr)
@@ -1417,10 +1459,10 @@ func (g *gen) assignmentValue(n *c99.Expr) {
 	switch op := n.Expr.Operand; {
 	case op.Bits() != 0:
 		fp := op.FieldProperties
-		g.w("%s(&", g.registerHelper("set%db", "=", g.typ(op.Type), g.typ(fp.PackedType), g.model.Sizeof(op.Type)*8, fp.Bits, fp.Bitoff))
+		g.w("%s(&", g.registerHelper("set%db", g.typ(fp.PackedType), g.typ(op.Type), g.typ(n.Expr2.Operand.Type), fp.Bitoff, fp.Bits))
 		g.value(n.Expr, true)
 		g.w(", ")
-		g.convert(n.Expr2, n.Operand.Type)
+		g.value(n.Expr2, false)
 		g.w(")")
 	default:
 		g.w("%s(", g.registerHelper("set%d", "", g.typ(op.Type)))

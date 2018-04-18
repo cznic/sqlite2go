@@ -403,6 +403,7 @@ outer:
 		// [0]6.5.4
 		t := n.TypeName.check(ctx)
 		op := n.Expr.eval(ctx, arr2ptr, fn)
+		op.FieldProperties = nil
 		if t == Void {
 			n.Operand = Operand{Type: Void}
 			break

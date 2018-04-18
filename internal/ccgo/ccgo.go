@@ -444,24 +444,27 @@ func (g *gen) genHelpers() {
 		g.w("\n\nfunc "+a[0], g.helpers[k])
 		switch a[0] {
 		case "add%d", "and%d", "div%d", "mod%d", "mul%d", "or%d", "sub%d", "xor%d":
-			// eg.: [0: "add%d" 1: op "+" 2: operand type "uint32"]
-			g.w("(p *%[2]s, v %[2]s) %[2]s { *p %[1]s= v; return *p }", a[1], a[2])
+			// eg.: [0: "add%d" 1: op "+" 2: lhs type "uint16" 3: rhs type "uint8" 4: promotion type "int32"]
+			g.w("(p *%[2]s, v %[3]s) (r %[2]s) { r = %[2]s(%[4]s(*p) %[1]s %[4]s(v)); *p = r; return r }", a[1], a[2], a[3], a[4])
 		case "and%db", "or%db", "xor%db":
-			// eg.: [0: "or%db" 1: op "|" 2: operand type "int32" 3: pack type "uint8" 4: op size "32" 5: bits "3" 6: bitoff "2"]
-			g.w(`(p *%[3]s, v %[2]s) %[2]s {
-r := (%[2]s(*p>>%[6]s)<<(%[4]s-%[5]s)>>(%[4]s-%[5]s)) %[1]s v
-*p = (*p &^ ((1<<%[5]s - 1) << %[6]s)) | (%[3]s(r) << %[6]s & ((1<<%[5]s - 1) << %[6]s))
-return r<<(%[4]s-%[5]s)>>(%[4]s-%[5]s)
-}`, a[1], a[2], a[3], a[4], a[5], a[6])
+			// eg.: [0: "or%db" 1: op "|" 2: lhs type "uint16" 3: rhs type "uint8" 4: promotion type "int32" 5: packed type "uint32" 6: bitoff 7: promotion type bits 8: bits]
+			g.w(`(p *%[5]s, v %[3]s) (r %[2]s) {
+r = %[2]s((%[4]s(%[2]s(*p>>%[6]s))<<(%[7]s-%[8]s)>>(%[7]s-%[8]s)) %[1]s %[4]s(v))
+*p = (*p &^ ((1<<%[8]s - 1) << %[6]s)) | (%[5]s(r) << %[6]s & ((1<<%[8]s - 1) << %[6]s))
+return r
+}`, a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8])
 		case "set%d": // eg.: [0: "set%d" 1: op "" 2: operand type "uint32"]
 			g.w("(p *%[2]s, v %[2]s) %[2]s { *p = v; return v }", a[1], a[2])
 		case "set%db":
-			// eg.: [0: "set%db" 1: ignored 2: operand type "uint32" 3: pack type "uint8" 4: op size 5: bits "3" 6: bitoff "2"]
-			g.w("(p *%[3]s, v %[2]s) %[2]s { *p = (*p &^ ((1<<%[5]s - 1) << %[6]s)) | (%[3]s(v) << %[6]s & ((1<<%[5]s - 1) << %[6]s)); return v<<(%[4]s-%[5]s)>>(%[4]s-%[5]s)}",
-				"", a[2], a[3], a[4], a[5], a[6])
+			// eg.: [0: "set%db" 1: packed type "uint32" 2: lhs type "int16" 3: rhs type "char" 4: bitoff 5: bits]
+			g.w(`(p *%[1]s, v %[3]s) (r %[2]s) { 
+r = %[2]s(v)
+*p = (*p &^ ((1<<%[5]s - 1) << %[4]s)) | (%[1]s(r) << %[4]s & ((1<<%[5]s - 1) << %[4]s))
+return r
+}`, a[1], a[2], a[3], a[4], a[5])
 		case "rsh%d":
-			// eg.: [0: "rsh%d" 1: op ">>" 2: operand type "uint32" 3: mod "32"]
-			g.w("(p *%[2]s, v %[2]s) %[2]s { *p %[1]s= (v %% %[3]s); return *p }", a[1], a[2], a[3])
+			// eg.: [0: "rsh%d" 1: op ">>" 2: lhs type "uint32" 3: promotion type]
+			g.w("(p *%[2]s, v uint) (r %[2]s) { r = %[2]s(%[3]s(*p) >> v); *p = r; return r }", a[1], a[2], a[3])
 		case "fn%d":
 			// eg.: [0: "fn%d" 1: type "unc()"]
 			g.w("(p uintptr) %[1]s { return *(*%[1]s)(unsafe.Pointer(&p)) }", a[1])
@@ -474,6 +477,7 @@ return r<<(%[4]s-%[5]s)>>(%[4]s-%[5]s)
 			// eg.: [0: "preinc%d" 1: operand type "int32" 2: delta "1"]
 			g.w("(p *%[1]s) %[1]s { *p += %[2]s; return *p }", a[1], a[2])
 		case "postinc%db":
+			//TODO op.type(fp.type(*p>>fp.bitoff)<<x>>x)
 			// eg.: [0: "postinc%db" 1: delta "1" 2: operand type "int32" 3: pack type "uint8" 4: op size "32" 5: bits "3" 6: bitoff "2"]
 			g.w(`(p *%[3]s) %[2]s {
 r := %[2]s(*p>>%[6]s)<<(%[4]s-%[5]s)>>(%[4]s-%[5]s)
@@ -481,6 +485,7 @@ r := %[2]s(*p>>%[6]s)<<(%[4]s-%[5]s)>>(%[4]s-%[5]s)
 return r
 }`, a[1], a[2], a[3], a[4], a[5], a[6])
 		case "preinc%db":
+			//TODO op.type(fp.type(*p>>fp.bitoff)<<x>>x)
 			// eg.: [0: "preinc%db" 1: delta "1" 2: operand type "int32" 3: pack type "uint8" 4: op size "32" 5: bits "3" 6: bitoff "2"]
 			g.w(`(p *%[3]s) %[2]s {
 r := (%[2]s(*p>>%[6]s)<<(%[4]s-%[5]s)>>(%[4]s-%[5]s)) + %[1]s
