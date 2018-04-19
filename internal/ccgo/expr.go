@@ -832,7 +832,7 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 				case op.Bits() != 0:
 					fp := op.FieldProperties
 					pro, _ := c99.UsualArithmeticConversions(g.model, n.Expr.Operand, n.Expr2.Operand)
-					g.w("%s(&", g.registerHelper("or%db", "|", g.typ(n.Expr.Operand.Type), g.typ(n.Expr2.Operand.Type), g.typ(pro.Type), g.typ(fp.PackedType), fp.Bitoff, g.model.Sizeof(pro.Type)*8, fp.Bits))
+					g.w("%s(&", g.registerHelper("or%db", "|", g.typ(n.Expr.Operand.Type), g.typ(n.Expr2.Operand.Type), g.typ(pro.Type), g.typ(fp.PackedType), fp.Bitoff, g.model.Sizeof(pro.Type)*8, fp.Bits, g.model.Sizeof(op.Type)*8))
 					g.value(n.Expr, true)
 					g.w(", ")
 					g.value(n.Expr2, false)
@@ -859,7 +859,7 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 				case op.Bits() != 0:
 					fp := op.FieldProperties
 					pro, _ := c99.UsualArithmeticConversions(g.model, n.Expr.Operand, n.Expr2.Operand)
-					g.w("%s(&", g.registerHelper("and%db", "&", g.typ(n.Expr.Operand.Type), g.typ(n.Expr2.Operand.Type), g.typ(pro.Type), g.typ(fp.PackedType), fp.Bitoff, g.model.Sizeof(pro.Type)*8, fp.Bits))
+					g.w("%s(&", g.registerHelper("and%db", "&", g.typ(n.Expr.Operand.Type), g.typ(n.Expr2.Operand.Type), g.typ(pro.Type), g.typ(fp.PackedType), fp.Bitoff, g.model.Sizeof(pro.Type)*8, fp.Bits, g.model.Sizeof(op.Type)*8))
 					g.value(n.Expr, true)
 					g.w(", ")
 					g.value(n.Expr2, false)
@@ -886,7 +886,7 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 				case op.Bits() != 0:
 					fp := op.FieldProperties
 					pro, _ := c99.UsualArithmeticConversions(g.model, n.Expr.Operand, n.Expr2.Operand)
-					g.w("%s(&", g.registerHelper("xor%db", "^", g.typ(n.Expr.Operand.Type), g.typ(n.Expr2.Operand.Type), g.typ(pro.Type), g.typ(fp.PackedType), fp.Bitoff, g.model.Sizeof(pro.Type)*8, fp.Bits))
+					g.w("%s(&", g.registerHelper("xor%db", "^", g.typ(n.Expr.Operand.Type), g.typ(n.Expr2.Operand.Type), g.typ(pro.Type), g.typ(fp.PackedType), fp.Bitoff, g.model.Sizeof(pro.Type)*8, fp.Bits, g.model.Sizeof(op.Type)*8))
 					g.value(n.Expr, true)
 					g.w(", ")
 					g.value(n.Expr2, false)
@@ -1459,7 +1459,7 @@ func (g *gen) assignmentValue(n *c99.Expr) {
 	switch op := n.Expr.Operand; {
 	case op.Bits() != 0:
 		fp := op.FieldProperties
-		g.w("%s(&", g.registerHelper("set%db", g.typ(fp.PackedType), g.typ(op.Type), g.typ(n.Expr2.Operand.Type), fp.Bitoff, fp.Bits))
+		g.w("%s(&", g.registerHelper("set%db", g.typ(fp.PackedType), g.typ(op.Type), g.typ(n.Expr2.Operand.Type), fp.Bitoff, fp.Bits, g.model.Sizeof(op.Type)*8))
 		g.value(n.Expr, true)
 		g.w(", ")
 		g.value(n.Expr2, false)

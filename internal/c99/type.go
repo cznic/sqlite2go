@@ -822,7 +822,8 @@ func (t *PointerType) IsCompatible(u Type) bool {
 		// result shall compare equal to the original pointer.
 		return t.Item == Void || x.Item == Void ||
 			ai != nil && ai.IsCompatible(x.Item) ||
-			underlyingType(t.Item, true).IsCompatible(underlyingType(x.Item, true))
+			underlyingType(t.Item, true).IsCompatible(underlyingType(x.Item, true)) ||
+			unsigned(t.Item) == unsigned(x.Item)
 	case *StructType:
 		return false
 	case TypeKind:
@@ -833,6 +834,23 @@ func (t *PointerType) IsCompatible(u Type) bool {
 		panic(fmt.Errorf("%T\n%v\n%v", x, t, u))
 	default:
 		panic(fmt.Errorf("%T\n%v\n%v", x, t, u))
+	}
+}
+
+func unsigned(t Type) TypeKind {
+	switch k := underlyingType(t, false).Kind(); k {
+	case Char, SChar:
+		return UChar
+	case Short:
+		return UShort
+	case Int:
+		return UInt
+	case Long:
+		return ULong
+	case LongLong:
+		return ULongLong
+	default:
+		return k
 	}
 }
 

@@ -98,7 +98,7 @@ func (g *gen) isConstInitializer(t c99.Type, n *c99.Initializer) bool {
 
 		switch x := underlyingType(t, true).(type) {
 		case *c99.ArrayType:
-			switch y := n.Expr.Operand.Value.(type) {
+			switch y := op.Value.(type) {
 			case *ir.StringValue:
 				if x.Size.Value != nil {
 					switch x.Item.Kind() {
@@ -122,6 +122,12 @@ func (g *gen) isConstInitializer(t c99.Type, n *c99.Initializer) bool {
 			if x.IsArithmeticType() {
 				return true
 			}
+		case *c99.UnionType:
+			if op.IsZero() {
+				return true
+			}
+
+			todo("%v: %T %v %v", g.position0(n), x, t, op)
 		default:
 			todo("%v: %T %v %v", g.position0(n), x, t, op)
 		}
@@ -426,9 +432,8 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 		}
 		todo("", g.position0(n), x)
 	case *c99.UnionType:
-		// *(*struct{ X int32 })(unsafe.Pointer(&struct{int32}{int32(1)})),
 		if n.Expr != nil {
-			todo("", g.position0(n), x)
+			g.value(n.Expr, false)
 			return
 		}
 
@@ -630,6 +635,10 @@ func (g *gen) renderInitializer(b []byte, t c99.Type, n *c99.Initializer) {
 		}
 	case *c99.UnionType:
 		if n.Expr != nil {
+			if n.Expr.IsZero() {
+				return
+			}
+
 			todo("", g.position0(n))
 		}
 

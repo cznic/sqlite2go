@@ -18,9 +18,9 @@ package ccgo
 //	Other	cc 18 ccgo 18 build 18 run 18 ok 18
 //	TCC	cc 51 ccgo 51 build 51 run 51 ok 51
 //	Other	cc 18 ccgo 18 build 18 run 18 ok 18
-//	GCC	cc 1107 ccgo 1091 build 1091 run 1091 ok 1091
+//	GCC	cc 1097 ccgo 1095 build 1095 run 1095 ok 1095
 //	Shell	cc 1 ccgo 1 build 1 run 1 ok 1
-//	--- FAIL: TestTCL (3241.93s)
+//	--- FAIL: TestTCLSQLite (3241.93s)
 //		all_test.go:1354:
 //			Test cases:   260473
 //			Pass:         259499 (99.63%)
@@ -344,7 +344,7 @@ import (
 `)
 	w.WriteString(imp)
 	if err := Command(w, tus); err != nil {
-		// dbg("ccgo: %v", errString(err)) //TODO-
+		//dbg("ccgo: %v", errString(err)) //TODO-
 		if !*oCCGO {
 			err = nil
 		}
@@ -558,7 +558,7 @@ func TestGCC(t *testing.T) {
 		"pr23467.c":       {}, // __attribute__ ((aligned (8)))
 		"pr67037.c":       {}, // void f(); f(); f(42)
 		"pushpop_macro.c": {}, // #pragma push_macro("_")
-		"zerolen-2.c":     {}, // The Go translation makes the last zero items array to have size 1.
+		"pr17377.c":       {}, // undefined: "__builtin_return_address"
 
 		"20000703-1.c":                 {}, //TODO statement expression
 		"20040411-1.c":                 {}, //TODO VLA
@@ -570,12 +570,22 @@ func TestGCC(t *testing.T) {
 		"20101011-1.c":                 {}, //TODO Needs sigfpe on int division by zero
 		"921016-1.c":                   {}, //TODO bits, arithmetic precision
 		"970217-1.c":                   {}, //TODO VLA
+		"alias-4.c":                    {}, //TODO __attribute__ ((alias ("a")))
 		"bitfld-1.c":                   {}, //TODO bits, arithmetic precision
 		"bitfld-3.c":                   {}, //TODO bits, arithmetic precision
+		"built-in-setjmp.c":            {}, //TODO undefined: "__builtin_setjmp"
+		"builtin-constant.c":           {}, //TODO undefined: "__builtin_constant_p"
 		"builtin-types-compatible-p.c": {}, //TODO must track type qualifiers
+		"pr19449.c":                    {}, //TODO undefined: "__builtin_constant_p"
 		"pr32244-1.c":                  {}, //TODO bits, arithmetic precision
 		"pr34971.c":                    {}, //TODO bits, arithmetic precision
+		"pr37780.c":                    {}, //TODO undefined: "__builtin_ctz"
+		"pr47237.c":                    {}, //TODO undefined: "__builtin_apply"
+		"pr60003.c":                    {}, //TODO undefined: "__builtin_setjmp"
+		"pr64006.c":                    {}, //TODO undefined: "__builtin_mul_overflow"
+		"pr68381.c":                    {}, //TODO undefined: "__builtin_mul_overflow"
 		"pr77767.c":                    {}, //TODO VLA
+		"zerolen-2.c":                  {}, //TODO The Go translation makes the last zero items array to have size 1.
 	}
 
 	if s := *oRE; s != "" {
@@ -696,6 +706,290 @@ func TestSQLiteShell(t *testing.T) {
 }
 
 func TestTCL(t *testing.T) {
+	c99.FlushCache()
+
+	const (
+		allDefs = `// Output of gcc features.c && ./a.out in github.com/cznic/sqlite2go/internal/c99/headers on linux_amd64.
+			#define _POSIX_SOURCE 1
+			#define _POSIX_C_SOURCE 200809
+			#define _DEFAULT_SOURCE 1
+`
+		tclDefs0 = `
+			#define HAVE_SYS_TIME_H 1
+			#define HAVE_UNISTD_H 1
+			#define TCL_CFGVAL_ENCODING "iso8859-1"
+			#define TCL_LIBRARY "/usr/local/lib/tcl8.6" //TODO real, relaitve path
+			#define TIME_WITH_SYS_TIME 1
+
+			/* Rename the global symbols in libtommath to avoid linkage conflicts */
+
+			#define KARATSUBA_MUL_CUTOFF TclBNKaratsubaMulCutoff
+			#define KARATSUBA_SQR_CUTOFF TclBNKaratsubaSqrCutoff
+			#define TOOM_MUL_CUTOFF TclBNToomMulCutoff
+			#define TOOM_SQR_CUTOFF TclBNToomSqrCutoff
+
+			#define bn_reverse TclBN_reverse
+			#define fast_s_mp_mul_digs TclBN_fast_s_mp_mul_digs
+			#define fast_s_mp_sqr TclBN_fast_s_mp_sqr
+			#define mp_add TclBN_mp_add
+			#define mp_add_d TclBN_mp_add_d
+			#define mp_and TclBN_mp_and
+			#define mp_clamp TclBN_mp_clamp
+			#define mp_clear TclBN_mp_clear
+			#define mp_clear_multi TclBN_mp_clear_multi
+			#define mp_cmp TclBN_mp_cmp
+			#define mp_cmp_d TclBN_mp_cmp_d
+			#define mp_cmp_mag TclBN_mp_cmp_mag
+			#define mp_cnt_lsb TclBN_mp_cnt_lsb
+			#define mp_copy TclBN_mp_copy
+			#define mp_count_bits TclBN_mp_count_bits
+			#define mp_div TclBN_mp_div
+			#define mp_div_2 TclBN_mp_div_2
+			#define mp_div_2d TclBN_mp_div_2d
+			#define mp_div_3 TclBN_mp_div_3
+			#define mp_div_d TclBN_mp_div_d
+			#define mp_exch TclBN_mp_exch
+			#define mp_expt_d TclBN_mp_expt_d
+			#define mp_grow TclBN_mp_grow
+			#define mp_init TclBN_mp_init
+			#define mp_init_copy TclBN_mp_init_copy
+			#define mp_init_multi TclBN_mp_init_multi
+			#define mp_init_set TclBN_mp_init_set
+			#define mp_init_set_int TclBN_mp_init_set_int
+			#define mp_init_size TclBN_mp_init_size
+			#define mp_karatsuba_mul TclBN_mp_karatsuba_mul
+			#define mp_karatsuba_sqr TclBN_mp_karatsuba_sqr
+			#define mp_lshd TclBN_mp_lshd
+			#define mp_mod TclBN_mp_mod
+			#define mp_mod_2d TclBN_mp_mod_2d
+			#define mp_mul TclBN_mp_mul
+			#define mp_mul_2 TclBN_mp_mul_2
+			#define mp_mul_2d TclBN_mp_mul_2d
+			#define mp_mul_d TclBN_mp_mul_d
+			#define mp_neg TclBN_mp_neg
+			#define mp_or TclBN_mp_or
+			#define mp_radix_size TclBN_mp_radix_size
+			#define mp_read_radix TclBN_mp_read_radix
+			#define mp_rshd TclBN_mp_rshd
+			#define mp_s_rmap TclBNMpSRmap
+			#define mp_set TclBN_mp_set
+			#define mp_set_int TclBN_mp_set_int
+			#define mp_shrink TclBN_mp_shrink
+			#define mp_sqr TclBN_mp_sqr
+			#define mp_sqrt TclBN_mp_sqrt
+			#define mp_sub TclBN_mp_sub
+			#define mp_sub_d TclBN_mp_sub_d
+			#define mp_to_unsigned_bin TclBN_mp_to_unsigned_bin
+			#define mp_to_unsigned_bin_n TclBN_mp_to_unsigned_bin_n
+			#define mp_toom_mul TclBN_mp_toom_mul
+			#define mp_toom_sqr TclBN_mp_toom_sqr
+			#define mp_toradix_n TclBN_mp_toradix_n
+			#define mp_unsigned_bin_size TclBN_mp_unsigned_bin_size
+			#define mp_xor TclBN_mp_xor
+			#define mp_zero TclBN_mp_zero
+			#define s_mp_add TclBN_s_mp_add
+			#define s_mp_mul_digs TclBN_s_mp_mul_digs
+			#define s_mp_sqr TclBN_s_mp_sqr
+			#define s_mp_sub TclBN_s_mp_sub
+`
+		tclDefs32 = `
+`
+		tclDefs64 = `
+			#define CFG_INSTALL_BINDIR "/usr/local/bin"
+			#define CFG_INSTALL_DOCDIR "/usr/local/man"
+			#define CFG_INSTALL_INCDIR "/usr/local/include"
+			#define CFG_INSTALL_LIBDIR "/usr/local/lib64"
+			#define CFG_INSTALL_SCRDIR "/usr/local/lib/tcl8.6"
+			#define CFG_RUNTIME_BINDIR "/usr/local/bin"
+			#define CFG_RUNTIME_DOCDIR "/usr/local/man"
+			#define CFG_RUNTIME_INCDIR "/usr/local/include"
+			#define CFG_RUNTIME_LIBDIR "/usr/local/lib64"
+			#define CFG_RUNTIME_SCRDIR "/usr/local/lib/tcl8.6"
+			#define TCL_PACKAGE_PATH "/usr/local/lib64 /usr/local/lib " //TODO real, relative path
+			#define mp_digit unsigned long long
+`
+	)
+
+	var tclDefs string
+	switch arch := env("GOARCH", runtime.GOARCH); arch {
+	case "386":
+		tclDefs = allDefs + tclDefs0 + tclDefs32
+	case "amd64":
+		tclDefs = allDefs + tclDefs0 + tclDefs64
+	default:
+		panic(arch)
+	}
+
+	dir := *oTmp
+	if dir == "" {
+		var err error
+		if dir, err = ioutil.TempDir("", "test-ccgo-tcl-"); err != nil {
+			t.Fatal(err)
+		}
+
+		defer func() {
+			if err := os.RemoveAll(dir); err != nil {
+				t.Fatal(err)
+			}
+		}()
+	}
+
+	root := "../../_tcl8.6.8/"
+	tweaks := &c99.Tweaks{
+		// TrackExpand: func(s string) { fmt.Print(s) }, //TODO-
+		// TrackIncludes:               func(s string) { fmt.Printf("#include %s\n", s) }, //TODO-
+		EnableAnonymousStructFields: true,
+	}
+	inc := []string{
+		"@",
+		filepath.FromSlash(filepath.Join(root, "generic")),
+		filepath.FromSlash(filepath.Join(root, "unix")),
+		filepath.FromSlash(filepath.Join(root, "libtommath")),
+	}
+	sysInc := append(searchPaths, inc...)
+	crt0, err := c99.Translate(tweaks, inc, searchPaths, c99.MustBuiltin(), c99.MustCrt0())
+	if err != nil {
+		t.Fatal(errString(err))
+	}
+
+	tus := []*c99.TranslationUnit{crt0}
+
+	m, err := filepath.Glob(filepath.FromSlash(filepath.Join(root, "libtommath/*.c")))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i, v := range m {
+		m[i] = v[len(root):]
+	}
+
+	for _, v := range append([]string{
+		"generic/tclLoadNone.c", // TclGuessPackageName
+		"generic/tclIOSock.c",
+		"generic/tclIORChan.c",
+		"generic/tclOOStubInit.c",
+		"unix/tclUnixCompat.c",
+		"generic/tclOOMethod.c",
+		"generic/tclCompCmdsSZ.c",
+		"generic/tclScan.c",
+		"generic/tclCompCmdsGR.c",
+		"generic/tclCompCmds.c",
+		"generic/tclZlib.c",
+		"generic/tclConfig.c",
+		"unix/tclUnixTime.c",
+		"generic/tclCompExpr.c",
+		"generic/tclUtf.c",
+		"unix/tclUnixPipe.c",
+		"generic/tclLoad.c",
+		"generic/tclRegexp.c",
+		"unix/tclUnixSock.c",
+		"generic/tclPosixStr.c",
+		"generic/tclPipe.c",
+		"generic/tclTimer.c",
+		"generic/tclGet.c",
+		"unix/tclUnixEvent.c",
+		"unix/tclUnixNotfy.c",
+		"generic/tclNotify.c",
+		"generic/tclStrToD.c",
+		"generic/tclThreadStorage.c",
+		"generic/tclCompile.c",
+		"generic/tclFileName.c",
+		"generic/tclProc.c",
+		"generic/tclPathObj.c",
+		"unix/tclUnixChan.c",
+		"generic/tclAlloc.c",
+		"generic/tclThread.c",
+		"generic/tclEncoding.c",
+		"generic/tclOO.c",
+		"generic/tclTomMathInterface.c",
+		"generic/tclPkg.c",
+		"generic/tclUtil.c",
+		"generic/tclTrace.c",
+		"generic/tclPkgConfig.c",
+		"generic/tclEnv.c",
+		"generic/tclAssembly.c",
+		"generic/tclDisassemble.c",
+		"generic/tclClock.c",
+		"generic/tclIndexObj.c",
+		"generic/tclCmdMZ.c",
+		"generic/tclCmdIL.c",
+		"generic/tclCmdAH.c",
+		"generic/tclIOCmd.c",
+		"generic/tclBinary.c",
+		"generic/tclEnsemble.c",
+		"generic/tclStubInit.c",
+		"generic/tclAsync.c",
+		"generic/tclExecute.c",
+		"generic/tclPanic.c",
+		"generic/tclNamesp.c",
+		"unix/tclUnixThrd.c",
+		"generic/tclLiteral.c",
+		"generic/tclOptimize.c",
+		"generic/tclHash.c",
+		"generic/tclHistory.c",
+		"generic/tclParse.c",
+		"generic/tclStringObj.c",
+		"generic/tclLink.c",
+		"generic/tclDictObj.c",
+		"generic/tclCkalloc.c",
+		"generic/tclIOUtil.c",
+		"generic/tclEvent.c",
+		"generic/tclInterp.c",
+		"generic/tclResult.c",
+		"generic/tclIO.c",
+		"generic/tclPreserve.c",
+		"generic/tclListObj.c",
+		"generic/tclVar.c",
+		"generic/tclObj.c",
+		"unix/tclUnixFile.c",
+		"unix/tclUnixInit.c",
+		"generic/tclBasic.c",
+		"generic/tclMain.c",
+		"unix/tclAppInit.c",
+	}, m...) {
+		tu, err := translate(tweaks, inc, sysInc, tclDefs, c99.MustFileSource2(filepath.FromSlash(filepath.Join(root, v)), false))
+		if err != nil {
+			t.Fatal(errString(err))
+		}
+
+		tus = append(tus, tu)
+	}
+
+	f, err := os.Create(filepath.Join(dir, "main.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w := bufio.NewWriter(f)
+	w.WriteString(`package main
+	
+import (
+	"os"
+	"unsafe"
+	"github.com/cznic/crt"
+)
+`)
+	if err := Command(w, tus); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := w.Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if out, err := exec.Command("go", "build", "-o", filepath.Join(dir, "main"), f.Name()).CombinedOutput(); err != nil {
+		t.Fatalf("%s\n%v", out, err)
+	}
+
+	panic("TODO")
+}
+
+func TestTCLSQLite(t *testing.T) {
+	return //TODO-
 	c99.FlushCache()
 	const (
 		allDefs = `// Output of gcc features.c && ./a.out in github.com/cznic/sqlite2go/internal/c99/headers on linux_amd64.
@@ -906,7 +1200,7 @@ func TestTCL(t *testing.T) {
 	dir := *oTmp
 	if dir == "" {
 		var err error
-		if dir, err = ioutil.TempDir("", "test-ccgo-tcl-"); err != nil {
+		if dir, err = ioutil.TempDir("", "test-ccgo-tclsqlite-"); err != nil {
 			t.Fatal(err)
 		}
 

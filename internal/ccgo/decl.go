@@ -43,10 +43,11 @@ more:
 			g.defineTaggedUnionType(y)
 		case
 			*c99.ArrayType,
+			*c99.FunctionType,
 			*c99.PointerType,
 			*c99.StructType,
-			c99.TypeKind,
-			*c99.UnionType:
+			*c99.UnionType,
+			c99.TypeKind:
 
 			// nop
 		default:
@@ -262,7 +263,17 @@ func (g *gen) functionDefinition(n *c99.Declarator) {
 	g.w("\nfunc %s(tls %sTLS", g.mangleDeclarator(n), crt)
 	names := n.ParameterNames()
 	t := n.Type.(*c99.FunctionType)
-	if len(names) != len(t.Params) {
+	switch {
+	case len(names) < len(t.Params):
+		for len(names) < len(t.Params) {
+			names = append(names, 0)
+		}
+	case len(names) != 0 && len(t.Params) == 0:
+		t.Params = make([]c99.Type, len(names))
+		for i := range t.Params {
+			t.Params[i] = c99.Int
+		}
+	case len(names) != len(t.Params):
 		if len(names) != 0 {
 			if !(len(names) == 1 && names[0] == 0) {
 				todo("K&R C %v %v %v", g.position(n), names, t.Params)
