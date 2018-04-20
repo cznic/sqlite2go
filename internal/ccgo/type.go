@@ -134,7 +134,7 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool, lvl int) (r string) {
 			}
 			fmt.Fprintf(&buf, "%s;", g.ptyp(v.Type, ptr2uintptr, lvl+1))
 			if lvl == 0 && ptr2uintptr && v.Type.Kind() == c99.Ptr {
-				fmt.Fprintf(&buf, "// %s\n", g.ptyp(v.Type, false, lvl+1))
+				fmt.Fprintf(&buf, "// %s\n", g.typeComment(v.Type))
 			}
 		}
 		buf.WriteByte('}')
@@ -204,7 +204,7 @@ func prefer(d *c99.Declarator) bool {
 		return false
 	}
 
-	if d.Initializer != nil || d.FunctionDefinition != nil {
+	if d.Initializer != nil {
 		return true
 	}
 
@@ -214,19 +214,19 @@ func prefer(d *c99.Declarator) bool {
 		case *c99.ArrayType:
 			return x.Size.Type != nil
 		case *c99.FunctionType:
-			return false
+			return d.FunctionDefinition != nil
 		case
 			*c99.EnumType,
 			*c99.StructType:
 
-			return true
+			return false
 		case *c99.PointerType:
 			t = x.Item
 		case *c99.TaggedStructType:
 			return x.Type != nil
 		case c99.TypeKind:
 			if x.IsScalarType() || x == c99.Void {
-				return true
+				return false
 			}
 
 			panic(x)

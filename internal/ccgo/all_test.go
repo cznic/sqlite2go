@@ -706,6 +706,7 @@ func TestSQLiteShell(t *testing.T) {
 }
 
 func TestTCL(t *testing.T) {
+	return //TODO-
 	c99.FlushCache()
 
 	const (
@@ -715,10 +716,22 @@ func TestTCL(t *testing.T) {
 			#define _DEFAULT_SOURCE 1
 `
 		tclDefs0 = `
+			#define CFG_INSTALL_BINDIR "library"
+			#define CFG_INSTALL_DOCDIR "library"
+			#define CFG_INSTALL_INCDIR "library"
+			#define CFG_INSTALL_LIBDIR "library"
+			#define CFG_INSTALL_SCRDIR "library"
+			#define CFG_RUNTIME_BINDIR "library"
+			#define CFG_RUNTIME_DOCDIR "library"
+			#define CFG_RUNTIME_INCDIR "library"
+			#define CFG_RUNTIME_LIBDIR "library"
+			#define CFG_RUNTIME_SCRDIR "library"
 			#define HAVE_SYS_TIME_H 1
 			#define HAVE_UNISTD_H 1
 			#define TCL_CFGVAL_ENCODING "iso8859-1"
 			#define TCL_LIBRARY "/usr/local/lib/tcl8.6" //TODO real, relaitve path
+			#define TCL_PACKAGE_PATH "library"
+			#define TCL_THREADS 1
 			#define TIME_WITH_SYS_TIME 1
 
 			/* Rename the global symbols in libtommath to avoid linkage conflicts */
@@ -795,17 +808,6 @@ func TestTCL(t *testing.T) {
 		tclDefs32 = `
 `
 		tclDefs64 = `
-			#define CFG_INSTALL_BINDIR "/usr/local/bin"
-			#define CFG_INSTALL_DOCDIR "/usr/local/man"
-			#define CFG_INSTALL_INCDIR "/usr/local/include"
-			#define CFG_INSTALL_LIBDIR "/usr/local/lib64"
-			#define CFG_INSTALL_SCRDIR "/usr/local/lib/tcl8.6"
-			#define CFG_RUNTIME_BINDIR "/usr/local/bin"
-			#define CFG_RUNTIME_DOCDIR "/usr/local/man"
-			#define CFG_RUNTIME_INCDIR "/usr/local/include"
-			#define CFG_RUNTIME_LIBDIR "/usr/local/lib64"
-			#define CFG_RUNTIME_SCRDIR "/usr/local/lib/tcl8.6"
-			#define TCL_PACKAGE_PATH "/usr/local/lib64 /usr/local/lib " //TODO real, relative path
 			#define mp_digit unsigned long long
 `
 	)
@@ -864,88 +866,103 @@ func TestTCL(t *testing.T) {
 	}
 
 	for _, v := range append([]string{
-		"generic/tclLoadNone.c", // TclGuessPackageName
-		"generic/tclIOSock.c",
-		"generic/tclIORChan.c",
-		"generic/tclOOStubInit.c",
-		"unix/tclUnixCompat.c",
-		"generic/tclOOMethod.c",
-		"generic/tclCompCmdsSZ.c",
-		"generic/tclScan.c",
-		"generic/tclCompCmdsGR.c",
-		"generic/tclCompCmds.c",
-		"generic/tclZlib.c",
-		"generic/tclConfig.c",
-		"unix/tclUnixTime.c",
-		"generic/tclCompExpr.c",
-		"generic/tclUtf.c",
-		"unix/tclUnixPipe.c",
-		"generic/tclLoad.c",
-		"generic/tclRegexp.c",
-		"unix/tclUnixSock.c",
-		"generic/tclPosixStr.c",
-		"generic/tclPipe.c",
-		"generic/tclTimer.c",
-		"generic/tclGet.c",
-		"unix/tclUnixEvent.c",
-		"unix/tclUnixNotfy.c",
-		"generic/tclNotify.c",
-		"generic/tclStrToD.c",
-		"generic/tclThreadStorage.c",
-		"generic/tclCompile.c",
-		"generic/tclFileName.c",
-		"generic/tclProc.c",
-		"generic/tclPathObj.c",
-		"unix/tclUnixChan.c",
+		"generic/regcomp.c",
+		"generic/regerror.c",
+		"generic/regexec.c",
+		"generic/regfree.c",
 		"generic/tclAlloc.c",
-		"generic/tclThread.c",
-		"generic/tclEncoding.c",
-		"generic/tclOO.c",
-		"generic/tclTomMathInterface.c",
-		"generic/tclPkg.c",
-		"generic/tclUtil.c",
-		"generic/tclTrace.c",
-		"generic/tclPkgConfig.c",
-		"generic/tclEnv.c",
 		"generic/tclAssembly.c",
-		"generic/tclDisassemble.c",
-		"generic/tclClock.c",
-		"generic/tclIndexObj.c",
-		"generic/tclCmdMZ.c",
-		"generic/tclCmdIL.c",
-		"generic/tclCmdAH.c",
-		"generic/tclIOCmd.c",
-		"generic/tclBinary.c",
-		"generic/tclEnsemble.c",
-		"generic/tclStubInit.c",
 		"generic/tclAsync.c",
+		"generic/tclBasic.c",
+		"generic/tclBinary.c",
+		"generic/tclCkalloc.c",
+		"generic/tclClock.c",
+		"generic/tclCmdAH.c",
+		"generic/tclCmdIL.c",
+		"generic/tclCmdMZ.c",
+		"generic/tclCompCmds.c",
+		"generic/tclCompCmdsGR.c",
+		"generic/tclCompCmdsSZ.c",
+		"generic/tclCompExpr.c",
+		"generic/tclCompile.c",
+		"generic/tclConfig.c",
+		"generic/tclDate.c",
+		"generic/tclDictObj.c",
+		"generic/tclDisassemble.c",
+		"generic/tclEncoding.c",
+		"generic/tclEnsemble.c",
+		"generic/tclEnv.c",
+		"generic/tclEvent.c",
 		"generic/tclExecute.c",
-		"generic/tclPanic.c",
-		"generic/tclNamesp.c",
-		"unix/tclUnixThrd.c",
-		"generic/tclLiteral.c",
-		"generic/tclOptimize.c",
+		"generic/tclFCmd.c",
+		"generic/tclFileName.c",
+		"generic/tclGet.c",
 		"generic/tclHash.c",
 		"generic/tclHistory.c",
-		"generic/tclParse.c",
-		"generic/tclStringObj.c",
-		"generic/tclLink.c",
-		"generic/tclDictObj.c",
-		"generic/tclCkalloc.c",
-		"generic/tclIOUtil.c",
-		"generic/tclEvent.c",
-		"generic/tclInterp.c",
-		"generic/tclResult.c",
 		"generic/tclIO.c",
-		"generic/tclPreserve.c",
+		"generic/tclIOCmd.c",
+		"generic/tclIOGT.c",
+		"generic/tclIORChan.c",
+		"generic/tclIORTrans.c",
+		"generic/tclIOSock.c",
+		"generic/tclIOUtil.c",
+		"generic/tclIndexObj.c",
+		"generic/tclInterp.c",
+		"generic/tclLink.c",
 		"generic/tclListObj.c",
-		"generic/tclVar.c",
+		"generic/tclLiteral.c",
+		"generic/tclLoad.c",
+		"generic/tclLoadNone.c", // TclGuessPackageName
+		"generic/tclMain.c",
+		"generic/tclNamesp.c",
+		"generic/tclNotify.c",
+		"generic/tclOO.c",
+		"generic/tclOOBasic.c",
+		"generic/tclOOCall.c",
+		"generic/tclOODefineCmds.c",
+		"generic/tclOOInfo.c",
+		"generic/tclOOMethod.c",
+		"generic/tclOOStubInit.c",
 		"generic/tclObj.c",
+		"generic/tclOptimize.c",
+		"generic/tclPanic.c",
+		"generic/tclParse.c",
+		"generic/tclPathObj.c",
+		"generic/tclPipe.c",
+		"generic/tclPkg.c",
+		"generic/tclPkgConfig.c",
+		"generic/tclPosixStr.c",
+		"generic/tclPreserve.c",
+		"generic/tclProc.c",
+		"generic/tclRegexp.c",
+		"generic/tclResolve.c",
+		"generic/tclResult.c",
+		"generic/tclScan.c",
+		"generic/tclStrToD.c",
+		"generic/tclStringObj.c",
+		"generic/tclStubInit.c",
+		"generic/tclThread.c",
+		"generic/tclThreadStorage.c",
+		"generic/tclTimer.c",
+		"generic/tclTomMathInterface.c",
+		"generic/tclTrace.c",
+		"generic/tclTrace.c",
+		"generic/tclUtf.c",
+		"generic/tclUtil.c",
+		"generic/tclVar.c",
+		"generic/tclZlib.c",
+		"unix/tclAppInit.c",
+		"unix/tclUnixChan.c",
+		"unix/tclUnixCompat.c",
+		"unix/tclUnixEvent.c",
+		"unix/tclUnixFCmd.c",
 		"unix/tclUnixFile.c",
 		"unix/tclUnixInit.c",
-		"generic/tclBasic.c",
-		"generic/tclMain.c",
-		"unix/tclAppInit.c",
+		"unix/tclUnixNotfy.c",
+		"unix/tclUnixPipe.c",
+		"unix/tclUnixSock.c",
+		"unix/tclUnixThrd.c",
+		"unix/tclUnixTime.c",
 	}, m...) {
 		tu, err := translate(tweaks, inc, sysInc, tclDefs, c99.MustFileSource2(filepath.FromSlash(filepath.Join(root, v)), false))
 		if err != nil {
@@ -970,8 +987,11 @@ import (
 )
 `)
 	if err := Command(w, tus); err != nil {
+		c99.FlushCache()
 		t.Fatal(err)
 	}
+
+	c99.FlushCache()
 
 	if err := w.Flush(); err != nil {
 		t.Fatal(err)
@@ -981,11 +1001,39 @@ import (
 		t.Fatal(err)
 	}
 
-	if out, err := exec.Command("go", "build", "-o", filepath.Join(dir, "main"), f.Name()).CombinedOutput(); err != nil {
+	if out, err := exec.Command("go", "build", "-o", filepath.Join(dir, "tcl"), f.Name()).CombinedOutput(); err != nil {
 		t.Fatalf("%s\n%v", out, err)
 	}
 
-	panic("TODO")
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() {
+		if err := os.Chdir(cwd); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	src, err := filepath.Abs(filepath.Join(cwd, filepath.FromSlash("../..")))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := cpDir(dir, filepath.Join(src, filepath.FromSlash("_tcl8.6.8/tests")), nil); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := cpDir(filepath.Join(dir, "library"), filepath.Join(src, filepath.FromSlash("_tcl8.6.8/library")), nil); err != nil {
+		t.Fatal(err)
+	}
+
+	//TODO run TCL tests
 }
 
 func TestTCLSQLite(t *testing.T) {

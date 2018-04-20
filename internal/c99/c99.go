@@ -47,16 +47,26 @@ import (
 
 const (
 	// CRT0Source is the source code of the C startup code.
-	CRT0Source = `int main();
+	CRT0Source = `/* crt0.c */
+#include <stdio.h>
+#include <stdlib.h>
+#include <netinet/in.h>
 
-__FILE_TYPE__ __stdfiles[3];
+FILE __stdfiles[3];
 char **environ;
+int main();
+struct in6_addr in6addr_any = IN6ADDR_ANY_INIT;
 void *stdin = &__stdfiles[0], *stdout = &__stdfiles[1], *stderr = &__stdfiles[2];
+
+//TODO int daylight;
+//TODO long timezone;
+//TODO char *tzname[2];
+
 
 void _start(int argc, char **argv)
 {
 	__register_stdfiles(stdin, stdout, stderr, &environ);
-	__builtin_exit(((int (*)(int, char **))main) (argc, argv));
+	exit(((int (*)(int, char **))main) (argc, argv));
 }	
 `
 	cacheSize = 500

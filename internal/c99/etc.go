@@ -81,6 +81,10 @@ func prefer(d *Declarator) bool {
 		return false
 	}
 
+	if d.Initializer != nil {
+		return true
+	}
+
 	t := d.Type
 	for {
 		switch x := UnderlyingType(t).(type) {

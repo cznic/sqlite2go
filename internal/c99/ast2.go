@@ -2393,7 +2393,7 @@ func (n *Declarator) insert(ctx *context, isFunction bool) {
 					break
 				}
 
-				if prefer(n) || !prefer(ex) {
+				if prefer(n) && !prefer(ex) || !n.DeclarationSpecifier.IsExtern() && ex.DeclarationSpecifier.IsExtern() {
 					n.Scope.Idents[nm] = n
 				}
 			default:

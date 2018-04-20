@@ -313,6 +313,9 @@ func (g *gen) collectSymbols() error {
 			switch x := n.(type) {
 			case *c99.Declarator:
 				g.units[x] = unit
+				if d := x.Definition; d != nil {
+					x = d
+				}
 				if x.Type.Kind() == c99.Function && x.FunctionDefinition == nil {
 					continue
 				}
@@ -328,30 +331,32 @@ func (g *gen) collectSymbols() error {
 							Result: c99.Int,
 						}
 					}
-					if ex, ok := g.externs[nm]; ok {
-						if g.position(ex) == g.position(x) {
-							break // ok
-						}
-
-						if ex.Type.Kind() == c99.Function {
-							todo("")
-						}
-
-						if !ex.Type.IsCompatible(x.Type) {
-							//typeDiff(ex.Type, x.Type)
-							todo("", g.position(ex), ex.Type, g.position(x), x.Type)
-						}
-
-						if ex.Initializer != nil && x.Initializer != nil {
-							todo("")
-						}
-
-						if prefer(ex) || !prefer(x) {
-							break // ok
-						}
+					ex := g.externs[nm]
+					if ex == nil {
+						g.externs[nm] = x
+						break
 					}
 
-					g.externs[nm] = x
+					if g.position(ex) == g.position(x) {
+						break // ok
+					}
+
+					if ex.Type.Kind() == c99.Function {
+						todo("")
+					}
+
+					if !ex.Type.IsCompatible(x.Type) {
+						//typeDiff(ex.Type, x.Type)
+						todo("", g.position(ex), ex.Type, g.position(x), x.Type)
+					}
+
+					if ex.Initializer != nil && x.Initializer != nil {
+						todo("")
+					}
+
+					if prefer(x) && !prefer(ex) || !x.DeclarationSpecifier.IsExtern() && ex.DeclarationSpecifier.IsExtern() {
+						g.externs[nm] = x
+					}
 				case c99.LinkageInternal:
 					// ok
 				case c99.LinkageNone:

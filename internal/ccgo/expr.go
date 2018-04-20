@@ -415,6 +415,10 @@ func (g *gen) value(n *c99.Expr, packedField bool) {
 				todo("%v: %T undefined: %q", g.position0(n), x, dict.S(n.Expr.Token.Val))
 			}
 		}
+		if d = n.Expr.Declarator; d != nil {
+			d = g.normalizeDeclarator(d)
+			n.Expr.Declarator = d
+		}
 		var ft0 c99.Type
 		if !isFnPtr(n.Expr.Operand.Type, &ft0) {
 			todo("%v: %v", g.position0(n), n.Expr.Operand.Type)

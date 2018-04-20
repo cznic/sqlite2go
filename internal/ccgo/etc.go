@@ -172,8 +172,8 @@ func (g *gen) typeComment(t c99.Type) (r string) {
 			t, ok := underlyingType(x.Item, true).(*c99.PointerType)
 			if !ok {
 				switch {
-				case x.Item == c99.Void:
-					return fmt.Sprintf("%svoid", strings.Repeat("*", n))
+				case x.IsVoidPointerType():
+					return fmt.Sprintf("%sstruct{}", strings.Repeat("*", n))
 				default:
 					return fmt.Sprintf("%s%s", strings.Repeat("*", n), g.typeComment(x.Item))
 				}
