@@ -56,7 +56,7 @@ func (o *opt) pos(n ast.Node) token.Position {
 	return o.fset.Position(n.Pos())
 }
 
-func (o *opt) do(out io.Writer, in io.Reader, fn string, needBool2int int) error {
+func (o *opt) do(out io.Writer, in io.Reader, fn string, needBool2int int, more ...func(*[]byte) error) error {
 	o.fn = fn
 	o.needBool2int = needBool2int
 	o.out = out
@@ -95,6 +95,11 @@ func bool2int(b bool) int32 {
 	b = bytes.Replace(b, []byte("\n\n\t)"), []byte("\n\t)"), -1)
 	if traceOpt {
 		os.Stderr.Write(b)
+	}
+	for _, v := range more {
+		if err := v(&b); err != nil {
+			return err
+		}
 	}
 	_, err = o.out.Write(b)
 	return err

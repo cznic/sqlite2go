@@ -58,7 +58,9 @@ func main() {
 // Command outputs a Go program generated from in to w.
 //
 // No package or import clause is generated.
-func Command(w io.Writer, in []*c99.TranslationUnit) (err error) {
+func Command(w io.Writer, in []*c99.TranslationUnit) (err error) { return command(w, in) }
+
+func command(w io.Writer, in []*c99.TranslationUnit, more ...func(*[]byte) error) (err error) {
 	returned := false
 
 	defer func() {
@@ -67,7 +69,7 @@ func Command(w io.Writer, in []*c99.TranslationUnit) (err error) {
 		}
 	}()
 
-	err = newGen(w, in).gen(true)
+	err = newGen(w, in).gen(true, more...)
 	returned = true
 	return err
 }
@@ -179,7 +181,7 @@ func (g *gen) enqueueNumbered(n *c99.Declarator) {
 	g.queue.PushBack(n)
 }
 
-func (g *gen) gen(cmd bool) (err error) {
+func (g *gen) gen(cmd bool, more ...func(*[]byte) error) (err error) {
 	if len(g.in) == 0 {
 		return fmt.Errorf("no translation unit passed")
 	}
@@ -288,7 +290,7 @@ const %s = uintptr(0)
 		g.w("%s\\x00", s[1:len(s)-1])
 	}
 	g.w("\")\n)\n")
-	return newOpt().do(g.out, &g.out0, testFn, g.needBool2int)
+	return newOpt().do(g.out, &g.out0, testFn, g.needBool2int, more...)
 }
 
 // dbg only

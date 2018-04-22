@@ -15,140 +15,279 @@ package ccgo
 // linux_amd64
 //
 //	TCC	cc 51 ccgo 51 build 51 run 51 ok 51
-//	Other	cc 18 ccgo 18 build 18 run 18 ok 18
-//	TCC	cc 51 ccgo 51 build 51 run 51 ok 51
-//	Other	cc 18 ccgo 18 build 18 run 18 ok 18
-//	GCC	cc 1097 ccgo 1095 build 1095 run 1095 ok 1095
+//	Other	cc 19 ccgo 19 build 19 run 19 ok 19
+//	GCC	cc 1096 ccgo 1094 build 1094 run 1094 ok 1094
 //	Shell	cc 1 ccgo 1 build 1 run 1 ok 1
-//	--- FAIL: TestTCLSQLite (3241.93s)
-//		all_test.go:1354:
-//			Test cases:   260473
-//			Pass:         259499 (99.63%)
-//			Fail:            974 (0.37%)
-//			! alter-7.1 expected: [text 1 integer -2 text 5.4e-8 real 5.4e-8]
-//			! alter-7.1 got:      [text 1 integer -2 text 5.4e-8 real {}]
-//			! attach-8.1 expected: [1 {file is not a database}]
-//			! attach-8.1 got:      [1 {unable to open database: test2.db}]
-//			! attach-8.2 expected: [26]
-//			! attach-8.2 got:      [14]
-//			! auth3-2.2 expected: [1]
-//			! auth3-2.2 got:      [0]
-//			! autovacuum-1.1.3 expected: [4]
-//			! autovacuum-1.1.3 got:      [16]
-//			... too many fails
-//		all_test.go:1362:
-//			Test binary exit error: exit status 1
-//			Last completed test file: "Time: selectC.test 199 ms"
-//			Last passed test: "no_optimization.selectC-5.3... Ok"
-//			Last line written to stdout: "Page-cache overflow:  now 0  max 21057216"
-//			Blacklisted test files: 107
-//			btreefault.test
-//			cffault.test
-//			collate1.test
-//			collate2.test
-//			collate3.test
-//			collate4.test
-//			collate5.test
-//			collate6.test
-//			collate9.test
-//			corruptC.test
-//			crash.test
-//			crash2.test
-//			crash3.test
-//			crash4.test
-//			crash6.test
-//			crash7.test
-//			date.test
-//			e_createtable.test
-//			e_delete.test
-//			e_insert.test
-//			e_reindex.test
-//			e_select.test
-//			e_update.test
-//			e_walauto.test
-//			exists.test
-//			func4.test
-//			fuzz.test
-//			fuzzerfault.test
-//			ieee754.test
-//			incrcorrupt.test
-//			incrvacuum_ioerr.test
-//			ioerr3.test
-//			journal3.test
-//			lock.test
-//			lock4.test
-//			lock5.test
-//			malloc.test
-//			minmax.test
-//			misc1.test
-//			misc3.test
-//			misc7.test
-//			mjournal.test
-//			mmap1.test
-//			mmap4.test
-//			multiplex2.test
-//			nan.test
-//			pager1.test
-//			pager4.test
-//			pagerfault.test
-//			pagerfault2.test
-//			pagerfault3.test
-//			pragma.test
-//			printf.test
-//			quota2.test
-//			rbu.test
-//			reindex.test
-//			rollbackfault.test
-//			rowallock.test
-//			savepoint.test
-//			savepoint4.test
-//			savepointfault.test
-//			schema3.test
-//			select9.test
-//			shared2.test
-//			shared9.test
-//			sharedA.test
-//			sort2.test
-//			sort3.test
-//			sort4.test
-//			sortfault.test
-//			speed4.test
-//			speed4p.test
-//			statfault.test
-//			superlock.test
-//			symlink.test
-//			syscall.test
-//			tempfault.test
-//			thread001.test
-//			thread002.test
-//			thread003.test
-//			thread004.test
-//			thread005.test
-//			thread1.test
-//			thread2.test
-//			tkt-5d863f876e.test
-//			tkt-fc62af4523.test
-//			tkt3838.test
-//			tkt3997.test
-//			trans.test
-//			unionvtabfault.test
-//			unixexcl.test
-//			vacuum2.test
-//			vtabH.test
-//			wal.test
-//			wal2.test
-//			wal3.test
-//			wal4.test
-//			wal5.test
-//			walcrash.test
-//			walcrash2.test
-//			walcrash4.test
-//			walro.test
-//			walslow.test
-//			walthread.test
-//			where.test
-//			whereD.test
-//			writecrash.test
+//	--- FAIL: TestTCL (78.24s)
+//		all_test.go:1388: Tests running in interp:  /tmp/test-ccgo-tcl-032315966/tcl
+//			Tests located in:  /tmp/test-ccgo-tcl-032315966
+//			Tests running in:  /tmp/test-ccgo-tcl-032315966
+//			Temporary files stored in /tmp/test-ccgo-tcl-032315966
+//			Test files run in separate interpreters
+//			Running tests that match:  *
+//			Skipping test files that match:  l.*.test
+//			Only running test files that match:  *.test
+//			Tests began at Wed May 22 14:52:24 -463544 3918
+//			aaa_exit.test
+//			Test file error: panic: TODO
+//			
+//			goroutine 1 [running]:
+//			github.com/cznic/crt.Xpthread_attr_init(0x7f327e0001d0, 0x7f327defc2a0, 0x7f327defc2a0)
+//				/home/jnml/src/github.com/cznic/crt/pthread_linux.go:744 +0x39
+//			main.XTclpThreadCreate(0x7f327e0001d0, 0xad3d10, 0x890010, 0x0, 0x100000000, 0xc400000000)
+//				/tmp/test-ccgo-tcl-032315966/main.go:131314 +0x80
+//			main._218StartNotifierThread(0x7f327e0001d0, 0x87cfe9)
+//				/tmp/test-ccgo-tcl-032315966/main.go:120193 +0x9b
+//			main.XTcl_WaitForEvent(0x7f327e0001d0, 0x7f327e6eb960, 0x7f3200000000)
+//				/tmp/test-ccgo-tcl-032315966/main.go:29642 +0xeb
+//			main.XTcl_DoOneEvent(0x7f327e0001d0, 0x7f32fffffffd, 0x7f327e0b62d0)
+//				/tmp/test-ccgo-tcl-032315966/main.go:33243 +0x1f9
+//			main.XTcl_VwaitObjCmd(0x7f327e0001d0, 0x0, 0x7f327ce00020, 0x7f3200000002, 0x7f327cc00d80, 0x7f3200000000)
+//				/tmp/test-ccgo-tcl-032315966/main.go:97044 +0x157
+//			main._330Dispatch(0x7f327e0001d0, 0x7f327cdf8ce8, 0x7f327ce00020, 0x7f3200000000, 0x7f3200000000)
+//				/tmp/test-ccgo-tcl-032315966/main.go:136443 +0x6d
+//			main.XTclNRRunCallbacks(0x7f327e0001d0, 0x7f327ce00020, 0x0, 0x0, 0x7f3200200010)
+//				/tmp/test-ccgo-tcl-032315966/main.go:116458 +0x78
+//			main.XTcl_EvalObjv(0x7f327e0001d0, 0x7f327ce00020, 0x7f3200000005, 0x7f327cc00300, 0x7f3200200010, 0xc400000021)
+//				/tmp/test-ccgo-tcl-032315966/main.go:23948 +0x9e
+//			main.XTclEvalEx(0x7f327e0001d0, 0x7f327ce00020, 0x7f327d01a020, 0x6a2, 0x1, 0x0, 0x7f327d01a020, 0x0)
+//				/tmp/test-ccgo-tcl-032315966/main.go:20567 +0x106c
+//			main.XTcl_FSEvalFileEx(0x7f327e0001d0, 0x7f327ce00020, 0x7f327cd14c50, 0x0, 0x7f3200000000)
+//				/tmp/test-ccgo-tcl-032315966/main.go:2575 +0x3cf
+//			main.XTcl_MainEx(0x7f327e0001d0, 0x7f32ffffffff, 0x7f327e400030, 0x88d8c8, 0x7f327ce00020)
+//				/tmp/test-ccgo-tcl-032315966/main.go:209 +0xf13
+//			main.Xmain(0x7f327e0001d0, 0x2, 0x7f327e400020, 0x7f327e0001d0)
+//				/tmp/test-ccgo-tcl-032315966/main.go:58 +0x61
+//			main.X_start(0x7f327e0001d0, 0x2, 0x7f327e400020)
+//				/tmp/test-ccgo-tcl-032315966/main.go:41 +0x79
+//			main.main()
+//				/tmp/test-ccgo-tcl-032315966/main.go:35 +0x17f
+//			append.test
+//			
+//			
+//			==== append-1.1 append command FAILED
+//			==== Contents of test case:
+//			
+//			    unset -nocomplain x
+//			
+//			...
+//			
+//			Tests ended at Wed May 22 14:53:22 -463544 3918
+//			all.tcl:	Total	8659	Passed	826	Skipped	3264	Failed	4569
+//			Sourced 148 Test Files.
+//			Files with failing tests: appendComp.test apply.test assemble.test autoMkindex.test basic.test case.test compExpr-old.test compExpr.test compile.test concat.test config.test coroutine.test env.test error.test eval.test execute.test for-old.test for.test get.test history.test if-old.test if.test incr-old.test init.test ioTrans.test join.test lindex.test linsert.test list.test listObj.test llength.test lmap.test load.test lrange.test lrepeat.test lsearch.test lsetComp.test mathop.test misc.test namespace.test nre.test obj.test ooNext2.test opt.test package.test parse.test parseExpr.test parseOld.test pid.test proc-old.test proc.test pwd.test reg.test regexpComp.test rename.test result.test security.test set-old.test set.test source.test split.test stack.test string.test stringComp.test subst.test switch.test tailcall.test tm.test unknown.test unload.test uplevel.test upvar.test while-old.test while.test
+//			Number of tests skipped for each constraint:
+//				1	!ieeeFloatingPoint
+//				5	bug-3057639
+//				49	dde
+//				30	emptyTest
+//				17	knownBug
+//				9	longIs32bit
+//				14	macosxFileAttr
+//				57	memory
+//				2	nonPortable
+//				9	nt
+//				1	pcOnly
+//				12	pkgaRequired
+//				20	pkguaRequired
+//				8	procbodytest
+//				12	testasync
+//				7	testbytestring
+//				54	testchannel
+//				9	testcmdinfo
+//				6	testcmdtoken
+//				2	testcreatecommand
+//				6	testdcall
+//				8	testdel
+//				3	testdelassocdata
+//				1	testdoubleobj
+//				35	testdstring
+//				217	testevalex
+//				11	testevalobjv
+//				25	testevent
+//				1	testexprlongobj
+//				215	testexprparser
+//				1	testexprparser && !ieeeFloatingPoint
+//				1	testexprparser && ieeeFloatingPoint
+//				7	testfindexecutable
+//				1	testfork
+//				4	testgetassocdata
+//				15	testgetint
+//				299	testhashsystemhash
+//				32	testindexobj
+//				10	testinterpresolver
+//				28	testlink
+//				7	testmathfunctions
+//				33	testnrelevels
+//				232	testobj
+//				7	testparseargs
+//				117	testparser
+//				5	testparsevar
+//				12	testparsevarname
+//				1098	testregexp
+//				2	testreturn
+//				11	testsaveresult
+//				1	testset2
+//				4	testsetassocdata
+//				4	testseterrorcode
+//				5	testsetobjerrorcode
+//				5	teststaticpkg
+//				5	teststaticpkg_8.x
+//				7	testupvar
+//				1	testwinclock
+//				21	testwordend
+//				54	thread
+//				2	unthreaded
+//				318	win
+//				4	winVista
+//				65	zlib
+//			
+//			Test files exiting with errors:  
+//			
+//			  aaa_exit.test
+//			
+//			  append.test
+//			
+//			  binary.test
+//			
+//			  chan.test
+//			
+//			  chanio.test
+//			
+//			  clock.test
+//			
+//			  cmdAH.test
+//			
+//			  cmdIL.test
+//			
+//			  cmdMZ.test
+//			
+//			  dict.test
+//			
+//			  encoding.test
+//			
+//			  event.test
+//			
+//			  exec.test
+//			
+//			  expr-old.test
+//			
+//			  expr.test
+//			
+//			  fCmd.test
+//			
+//			  fileName.test
+//			
+//			  fileSystem.test
+//			
+//			  foreach.test
+//			
+//			  format.test
+//			
+//			  http.test
+//			
+//			  http11.test
+//			
+//			  httpold.test
+//			
+//			  incr.test
+//			
+//			  info.test
+//			
+//			  interp.test
+//			
+//			  io.test
+//			
+//			  ioCmd.test
+//			
+//			  lreplace.test
+//			
+//			  main.test
+//			
+//			  msgcat.test
+//			
+//			  namespace-old.test
+//			
+//			  oo.test
+//			
+//			  pkgMkIndex.test
+//			
+//			  platform.test
+//			
+//			  regexp.test
+//			
+//			  safe.test
+//			
+//			  scan.test
+//			
+//			  socket.test
+//			
+//			  tcltest.test
+//			
+//			  timer.test
+//			
+//			  trace.test
+//			
+//			  unixFCmd.test
+//			
+//			  unixInit.test
+//			
+//			  utf.test
+//			
+//			  util.test
+//			
+//			  var.test
+//			
+//			  winPipe.test
+//			
+//			~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//			tmp test began at Wed May 22 14:53:22 -463544 3918
+//		all_test.go:1390: Failed: exit status 1
+//			all.tcl:	Total	8659	Passed	826	Skipped	3264	Failed	4569
+//			couldn't read file "/tmp/test-ccgo-tcl-032315966/tmp/all.tcl": permission denied
+//			    while executing
+//			"::source /tmp/test-ccgo-tcl-032315966/tmp/all.tcl"
+//			    ("uplevel" body line 1)
+//			    invoked from within
+//			"uplevel 1 [list ::source [file join $directory all.tcl]]"
+//			    (procedure "runAllTests" line 129)
+//			    invoked from within
+//			"runAllTests"
+//			    (file "all.tcl" line 21)
+//	cc 1 ccgo 1 build 1 run 1 ok 1 (100.00%) csmith 1 (387.628162ms)
+//	cc 2 ccgo 2 build 2 run 2 ok 2 (100.00%) csmith 2 (1.131841229s)
+//	cc 3 ccgo 3 build 3 run 3 ok 3 (100.00%) csmith 3 (1.463566375s)
+//	cc 4 ccgo 4 build 4 run 4 ok 4 (100.00%) csmith 4 (8.393599152s)
+//	cc 5 ccgo 5 build 5 run 5 ok 5 (100.00%) csmith 5 (8.991066109s)
+//	cc 6 ccgo 6 build 6 run 6 ok 6 (100.00%) csmith 6 (9.731711691s)
+//	cc 7 ccgo 7 build 7 run 7 ok 7 (100.00%) csmith 7 (16.606096138s)
+//	cc 8 ccgo 8 build 8 run 8 ok 8 (100.00%) csmith 8 (16.949035567s)
+//	cc 9 ccgo 9 build 9 run 9 ok 9 (100.00%) csmith 9 (17.578978177s)
+//	cc 10 ccgo 10 build 10 run 10 ok 10 (100.00%) csmith 10 (18.048452155s)
+//	cc 11 ccgo 11 build 11 run 11 ok 11 (100.00%) csmith 11 (18.652161015s)
+//	cc 12 ccgo 12 build 12 run 12 ok 12 (100.00%) csmith 12 (19.119004339s)
+//	cc 13 ccgo 13 build 13 run 13 ok 13 (100.00%) csmith 13 (20.236893378s)
+//	cc 14 ccgo 14 build 14 run 14 ok 14 (100.00%) csmith 14 (21.23137532s)
+//	cc 15 ccgo 15 build 15 run 15 ok 15 (100.00%) csmith 15 (22.323200031s)
+//	cc 16 ccgo 16 build 16 run 16 ok 16 (100.00%) csmith 16 (23.133609954s)
+//	cc 17 ccgo 17 build 17 run 17 ok 17 (100.00%) csmith 17 (24.149925574s)
+//	cc 18 ccgo 18 build 18 run 18 ok 18 (100.00%) csmith 18 (25.082482481s)
+//	cc 19 ccgo 19 build 19 run 19 ok 19 (100.00%) csmith 19 (32.419101506s)
+//	cc 20 ccgo 20 build 20 run 20 ok 20 (100.00%) csmith 20 (39.174316192s)
+//	cc 21 ccgo 21 build 21 run 21 ok 21 (100.00%) csmith 21 (39.923787351s)
+//	cc 22 ccgo 22 build 22 run 22 ok 22 (100.00%) csmith 22 (47.697836037s)
+//	cc 23 ccgo 23 build 23 run 23 ok 23 (100.00%) csmith 23 (48.629624992s)
+//	cc 24 ccgo 24 build 24 run 24 ok 24 (100.00%) csmith 24 (49.151410885s)
+//	cc 25 ccgo 25 build 25 run 25 ok 25 (100.00%) csmith 25 (49.556676275s)
+//	cc 26 ccgo 26 build 26 run 26 ok 26 (100.00%) csmith 26 (49.871004057s)
+//	cc 27 ccgo 27 build 27 run 27 ok 27 (100.00%) csmith 27 (50.847288459s)
+//	cc 28 ccgo 28 build 28 run 28 ok 28 (100.00%) csmith 28 (58.355333234s)
+//	cc 29 ccgo 29 build 29 run 29 ok 29 (100.00%) csmith 29 (59.740545879s)
+//	cc 30 ccgo 30 build 30 run 30 ok 30 (100.00%) csmith 30 (1m0.334634597s)
+//	CSmith	cc 30 ccgo 30 build 30 run 30 ok 30 (100.00%) csmith 30 (1m0.334648139s)
+//	FAIL
+//	exit status 1
+//	FAIL	github.com/cznic/sqlite2go/internal/ccgo	427.016s
 
 import (
 	"bufio"
@@ -165,6 +304,7 @@ import (
 	"regexp"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -706,16 +846,16 @@ func TestSQLiteShell(t *testing.T) {
 }
 
 func TestTCL(t *testing.T) {
-	return //TODO-
 	c99.FlushCache()
 
 	const (
-		allDefs = `// Output of gcc features.c && ./a.out in github.com/cznic/sqlite2go/internal/c99/headers on linux_amd64.
+		defs = `
+			// Output of gcc features.c && ./a.out in github.com/cznic/sqlite2go/internal/c99/headers on linux_amd64.
 			#define _POSIX_SOURCE 1
 			#define _POSIX_C_SOURCE 200809
 			#define _DEFAULT_SOURCE 1
-`
-		tclDefs0 = `
+
+			// TCL
 			#define CFG_INSTALL_BINDIR "library"
 			#define CFG_INSTALL_DOCDIR "library"
 			#define CFG_INSTALL_INCDIR "library"
@@ -729,98 +869,13 @@ func TestTCL(t *testing.T) {
 			#define HAVE_SYS_TIME_H 1
 			#define HAVE_UNISTD_H 1
 			#define TCL_CFGVAL_ENCODING "iso8859-1"
-			#define TCL_LIBRARY "/usr/local/lib/tcl8.6" //TODO real, relaitve path
+			#define TCL_LIBRARY "library"
 			#define TCL_PACKAGE_PATH "library"
 			#define TCL_THREADS 1
 			#define TIME_WITH_SYS_TIME 1
-
-			/* Rename the global symbols in libtommath to avoid linkage conflicts */
-
-			#define KARATSUBA_MUL_CUTOFF TclBNKaratsubaMulCutoff
-			#define KARATSUBA_SQR_CUTOFF TclBNKaratsubaSqrCutoff
-			#define TOOM_MUL_CUTOFF TclBNToomMulCutoff
-			#define TOOM_SQR_CUTOFF TclBNToomSqrCutoff
-
-			#define bn_reverse TclBN_reverse
-			#define fast_s_mp_mul_digs TclBN_fast_s_mp_mul_digs
-			#define fast_s_mp_sqr TclBN_fast_s_mp_sqr
-			#define mp_add TclBN_mp_add
-			#define mp_add_d TclBN_mp_add_d
-			#define mp_and TclBN_mp_and
-			#define mp_clamp TclBN_mp_clamp
-			#define mp_clear TclBN_mp_clear
-			#define mp_clear_multi TclBN_mp_clear_multi
-			#define mp_cmp TclBN_mp_cmp
-			#define mp_cmp_d TclBN_mp_cmp_d
-			#define mp_cmp_mag TclBN_mp_cmp_mag
-			#define mp_cnt_lsb TclBN_mp_cnt_lsb
-			#define mp_copy TclBN_mp_copy
-			#define mp_count_bits TclBN_mp_count_bits
-			#define mp_div TclBN_mp_div
-			#define mp_div_2 TclBN_mp_div_2
-			#define mp_div_2d TclBN_mp_div_2d
-			#define mp_div_3 TclBN_mp_div_3
-			#define mp_div_d TclBN_mp_div_d
-			#define mp_exch TclBN_mp_exch
-			#define mp_expt_d TclBN_mp_expt_d
-			#define mp_grow TclBN_mp_grow
-			#define mp_init TclBN_mp_init
-			#define mp_init_copy TclBN_mp_init_copy
-			#define mp_init_multi TclBN_mp_init_multi
-			#define mp_init_set TclBN_mp_init_set
-			#define mp_init_set_int TclBN_mp_init_set_int
-			#define mp_init_size TclBN_mp_init_size
-			#define mp_karatsuba_mul TclBN_mp_karatsuba_mul
-			#define mp_karatsuba_sqr TclBN_mp_karatsuba_sqr
-			#define mp_lshd TclBN_mp_lshd
-			#define mp_mod TclBN_mp_mod
-			#define mp_mod_2d TclBN_mp_mod_2d
-			#define mp_mul TclBN_mp_mul
-			#define mp_mul_2 TclBN_mp_mul_2
-			#define mp_mul_2d TclBN_mp_mul_2d
-			#define mp_mul_d TclBN_mp_mul_d
-			#define mp_neg TclBN_mp_neg
-			#define mp_or TclBN_mp_or
-			#define mp_radix_size TclBN_mp_radix_size
-			#define mp_read_radix TclBN_mp_read_radix
-			#define mp_rshd TclBN_mp_rshd
-			#define mp_s_rmap TclBNMpSRmap
-			#define mp_set TclBN_mp_set
-			#define mp_set_int TclBN_mp_set_int
-			#define mp_shrink TclBN_mp_shrink
-			#define mp_sqr TclBN_mp_sqr
-			#define mp_sqrt TclBN_mp_sqrt
-			#define mp_sub TclBN_mp_sub
-			#define mp_sub_d TclBN_mp_sub_d
-			#define mp_to_unsigned_bin TclBN_mp_to_unsigned_bin
-			#define mp_to_unsigned_bin_n TclBN_mp_to_unsigned_bin_n
-			#define mp_toom_mul TclBN_mp_toom_mul
-			#define mp_toom_sqr TclBN_mp_toom_sqr
-			#define mp_toradix_n TclBN_mp_toradix_n
-			#define mp_unsigned_bin_size TclBN_mp_unsigned_bin_size
-			#define mp_xor TclBN_mp_xor
-			#define mp_zero TclBN_mp_zero
-			#define s_mp_add TclBN_s_mp_add
-			#define s_mp_mul_digs TclBN_s_mp_mul_digs
-			#define s_mp_sqr TclBN_s_mp_sqr
-			#define s_mp_sub TclBN_s_mp_sub
-`
-		tclDefs32 = `
-`
-		tclDefs64 = `
-			#define mp_digit unsigned long long
+			#define USE_VFORK 1
 `
 	)
-
-	var tclDefs string
-	switch arch := env("GOARCH", runtime.GOARCH); arch {
-	case "386":
-		tclDefs = allDefs + tclDefs0 + tclDefs32
-	case "amd64":
-		tclDefs = allDefs + tclDefs0 + tclDefs64
-	default:
-		panic(arch)
-	}
 
 	dir := *oTmp
 	if dir == "" {
@@ -843,10 +898,10 @@ func TestTCL(t *testing.T) {
 		EnableAnonymousStructFields: true,
 	}
 	inc := []string{
-		"@",
 		filepath.FromSlash(filepath.Join(root, "generic")),
 		filepath.FromSlash(filepath.Join(root, "unix")),
 		filepath.FromSlash(filepath.Join(root, "libtommath")),
+		"@",
 	}
 	sysInc := append(searchPaths, inc...)
 	crt0, err := c99.Translate(tweaks, inc, searchPaths, c99.MustBuiltin(), c99.MustCrt0())
@@ -964,7 +1019,7 @@ func TestTCL(t *testing.T) {
 		"unix/tclUnixThrd.c",
 		"unix/tclUnixTime.c",
 	}, m...) {
-		tu, err := translate(tweaks, inc, sysInc, tclDefs, c99.MustFileSource2(filepath.FromSlash(filepath.Join(root, v)), false))
+		tu, err := translate(tweaks, inc, sysInc, defs, c99.MustFileSource2(filepath.FromSlash(filepath.Join(root, v)), false))
 		if err != nil {
 			t.Fatal(errString(err))
 		}
@@ -979,14 +1034,176 @@ func TestTCL(t *testing.T) {
 
 	w := bufio.NewWriter(f)
 	w.WriteString(`package main
-	
+
 import (
 	"os"
+	"os/exec"
+	"sync"
 	"unsafe"
+
 	"github.com/cznic/crt"
 )
 `)
-	if err := Command(w, tus); err != nil {
+	if err := command(w, tus, []func(*[]byte) error{
+		func(b *[]byte) error {
+			return patch(b,
+				[]byte(`
+var _ unsafe.Pointer
+`),
+				[]byte(`
+var (
+	cmdMu  sync.Mutex
+	cmdMap = map[int]*exec.Cmd{}
+)
+`),
+			)
+		},
+		func(b *[]byte) error {
+			return patch(b,
+				[]byte(`
+func XTclpCreateProcess(tls crt.TLS, _interp uintptr /* *TTcl_Interp = struct{XresultDon...ntptr);XerrorLineDontUse int32;} */, _argc int32, _argv uintptr /* **int8 */, _inputFile uintptr /* TTclFile = *STclFile_ */, _outputFile uintptr /* TTclFile = *STclFile_ */, _errorFile uintptr /* TTclFile = *STclFile_ */, _pidPtr uintptr /* **STcl_Pid_ */) (r int32) {
+	esc := crt.MustMalloc(280)
+`),
+				[]byte(`
+func XTclpCreateProcess(tls crt.TLS, _interp uintptr /* *TTcl_Interp = struct{XresultDon...ntptr);XerrorLineDontUse int32;} */, _argc int32, _argv uintptr /* **int8 */, _inputFile uintptr /* TTclFile = *STclFile_ */, _outputFile uintptr /* TTclFile = *STclFile_ */, _errorFile uintptr /* TTclFile = *STclFile_ */, _pidPtr uintptr /* **STcl_Pid_ */) (r int32) {
+	var argv []string
+	var cmd *exec.Cmd
+	esc := crt.MustMalloc(280)
+`),
+			)
+		},
+		func(b *[]byte) error {
+			return patch(b,
+				[]byte(`
+	_pid = crt.Xvfork(tls)
+	if _pid != int32(0) {
+		goto _8
+	}
+
+	_joinThisError = bool2int((_errorFile != 0) && (_errorFile == _outputFile))
+	_fd = int32(*(*uintptr)(unsafe.Pointer(_errPipeOut))) - int32(1)
+	if _1074SetupStdFile(tls, _inputFile, int32(2)) != 0 && _1074SetupStdFile(tls, _outputFile, int32(4)) != 0 && (_joinThisError != 0 || _1074SetupStdFile(tls, _errorFile, int32(8)) != 0) && (_joinThisError == 0 || crt.Xdup2(tls, int32(1), int32(2)) != int32(-1) && crt.Xfcntl(tls, int32(2), int32(2), int32(0)) == int32(0)) {
+		goto _9
+	}
+
+	crt.Xsprintf(tls, _errSpace, ts+58557 /* "%dforked process couldn't set up..." */, *(*int32)(unsafe.Pointer(crt.X__errno_location(tls))))
+	_len = crt.Xstrlen(tls, _errSpace)
+	if _len == uint64(crt.Xwrite(tls, _fd, _errSpace, _len)) {
+		goto _10
+	}
+
+	XTcl_Panic(tls, ts+58603 /* "TclpCreateProcess: unable to wri..." */)
+_10:
+	crt.X_exit(tls, int32(1))
+_9:
+	_1075RestoreSignals(tls)
+	crt.Xexecvp(tls, *(*uintptr)(unsafe.Pointer(_newArgv)), _newArgv)
+	crt.Xsprintf(tls, _errSpace, ts+58652 /* "%dcouldn't execute \"%.150s\"" */, *(*int32)(unsafe.Pointer(crt.X__errno_location(tls))), *(*uintptr)(unsafe.Pointer(_argv)))
+	_len = crt.Xstrlen(tls, _errSpace)
+	if _len == uint64(crt.Xwrite(tls, _fd, _errSpace, _len)) {
+		goto _11
+	}
+
+	XTcl_Panic(tls, ts+58603 /* "TclpCreateProcess: unable to wri..." */)
+_11:
+	crt.X_exit(tls, int32(1))
+_8:
+`),
+				[]byte(`
+	_ = _len
+	_ = _joinThisError
+	_pid = 0
+	for p := _newArgv; ; p += unsafe.Sizeof(uintptr(0)) {
+		q := *(*uintptr)(unsafe.Pointer(p))
+		if q == 0 {
+			break
+		}
+
+		argv = append(argv, crt.GoString(q))
+	}
+	cmd = exec.Command(argv[0], argv[1:]...)
+	if fd := _inputFile; fd != 0 {
+		fd--
+		f := os.NewFile(fd, "inputFile")
+		if f == nil {
+			panic(fd)
+		}
+
+		cmd.Stdin = f
+	}
+	if fd := _outputFile; fd != 0 {
+		fd--
+		f := os.NewFile(fd, "outputFile")
+		if f == nil {
+			panic(fd)
+		}
+
+		cmd.Stdout = f
+	}
+	if fd := _errorFile; fd != 0 {
+		fd--
+		f := os.NewFile(fd, "errorFile")
+		if f == nil {
+			panic(fd)
+		}
+
+		cmd.Stderr = f
+	}
+	if err := cmd.Start(); err != nil {
+		panic(err.Error)
+	}
+
+	_pid = int32(cmd.Process.Pid)
+	cmdMu.Lock()
+	cmdMap[int(_pid)] = cmd
+	cmdMu.Unlock()
+`),
+			)
+		},
+		func(b *[]byte) error {
+			return patch(b,
+				[]byte(`
+func XTcl_WaitPid(tls crt.TLS, _pid uintptr /* TTcl_Pid = *STcl_Pid_ */, _statPtr uintptr /* *int32 */, _options int32) (r uintptr /* TTcl_Pid = *STcl_Pid_ */) {
+	var (
+		_result int32
+		_real_pid int32
+	)
+	_real_pid = int32(_pid)
+`),
+				[]byte(`
+func XTcl_WaitPid(tls crt.TLS, _pid uintptr /* TTcl_Pid = *STcl_Pid_ */, _statPtr uintptr /* *int32 */, _options int32) (r uintptr /* TTcl_Pid = *STcl_Pid_ */) {
+	var (
+		_result   int32
+		_real_pid int32
+	)
+	_real_pid = int32(_pid)
+	cmdMu.Lock()
+	cmd := cmdMap[int(_real_pid)]
+	cmdMu.Unlock()
+	if cmd == nil {
+		panic(_real_pid)
+	}
+
+	cmd.Wait()
+	cmdMu.Lock()
+	delete(cmdMap, int(_real_pid))
+	cmdMu.Unlock()
+	switch st := cmd.ProcessState; {
+	case st.Success():
+		if p := _statPtr; p != 0 {
+			*(*int32)(unsafe.Pointer(p)) = 0
+		}
+	default:
+		if p := _statPtr; p != 0 {
+			*(*int32)(unsafe.Pointer(p)) = 1
+		}
+	}
+	return _pid
+
+`),
+			)
+		},
+	}...); err != nil {
 		c99.FlushCache()
 		t.Fatal(err)
 	}
@@ -1033,7 +1250,97 @@ import (
 		t.Fatal(err)
 	}
 
-	//TODO run TCL tests
+	cmd := exec.Command("./tcl", "all.tcl")
+	errPipe, err := cmd.StderrPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pipe, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ch := make(chan int)
+	var errLines []string
+	go func() {
+		sc := bufio.NewScanner(errPipe)
+		for sc.Scan() {
+			errLines = append(errLines, sc.Text())
+		}
+		close(ch)
+	}()
+
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	const (
+		testsEnded = "Tests ended"
+		results    = "all.tcl:	Total	"
+	)
+	const (
+		st0 = iota // Looking for prefix
+		st1        // Seen prefix
+	)
+	sc := bufio.NewScanner(pipe)
+	state := st0
+	nline := 0
+	var lines []string
+	var resultLine string
+	for sc.Scan() {
+		line := sc.Text()
+		if *oTrace {
+			fmt.Fprintln(os.Stderr, line)
+		}
+		switch state {
+		case st0:
+			if !strings.HasPrefix(line, testsEnded) {
+				nline++
+				switch {
+				case nline <= 50:
+					lines = append(lines, line)
+				case nline == 51:
+					lines = append(lines, "\n...\n")
+				}
+				continue
+			}
+
+			state = st1
+			fallthrough
+		case st1:
+			lines = append(lines, line)
+			if strings.HasPrefix(line, results) {
+				for i := len(line) - 1; ; i-- {
+					if c := line[i]; c < '0' || c > '9' {
+						n, err := strconv.Atoi(line[i+1:])
+						if err != nil {
+							resultLine = err.Error()
+							break
+						}
+
+						if n != 0 {
+							resultLine = line
+						}
+						break
+					}
+				}
+			}
+		default:
+			panic(fmt.Errorf("internal error: %v", state))
+		}
+	}
+	err = cmd.Wait()
+	<-ch
+	t.Logf("%s", strings.Join(lines, "\n"))
+	if err != nil || !cmd.ProcessState.Success() || resultLine != "" {
+		t.Fatalf("Failed: %v\n%s\n%s", err, resultLine, strings.Join(errLines, "\n"))
+	}
+}
+
+func patch(b *[]byte, old, new []byte) error {
+	*b = bytes.Replace(*b, old, new, 1)
+	return nil
 }
 
 func TestTCLSQLite(t *testing.T) {
