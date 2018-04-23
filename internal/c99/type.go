@@ -903,6 +903,11 @@ func (t *PointerType) Kind() TypeKind { return Ptr }
 
 // assign implements Type.
 func (t *PointerType) assign(ctx *context, op Operand) (r Operand) {
+	u := UnderlyingType(t.Item)
+	var v Type
+	if op.Type.IsPointerType() {
+		v = UnderlyingType(UnderlyingType(op.Type).(*PointerType).Item)
+	}
 	// [0]6.5.16.1
 	switch {
 	// One of the following shall hold:
@@ -913,7 +918,8 @@ func (t *PointerType) assign(ctx *context, op Operand) (r Operand) {
 		// versions of compatible types, and the type pointed to by the
 		// left has all the qualifiers of the type pointed to by the
 		// right;
-		op.Type.IsPointerType() && t.IsCompatible(op.Type):
+		op.Type.IsPointerType() && t.IsCompatible(op.Type),
+		u.IsIntegerType() && v != nil && v.IsIntegerType() && ctx.model.Sizeof(u) == ctx.model.Sizeof(v) && u.IsUnsigned() == v.IsUnsigned():
 
 		return op.ConvertTo(ctx.model, t)
 	case
@@ -931,6 +937,7 @@ func (t *PointerType) assign(ctx *context, op Operand) (r Operand) {
 
 		return Operand{Type: t, Value: Null}
 	default:
+		fmt.Printf("TODO934 %v <- %v\n", UnderlyingType(t.Item), UnderlyingType(op.Type)) //TODO-
 		panic(fmt.Errorf("%v <- %v, %v %v", t, op, op.Type.IsPointerType(), t.IsCompatible(op.Type)))
 	}
 }

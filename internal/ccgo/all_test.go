@@ -30,7 +30,7 @@ package ccgo
 //			Tests began at Wed May 22 14:52:24 -463544 3918
 //			aaa_exit.test
 //			Test file error: panic: TODO
-//			
+//
 //			goroutine 1 [running]:
 //			github.com/cznic/crt.Xpthread_attr_init(0x7f327e0001d0, 0x7f327defc2a0, 0x7f327defc2a0)
 //				/home/jnml/src/github.com/cznic/crt/pthread_linux.go:744 +0x39
@@ -63,15 +63,15 @@ package ccgo
 //			main.main()
 //				/tmp/test-ccgo-tcl-032315966/main.go:35 +0x17f
 //			append.test
-//			
-//			
+//
+//
 //			==== append-1.1 append command FAILED
 //			==== Contents of test case:
-//			
+//
 //			    unset -nocomplain x
-//			
+//
 //			...
-//			
+//
 //			Tests ended at Wed May 22 14:53:22 -463544 3918
 //			all.tcl:	Total	8659	Passed	826	Skipped	3264	Failed	4569
 //			Sourced 148 Test Files.
@@ -141,105 +141,105 @@ package ccgo
 //				318	win
 //				4	winVista
 //				65	zlib
-//			
-//			Test files exiting with errors:  
-//			
+//
+//			Test files exiting with errors:
+//
 //			  aaa_exit.test
-//			
+//
 //			  append.test
-//			
+//
 //			  binary.test
-//			
+//
 //			  chan.test
-//			
+//
 //			  chanio.test
-//			
+//
 //			  clock.test
-//			
+//
 //			  cmdAH.test
-//			
+//
 //			  cmdIL.test
-//			
+//
 //			  cmdMZ.test
-//			
+//
 //			  dict.test
-//			
+//
 //			  encoding.test
-//			
+//
 //			  event.test
-//			
+//
 //			  exec.test
-//			
+//
 //			  expr-old.test
-//			
+//
 //			  expr.test
-//			
+//
 //			  fCmd.test
-//			
+//
 //			  fileName.test
-//			
+//
 //			  fileSystem.test
-//			
+//
 //			  foreach.test
-//			
+//
 //			  format.test
-//			
+//
 //			  http.test
-//			
+//
 //			  http11.test
-//			
+//
 //			  httpold.test
-//			
+//
 //			  incr.test
-//			
+//
 //			  info.test
-//			
+//
 //			  interp.test
-//			
+//
 //			  io.test
-//			
+//
 //			  ioCmd.test
-//			
+//
 //			  lreplace.test
-//			
+//
 //			  main.test
-//			
+//
 //			  msgcat.test
-//			
+//
 //			  namespace-old.test
-//			
+//
 //			  oo.test
-//			
+//
 //			  pkgMkIndex.test
-//			
+//
 //			  platform.test
-//			
+//
 //			  regexp.test
-//			
+//
 //			  safe.test
-//			
+//
 //			  scan.test
-//			
+//
 //			  socket.test
-//			
+//
 //			  tcltest.test
-//			
+//
 //			  timer.test
-//			
+//
 //			  trace.test
-//			
+//
 //			  unixFCmd.test
-//			
+//
 //			  unixInit.test
-//			
+//
 //			  utf.test
-//			
+//
 //			  util.test
-//			
+//
 //			  var.test
-//			
+//
 //			  winPipe.test
-//			
+//
 //			~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //			tmp test began at Wed May 22 14:53:22 -463544 3918
 //		all_test.go:1390: Failed: exit status 1
@@ -847,7 +847,6 @@ func TestSQLiteShell(t *testing.T) {
 
 func TestTCL(t *testing.T) {
 	c99.FlushCache()
-
 	const (
 		defs = `
 			// Output of gcc features.c && ./a.out in github.com/cznic/sqlite2go/internal/c99/headers on linux_amd64.
@@ -1344,6 +1343,327 @@ func patch(b *[]byte, old, new []byte) error {
 }
 
 func TestTCLSQLite(t *testing.T) {
+	c99.FlushCache()
+	const (
+		defs = `
+			// Output of gcc features.c && ./a.out in github.com/cznic/sqlite2go/internal/c99/headers on linux_amd64.
+			#define _POSIX_SOURCE 1
+			#define _POSIX_C_SOURCE 200809
+			#define _DEFAULT_SOURCE 1
+`
+		sqliteDefs = defs + `
+			#define SQLITE_CORE 1 // Must be defined for TCL extensions to work.
+			#define SQLITE_DEBUG 1
+			#define SQLITE_ENABLE_RBU 1
+			#define SQLITE_PRIVATE
+			#define SQLITE_TEST 1
+			#define TCLSH_INIT_PROC sqlite3TestInit
+`
+
+		tclDefs = defs + `
+			#define CFG_INSTALL_BINDIR "library"
+			#define CFG_INSTALL_DOCDIR "library"
+			#define CFG_INSTALL_INCDIR "library"
+			#define CFG_INSTALL_LIBDIR "library"
+			#define CFG_INSTALL_SCRDIR "library"
+			#define CFG_RUNTIME_BINDIR "library"
+			#define CFG_RUNTIME_DOCDIR "library"
+			#define CFG_RUNTIME_INCDIR "library"
+			#define CFG_RUNTIME_LIBDIR "library"
+			#define CFG_RUNTIME_SCRDIR "library"
+			#define HAVE_SYS_TIME_H 1
+			#define HAVE_UNISTD_H 1
+			#define TCL_CFGVAL_ENCODING "iso8859-1"
+			#define TCL_LIBRARY "library"
+			#define TCL_PACKAGE_PATH "library"
+			#define TCL_THREADS 1
+			#define TIME_WITH_SYS_TIME 1
+			#define USE_VFORK 1
+`
+	)
+
+	dir := *oTmp
+	if dir == "" {
+		var err error
+		if dir, err = ioutil.TempDir("", "test-ccgo-tcl-"); err != nil {
+			t.Fatal(err)
+		}
+
+		defer func() {
+			if err := os.RemoveAll(dir); err != nil {
+				t.Fatal(err)
+			}
+		}()
+	}
+
+	root, err := filepath.Abs(filepath.FromSlash("../.."))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tclRoot := filepath.Join(root, "_tcl8.6.8")
+	sqliteRoot := filepath.Join(root, "_sqlite")
+
+	sqliteTweaks := &c99.Tweaks{
+		// TrackExpand: func(s string) { fmt.Print(s) }, //TODO-
+		// TrackIncludes:               func(s string) { fmt.Printf("#include %s\n", s) }, //TODO-
+		EnableAnonymousStructFields: true,
+	}
+
+	sqliteInc := []string{
+		filepath.Join(sqliteRoot, "sqlite-amalgamation-3210000"),
+		filepath.Join(tclRoot, "generic"),
+		"@",
+	}
+	sysInc := append(searchPaths, sqliteInc...)
+	crt0, err := c99.Translate(sqliteTweaks, sqliteInc, searchPaths, c99.MustBuiltin(), c99.MustCrt0())
+	if err != nil {
+		t.Fatal(errString(err))
+	}
+	tus := []*c99.TranslationUnit{crt0}
+
+	for _, v := range []string{
+		"ext/misc/wholenumber.c",
+		"ext/misc/unionvtab.c",
+		"ext/misc/totype.c",
+		"ext/misc/spellfix.c",
+		"ext/misc/series.c",
+		"ext/misc/remember.c",
+		"ext/misc/regexp.c",
+		"ext/misc/percentile.c",
+		"ext/misc/nextchar.c",
+		"ext/misc/ieee754.c",
+		"ext/misc/fuzzer.c",
+		"ext/misc/fileio.c",
+		"ext/misc/eval.c",
+		"ext/misc/csv.c",
+		"ext/misc/closure.c",
+		"ext/misc/carray.c",
+		"ext/misc/amatch.c",
+		"src/test_pcache.c",
+		"ext/misc/mmapwarm.c",
+		"src/test_delete.c",
+		"src/test_journal.c",
+		"src/test_devsym.c",
+		"src/test_btree.c",
+		"src/test_bestindex.c",
+		"ext/rbu/test_rbu.c",
+		"ext/fts5/fts5_tcl.c",
+		"src/test_syscall.c",
+		"src/test_superlock.c",
+		"src/test_multiplex.c",
+		"src/test_quota.c",
+		"src/test_rtree.c",
+		"src/test_vfs.c",
+		"src/test_intarray.c",
+		"src/test_backup.c",
+		"src/test_osinst.c",
+		"src/test_onefile.c",
+		"src/test_thread.c",
+		"src/test_fs.c",
+		"src/test_tclvar.c",
+		"src/test_schema.c",
+		"src/test_mutex.c",
+		"src/test_malloc.c",
+		"src/test_init.c",
+		"src/test_hexio.c",
+		"src/test_func.c",
+		"src/test_demovfs.c",
+		"src/test_blob.c",
+		"src/test_autoext.c",
+		"src/test_async.c",
+		"src/test9.c",
+		"src/test8.c",
+		"src/test7.c",
+		"src/test6.c",
+		"src/test5.c",
+		"src/test4.c",
+		"src/test3.c",
+		"src/test2.c",
+		"src/test1.c",
+		"src/test_config.c",
+		"src/test_md5.c",
+		"sqlite-amalgamation-3210000/sqlite3.c",
+		"src/tclsqlite.c",
+		"src/test_tclsh.c",
+	} {
+		tu, err := translate(sqliteTweaks, sqliteInc, sysInc, sqliteDefs, c99.MustFileSource2(filepath.Join(sqliteRoot, v), false))
+		if err != nil {
+			t.Fatal(errString(err))
+		}
+
+		tus = append(tus, tu)
+	}
+
+	tclTweaks := &c99.Tweaks{
+		// TrackExpand: func(s string) { fmt.Print(s) }, //TODO-
+		// TrackIncludes:               func(s string) { fmt.Printf("#include %s\n", s) }, //TODO-
+		EnableAnonymousStructFields: true,
+	}
+	tclInc := []string{
+		filepath.Join(tclRoot, "generic"),
+		filepath.Join(tclRoot, "unix"),
+		filepath.Join(tclRoot, "libtommath"),
+		"@",
+	}
+	sysInc = append(searchPaths, tclInc...)
+
+	m, err := filepath.Glob(filepath.Join(tclRoot, "libtommath", "*.c"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i, v := range m {
+		m[i] = v[len(tclRoot):]
+	}
+
+	for _, v := range append([]string{
+		"generic/regfree.c",
+		"generic/regerror.c",
+		"generic/tclOOCall.c",
+		"generic/regexec.c",
+		"generic/regcomp.c",
+		"unix/tclUnixFCmd.c",
+		"generic/tclIOGT.c",
+		"generic/tclResolve.c",
+		"generic/tclOOInfo.c",
+		"generic/tclOOBasic.c",
+		"generic/tclOODefineCmds.c",
+		"generic/tclDate.c",
+		"generic/tclFCmd.c",
+		"generic/tclIORTrans.c",
+		"generic/tclLoadNone.c", // TclGuessPackageName
+		"generic/tclIOSock.c",
+		"generic/tclIORChan.c",
+		"generic/tclOOStubInit.c",
+		"unix/tclUnixCompat.c",
+		"generic/tclOOMethod.c",
+		"generic/tclCompCmdsSZ.c",
+		"generic/tclScan.c",
+		"generic/tclCompCmdsGR.c",
+		"generic/tclCompCmds.c",
+		"generic/tclZlib.c",
+		"generic/tclConfig.c",
+		"unix/tclUnixTime.c",
+		"generic/tclPathObj.c",
+		"generic/tclCompile.c",
+		"generic/tclProc.c",
+		"generic/tclCompExpr.c",
+		"generic/tclUtf.c",
+		"unix/tclUnixPipe.c",
+		"generic/tclLoad.c",
+		"generic/tclMain.c",
+		"generic/tclRegexp.c",
+		"generic/tclHistory.c",
+		"generic/tclLink.c",
+		"generic/tclFileName.c",
+		"unix/tclUnixChan.c",
+		"unix/tclUnixSock.c",
+		"generic/tclPosixStr.c",
+		"generic/tclPipe.c",
+		"generic/tclTimer.c",
+		"generic/tclGet.c",
+		"unix/tclUnixEvent.c",
+		"unix/tclUnixNotfy.c",
+		"generic/tclAlloc.c",
+		"generic/tclThread.c",
+		"generic/tclParse.c",
+		"generic/tclNotify.c",
+		"generic/tclIO.c",
+		"generic/tclStrToD.c",
+		"generic/tclThreadStorage.c",
+		"generic/tclStringObj.c",
+		"generic/tclOO.c",
+		"generic/tclTomMathInterface.c",
+		"generic/tclPkg.c",
+		"generic/tclUtil.c",
+		"generic/tclTrace.c",
+		"generic/tclPkgConfig.c",
+		"generic/tclEnv.c",
+		"generic/tclAssembly.c",
+		"generic/tclDisassemble.c",
+		"generic/tclClock.c",
+		"generic/tclIndexObj.c",
+		"generic/tclCmdMZ.c",
+		"generic/tclCmdIL.c",
+		"generic/tclCmdAH.c",
+		"generic/tclDictObj.c",
+		"generic/tclIOCmd.c",
+		"generic/tclBinary.c",
+		"generic/tclInterp.c",
+		"generic/tclEnsemble.c",
+		"generic/tclStubInit.c",
+		"generic/tclAsync.c",
+		"generic/tclExecute.c",
+		"generic/tclPanic.c",
+		"generic/tclNamesp.c",
+		"generic/tclLiteral.c",
+		"generic/tclListObj.c",
+		"generic/tclOptimize.c",
+		"generic/tclPreserve.c",
+		"generic/tclObj.c",
+		"generic/tclCkalloc.c",
+		"generic/tclHash.c",
+		"generic/tclIOUtil.c",
+		"unix/tclUnixThrd.c",
+		"unix/tclUnixFile.c",
+		"unix/tclUnixInit.c",
+		"generic/tclEvent.c",
+		"generic/tclResult.c",
+		"generic/tclVar.c",
+		"generic/tclBasic.c",
+		"generic/tclEncoding.c",
+	}, m...) {
+		tu, err := translate(tclTweaks, tclInc, sysInc, tclDefs, c99.MustFileSource2(filepath.Join(tclRoot, v), false))
+		if err != nil {
+			t.Fatal(errString(err))
+		}
+
+		tus = append(tus, tu)
+	}
+
+	f, err := os.Create(filepath.Join(dir, "main.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w := bufio.NewWriter(f)
+	w.WriteString(`package main
+	
+		import (
+			"math"
+			"os"
+			//TODO "os/exec"
+			//TODO "sync"
+			"unsafe"
+	
+			"github.com/cznic/crt"
+		)
+		`)
+	if err := command(w, tus); err != nil {
+		c99.FlushCache()
+		t.Fatal(err)
+	}
+
+	tus = nil
+	c99.FlushCache()
+
+	if err := w.Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if out, err := exec.Command("go", "build", "-o", filepath.Join(dir, "tcl"), f.Name()).CombinedOutput(); err != nil {
+		t.Fatalf("%s\n%v", out, err)
+	}
+
+	panic("TODO")
+}
+
+func TestTCLSQLite0(t *testing.T) { //TODO-
 	return //TODO-
 	c99.FlushCache()
 	const (
