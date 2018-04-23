@@ -34,16 +34,12 @@ var (
 	bPanic           = []byte("panic")
 	dict             = xc.Dict
 
-	idBacktrace              = dict.SID("backtrace")
 	idBuiltinAlloca          = dict.SID("__builtin_alloca")
 	idBuiltinTypesCompatible = dict.SID("__builtin_types_compatible__") // Implements __builtin_types_compatible_p
 	idBuiltinVaList          = dict.SID("__builtin_va_list")
 	idFuncName               = dict.SID("__func__")
 	idMain                   = dict.SID("main")
 	idStart                  = dict.SID("_start")
-	idStderr                 = dict.SID("stderr")
-	idStdin                  = dict.SID("stdin")
-	idStdout                 = dict.SID("stdout")
 	idVaEnd                  = dict.SID("__va_end")
 	idVaList                 = dict.SID("va_list")
 	idVaStart                = dict.SID("__va_start")
@@ -185,14 +181,6 @@ func (g *gen) typeComment(t c99.Type) (r string) {
 	default:
 		return g.ptyp(t, false, 1)
 	}
-}
-
-func env(key, val string) string {
-	if s := os.Getenv(key); s != "" {
-		return s
-	}
-
-	return val
 }
 
 func mkdir(p string) error {

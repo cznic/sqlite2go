@@ -71,6 +71,7 @@ func (o *opt) do(out io.Writer, in io.Reader, fn string, needBool2int int, more 
 		return err
 	}
 
+	ast = nil
 	if o.needBool2int != 0 && !o.noBool2int || o.forceBool2int {
 		_, err = o.Write([]byte(`
 func bool2int(b bool) int32 {

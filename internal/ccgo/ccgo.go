@@ -58,9 +58,9 @@ func main() {
 // Command outputs a Go program generated from in to w.
 //
 // No package or import clause is generated.
-func Command(w io.Writer, in []*c99.TranslationUnit) (err error) { return command(w, in) }
+func Command(w io.Writer, in []*c99.TranslationUnit) (err error) { return command(w, &in) }
 
-func command(w io.Writer, in []*c99.TranslationUnit, more ...func(*[]byte) error) (err error) {
+func command(w io.Writer, in *[]*c99.TranslationUnit, more ...func(*[]byte) error) (err error) {
 	returned := false
 
 	defer func() {
@@ -78,7 +78,7 @@ func command(w io.Writer, in []*c99.TranslationUnit, more ...func(*[]byte) error
 //
 // No package or import clause is generated.
 func Package(w io.Writer, in []*c99.TranslationUnit) error {
-	return newGen(w, in).gen(false)
+	return newGen(w, &in).gen(false)
 }
 
 type gen struct {
@@ -122,14 +122,16 @@ type gen struct {
 	needPreInc bool
 }
 
-func newGen(out io.Writer, in []*c99.TranslationUnit) *gen {
+func newGen(out io.Writer, in *[]*c99.TranslationUnit) *gen {
+	defer func() { *in = nil }()
+
 	return &gen{
 		enqueued:  map[interface{}]struct{}{},
 		externs:   map[int]*c99.Declarator{},
 		filenames: map[string]struct{}{},
 		fixArgs:   map[*c99.Declarator]int{},
 		helpers:   map[string]int{},
-		in:        in,
+		in:        *in,
 		incompleteExternArrays: map[int]*c99.Declarator{},
 		initializedExterns:     map[int]struct{}{},
 		nums:                   map[*c99.Declarator]int{},
@@ -290,6 +292,7 @@ const %s = uintptr(0)
 		g.w("%s\\x00", s[1:len(s)-1])
 	}
 	g.w("\")\n)\n")
+	g.in = nil
 	return newOpt().do(g.out, &g.out0, testFn, g.needBool2int, more...)
 }
 
