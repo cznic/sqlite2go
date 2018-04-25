@@ -185,14 +185,44 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool, lvl int) (r string) {
 			todo("", x)
 		}
 	case *c99.UnionType:
+		var buf bytes.Buffer
+		buf.WriteString("struct{")
+		layout := g.model.Layout(x)
+		for i, v := range x.Fields {
+			if v.Bits < 0 {
+				continue
+			}
+
+			if v.Bits != 0 {
+				if layout[i].Bitoff == 0 {
+					fmt.Fprintf(&buf, "F%d [0]%s;", layout[i].Offset, g.typ(layout[i].PackedType))
+					if lvl == 0 {
+						fmt.Fprintf(&buf, "\n")
+					}
+				}
+				continue
+			}
+
+			switch {
+			case v.Name == 0:
+				fmt.Fprintf(&buf, "_ ")
+			default:
+				fmt.Fprintf(&buf, "%s ", mangleIdent(v.Name, true))
+			}
+			fmt.Fprintf(&buf, "[0]%s;", g.ptyp(v.Type, ptr2uintptr, lvl+1))
+			if lvl == 0 && ptr2uintptr && v.Type.Kind() == c99.Ptr {
+				fmt.Fprintf(&buf, "// %s\n", g.typeComment(v.Type))
+			}
+		}
 		al := int64(g.model.Alignof(x))
 		sz := g.model.Sizeof(x)
 		switch {
 		case al == sz:
-			return fmt.Sprintf("struct{X int%d}", 8*sz)
+			fmt.Fprintf(&buf, "X int%d}", 8*sz)
 		default:
-			return fmt.Sprintf("struct{X int%d; _ [%d]byte}", 8*al, sz-al) //TODO use precomputed padding from model layout?
+			fmt.Fprintf(&buf, "X int%d; _ [%d]byte}", 8*al, sz-al) //TODO use precomputed padding from model layout?
 		}
+		return buf.String()
 	default:
 		todo("%v %T %v\n%v", t, x, ptr2uintptr, pretty(x))
 	}

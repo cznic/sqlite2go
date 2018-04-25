@@ -937,7 +937,6 @@ func (t *PointerType) assign(ctx *context, op Operand) (r Operand) {
 
 		return Operand{Type: t, Value: Null}
 	default:
-		fmt.Printf("TODO934 %v <- %v\n", UnderlyingType(t.Item), UnderlyingType(op.Type)) //TODO-
 		panic(fmt.Errorf("%v <- %v, %v %v", t, op, op.Type.IsPointerType(), t.IsCompatible(op.Type)))
 	}
 }

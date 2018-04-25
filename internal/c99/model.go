@@ -189,7 +189,6 @@ func (m Model) Layout(t Type) (r []FieldProperties) {
 		r = make([]FieldProperties, len(x.Fields))
 		var off int64
 		bitoff := 0
-		zeroFix := false
 		for i, v := range x.Fields {
 			switch {
 			case v.Bits != 0:
@@ -233,10 +232,6 @@ func (m Model) Layout(t Type) (r []FieldProperties) {
 					r[i-1].Padding = int(off - z)
 				}
 				r[i] = FieldProperties{Offset: off, Size: sz, Declarator: v.Declarator, Type: v.Type}
-				if sz == 0 && i == len(x.Fields)-1 {
-					sz = 1
-					zeroFix = true
-				}
 				off += sz
 			}
 		}
@@ -263,9 +258,6 @@ func (m Model) Layout(t Type) (r []FieldProperties) {
 		}
 		z := off
 		off = roundup(off, int64(align))
-		if zeroFix {
-			z--
-		}
 		if off != z {
 			r[len(r)-1].Padding = int(off - z)
 		}

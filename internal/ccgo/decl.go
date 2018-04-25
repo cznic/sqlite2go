@@ -34,7 +34,24 @@ more:
 		case *c99.EnumType:
 			g.defineEnumType(y)
 		case *c99.NamedType:
-			g.enqueue(y.Type)
+			switch z := underlyingType(y.Type, true).(type) {
+			case *c99.StructType:
+				switch {
+				case z.Tag == 0:
+					g.defineNamedType(y)
+				default:
+					g.enqueue(y.Type)
+				}
+			case *c99.UnionType:
+				switch {
+				case z.Tag == 0:
+					g.defineNamedType(y)
+				default:
+					g.enqueue(y.Type)
+				}
+			default:
+				g.enqueue(y.Type)
+			}
 		case *c99.TaggedEnumType:
 			g.defineTaggedEnumType(y)
 		case *c99.TaggedStructType:
@@ -97,6 +114,15 @@ func (g *gen) defineTaggedEnumType(t *c99.TaggedEnumType) {
 
 }
 
+func (g *gen) defineNamedType(t *c99.NamedType) {
+	if _, ok := g.producedNamedTypes[t.Name]; ok {
+		return
+	}
+
+	g.producedNamedTypes[t.Name] = struct{}{}
+	g.w("\ntype T%s = %s\n", dict.S(t.Name), g.typ(t.Type))
+}
+
 func (g *gen) defineTaggedStructType(t *c99.TaggedStructType) {
 	if _, ok := g.producedStructTags[t.Tag]; ok {
 		return
@@ -134,7 +160,6 @@ func (g *gen) defineTaggedStructType(t *c99.TaggedStructType) {
 				g.w("\nif n := unsafe.Offsetof(S%s{}.%s); n != %d { panic(n) }", dict.S(t.Tag), mangleIdent(fields[i].Name, true), v.Offset)
 				g.w("\nif n := unsafe.Sizeof(S%s{}.%s); n != %d { panic(n) }", dict.S(t.Tag), mangleIdent(fields[i].Name, true), v.Size)
 			}
-			g.w("\nif n := unsafe.Sizeof(S%s{}); n != %d { panic(n) }", dict.S(t.Tag), g.model.Sizeof(t))
 			g.w("\n}\n")
 		}
 	}

@@ -105,6 +105,7 @@ type gen struct {
 	producedDeclarators    map[*c99.Declarator]struct{}
 	producedEnumTags       map[int]struct{}
 	producedExterns        map[int]struct{}
+	producedNamedTypes     map[int]struct{}
 	producedStructTags     map[int]struct{}
 	queue                  list.List
 	staticDeclarators      map[int]*c99.Declarator
@@ -140,6 +141,7 @@ func newGen(out io.Writer, in *[]*c99.TranslationUnit) *gen {
 		producedDeclarators:    map[*c99.Declarator]struct{}{},
 		producedEnumTags:       map[int]struct{}{},
 		producedExterns:        map[int]struct{}{},
+		producedNamedTypes:     map[int]struct{}{},
 		producedStructTags:     map[int]struct{}{},
 		staticDeclarators:      map[int]*c99.Declarator{},
 		strings:                map[int]int64{},

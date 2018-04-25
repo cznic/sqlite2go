@@ -16,84 +16,83 @@ package ccgo
 //
 //	TCC	cc 51 ccgo 51 build 51 run 51 ok 51
 //	Other	cc 19 ccgo 19 build 19 run 19 ok 19
-//	GCC	cc 1096 ccgo 1094 build 1094 run 1094 ok 1094
+//	GCC	cc 1097 ccgo 1095 build 1095 run 1095 ok 1095
 //	Shell	cc 1 ccgo 1 build 1 run 1 ok 1
-//	--- FAIL: TestTCL (188.97s)
-//		all_test.go:1334: Tests running in interp:  /home/jnml/src/tmp/tcl/tcl
-//			Tests located in:  /home/jnml/src/tmp/tcl
-//			Tests running in:  /home/jnml/src/tmp/tcl
-//			Temporary files stored in /home/jnml/src/tmp/tcl
+//	--- FAIL: TestTCL (240.87s)
+//		all_test.go:1509: Tests running in interp:  /tmp/test-ccgo-tcl-566492288/tcl
+//			Tests located in:  /tmp/test-ccgo-tcl-566492288
+//			Tests running in:  /tmp/test-ccgo-tcl-566492288
+//			Temporary files stored in /tmp/test-ccgo-tcl-566492288
 //			Test files run in separate interpreters
 //			Running tests that match:  *
 //			Skipping test files that match:  l.*.test
 //			Only running test files that match:  *.test
-//			Tests began at Thu May 23 13:49:13 -463544 3918
+//			Tests began at Sat May 25 17:40:39 -463544 3918
 //			aaa_exit.test
 //			Test file error: panic: TODO
-//
-//			goroutine 1 [running]:
-//			github.com/cznic/crt.Xpthread_attr_init(0x7f6efe1001a0, 0x7f6efdffc4a0, 0x7f6efdffc4a0)
-//				/home/jnml/src/github.com/cznic/crt/pthread_linux.go:744 +0x39
-//			main.XTclpThreadCreate(0x7f6efe1001a0, 0xad3d10, 0x890010, 0x0, 0x100000000, 0xc400000000)
-//				/home/jnml/src/tmp/tcl/main.go:131314 +0x80
-//			main._218StartNotifierThread(0x7f6efe1001a0, 0x87cfe9)
-//				/home/jnml/src/tmp/tcl/main.go:120193 +0x9b
-//			main.XTcl_WaitForEvent(0x7f6efe1001a0, 0x7f6efe7f2860, 0x7f6e00000000)
-//				/home/jnml/src/tmp/tcl/main.go:29642 +0xeb
-//			main.XTcl_DoOneEvent(0x7f6efe1001a0, 0x7f6efffffffd, 0x7f6efe1b72c0)
-//				/home/jnml/src/tmp/tcl/main.go:33243 +0x1f9
-//			main.XTcl_VwaitObjCmd(0x7f6efe1001a0, 0x0, 0x7f6efcf00020, 0x7f6e00000002, 0x7f6efcd00d80, 0x7f6e00000000)
-//				/home/jnml/src/tmp/tcl/main.go:97044 +0x157
-//			main._330Dispatch(0x7f6efe1001a0, 0x7f6efcef8c88, 0x7f6efcf00020, 0x7f6e00000000, 0x7f6e00000000)
-//				/home/jnml/src/tmp/tcl/main.go:136443 +0x6d
-//			main.XTclNRRunCallbacks(0x7f6efe1001a0, 0x7f6efcf00020, 0x0, 0x0, 0x7f6e00200010)
-//				/home/jnml/src/tmp/tcl/main.go:116458 +0x78
-//			main.XTcl_EvalObjv(0x7f6efe1001a0, 0x7f6efcf00020, 0x7f6e00000005, 0x7f6efcd00300, 0x7f6e00200010, 0xc400000021)
-//				/home/jnml/src/tmp/tcl/main.go:23948 +0x9e
-//			main.XTclEvalEx(0x7f6efe1001a0, 0x7f6efcf00020, 0x7f6efd11a020, 0x6a2, 0x1, 0x0, 0x7f6efd11a020, 0x0)
-//				/home/jnml/src/tmp/tcl/main.go:20567 +0x106c
-//			main.XTcl_FSEvalFileEx(0x7f6efe1001a0, 0x7f6efcf00020, 0x7f6efce14bf0, 0x0, 0x7f6e00000000)
-//				/home/jnml/src/tmp/tcl/main.go:2575 +0x3cf
-//			main.XTcl_MainEx(0x7f6efe1001a0, 0x7f6effffffff, 0x7f6efe500030, 0x88d8c8, 0x7f6efcf00020)
-//				/home/jnml/src/tmp/tcl/main.go:209 +0xf13
-//			main.Xmain(0x7f6efe1001a0, 0x2, 0x7f6efe500020, 0x7f6efe1001a0)
-//				/home/jnml/src/tmp/tcl/main.go:58 +0x61
-//			main.X_start(0x7f6efe1001a0, 0x2, 0x7f6efe500020)
-//				/home/jnml/src/tmp/tcl/main.go:41 +0x79
-//			main.main()
-//				/home/jnml/src/tmp/tcl/main.go:35 +0x17f
+//			
+//			goroutine 18 [running]:
+//			github.com/cznic/crt.Xpthread_cond_broadcast(0x7f1749bb8bf0, 0xad8d00, 0xc400000000)
+//				/home/jnml/src/github.com/cznic/crt/pthread_linux.go:1046 +0x83
+//			main._726NotifierThreadProc(0x7f1749bb8bf0, 0x0)
+//				/tmp/test-ccgo-tcl-566492288/main.go:275175 +0x26e
+//			github.com/cznic/crt.Xpthread_create.func2(0xc4201420c0, 0x893138, 0x7f1749bb8bf0, 0x0, 0xc4200d63a0, 0x2)
+//				/home/jnml/src/github.com/cznic/crt/pthread_linux.go:742 +0x4c
+//			created by github.com/cznic/crt.Xpthread_create
+//				/home/jnml/src/github.com/cznic/crt/pthread_linux.go:740 +0x1c2
 //			append.test
-//
-//
+//			
+//			
 //			==== append-1.1 append command FAILED
 //			==== Contents of test case:
-//
+//			
 //			    unset -nocomplain x
-//
+//			    list [append x 1 2 abc "long string"] $x
+//			
+//			---- Result was:
+//			{12abclong string} {12abclong string}
+//			---- Result should have been (exact matching):
+//			{12abclong string} {12abclong string}
+//			==== append-1.1 FAILED
+//			
+//			
+//			
+//			==== append-1.2 append command FAILED
+//			==== Contents of test case:
+//			
+//			    set x ""
+//			    list [append x first] [append x second] [append x third] $x
+//			
+//			---- Result was:
+//			first firstsecond firstsecondthird firstsecondthird
+//			---- Result should have been (exact matching):
+//			first firstsecond firstsecondthird firstsecondthird
+//			==== append-1.2 FAILED
+//			
+//			
 //			...
-//
-//			Tests ended at Thu May 23 13:51:12 -463544 3918
-//			all.tcl:	Total	12635	Passed	928	Skipped	3487	Failed	8220
+//			
+//			Tests ended at Sat May 25 17:42:44 -463544 3918
+//			all.tcl:	Total	13783	Passed	998	Skipped	3453	Failed	9332
 //			Sourced 148 Test Files.
-//			Files with failing tests: append.test apply.test assemble.test autoMkindex.test basic.test case.test compExpr-old.test compExpr.test compile.test concat.test config.test coroutine.test env.test error.test eval.test execute.test expr-old.test expr.test for-old.test for.test foreach.test get.test history.test if-old.test if.test incr-old.test incr.test init.test ioTrans.test join.test lindex.test linsert.test list.test listObj.test llength.test lmap.test load.test lrange.test lrepeat.test lsearch.test lsetComp.test misc.test namespace.test nre.test obj.test ooNext2.test opt.test package.test parse.test parseExpr.test pid.test proc-old.test proc.test pwd.test reg.test regexp.test regexpComp.test rename.test result.test security.test set-old.test source.test split.test stack.test stringComp.test subst.test switch.test tailcall.test tm.test unknown.test unload.test uplevel.test upvar.test utf.test util.test while-old.test while.test
+//			Files with failing tests: append.test appendComp.test apply.test assemble.test autoMkindex.test basic.test case.test cmdMZ.test compExpr-old.test compExpr.test compile.test concat.test config.test coroutine.test dict.test env.test error.test eval.test execute.test expr.test for-old.test for.test get.test history.test if-old.test if.test incr-old.test init.test ioTrans.test join.test lindex.test linsert.test list.test listObj.test llength.test lmap.test load.test lrange.test lrepeat.test lsearch.test lsetComp.test mathop.test misc.test namespace-old.test namespace.test nre.test obj.test ooNext2.test package.test parse.test parseExpr.test parseOld.test pid.test proc-old.test proc.test pwd.test reg.test regexp.test regexpComp.test rename.test result.test scan.test security.test set-old.test set.test source.test split.test stack.test string.test stringComp.test subst.test switch.test tailcall.test tm.test unknown.test unload.test uplevel.test upvar.test util.test while-old.test while.test
 //			Number of tests skipped for each constraint:
-//				9	!ieeeFloatingPoint
+//				6	!ieeeFloatingPoint
+//				5	bug-3057639
 //				49	dde
 //				30	emptyTest
-//				3	fullutf
-//				2	ieeeFloatingPoint&&testexprdouble
 //				20	knownBug
 //				17	longIs32bit
 //				14	macosxFileAttr
-//				54	memory
-//				2	nonPortable
+//				59	memory
+//				4	nonPortable
 //				9	nt
 //				1	pcOnly
 //				12	pkgaRequired
 //				20	pkguaRequired
 //				8	procbodytest
 //				12	testasync
-//				24	testbytestring
+//				8	testbytestring
 //				54	testchannel
 //				9	testcmdinfo
 //				6	testcmdtoken
@@ -108,28 +107,22 @@ package ccgo
 //				217	testevalex
 //				11	testevalobjv
 //				25	testevent
-//				7	testexprdouble
 //				5	testexprdoubleobj
 //				4	testexprdoubleobj&&ieeeFloatingPoint
-//				16	testexprlong
 //				17	testexprlongobj
 //				215	testexprparser
 //				1	testexprparser && !ieeeFloatingPoint
 //				1	testexprparser && ieeeFloatingPoint
-//				3	testexprstring
 //				7	testfindexecutable
-//				1	testfindfirst
-//				1	testfindlast
 //				1	testfork
 //				4	testgetassocdata
 //				15	testgetint
 //				299	testhashsystemhash
-//				31	testindexobj
+//				32	testindexobj
 //				10	testinterpresolver
 //				28	testlink
-//				21	testmathfunctions
+//				18	testmathfunctions
 //				33	testnrelevels
-//				10	testnumutfchars
 //				232	testobj
 //				7	testparseargs
 //				117	testparser
@@ -138,160 +131,181 @@ package ccgo
 //				1098	testregexp
 //				2	testreturn
 //				11	testsaveresult
+//				1	testset2
 //				4	testsetassocdata
 //				4	testseterrorcode
 //				5	testsetobjerrorcode
 //				5	teststaticpkg
 //				5	teststaticpkg_8.x
-//				4	teststringobj
 //				7	testupvar
 //				1	testwinclock
+//				21	testwordend
 //				54	thread
 //				2	unthreaded
 //				318	win
 //				4	winVista
 //				65	zlib
-//
-//			Test files exiting with errors:
-//
+//			
+//			Test files exiting with errors:  
+//			
 //			  aaa_exit.test
-//
-//			  appendComp.test
-//
+//			
 //			  binary.test
-//
+//			
 //			  chan.test
-//
+//			
 //			  chanio.test
-//
+//			
 //			  clock.test
-//
+//			
 //			  cmdAH.test
-//
+//			
 //			  cmdIL.test
-//
-//			  cmdMZ.test
-//
-//			  dict.test
-//
+//			
 //			  encoding.test
-//
+//			
 //			  event.test
-//
+//			
 //			  exec.test
-//
+//			
+//			  expr-old.test
+//			
 //			  fCmd.test
-//
+//			
 //			  fileName.test
-//
+//			
 //			  fileSystem.test
-//
+//			
+//			  foreach.test
+//			
 //			  format.test
-//
+//			
 //			  http.test
-//
+//			
 //			  http11.test
-//
+//			
 //			  httpold.test
-//
+//			
+//			  incr.test
+//			
 //			  info.test
-//
+//			
 //			  interp.test
-//
+//			
 //			  io.test
-//
+//			
 //			  ioCmd.test
-//
+//			
 //			  lreplace.test
-//
+//			
 //			  main.test
-//
-//			  mathop.test
-//
+//			
 //			  msgcat.test
-//
-//			  namespace-old.test
-//
+//			
 //			  oo.test
-//
-//			  parseOld.test
-//
+//			
+//			  opt.test
+//			
 //			  pkgMkIndex.test
-//
+//			
 //			  platform.test
-//
+//			
 //			  safe.test
-//
-//			  scan.test
-//
-//			  set.test
-//
+//			
 //			  socket.test
-//
-//			  string.test
-//
+//			
 //			  tcltest.test
-//
+//			
 //			  timer.test
-//
+//			
 //			  trace.test
-//
+//			
 //			  unixFCmd.test
-//
+//			
 //			  unixInit.test
-//
+//			
+//			  utf.test
+//			
 //			  var.test
-//
+//			
 //			  winPipe.test
-//
-//			~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-//			tmp test began at Thu May 23 13:51:12 -463544 3918
-//		all_test.go:1336: Failed: exit status 1
-//			all.tcl:	Total	12635	Passed	928	Skipped	3487	Failed	8220
-//			couldn't read file "/home/jnml/src/tmp/tcl/tmp/all.tcl": permission denied
+//		all_test.go:1511: Failed: exit status 1
+//			all.tcl:	Total	13783	Passed	998	Skipped	3453	Failed	9332
+//			couldn't read directory "/tmp/test-ccgo-tcl-566492288/library/tzdata/Canada/": bad file number
 //			    while executing
-//			"::source /home/jnml/src/tmp/tcl/tmp/all.tcl"
-//			    ("uplevel" body line 1)
+//			"glob -directory $rootdir -types d -nocomplain --  $pattern"
+//			    (procedure "GetMatchingDirectories" line 15)
 //			    invoked from within
-//			"uplevel 1 [list ::source [file join $directory all.tcl]]"
-//			    (procedure "runAllTests" line 129)
+//			"GetMatchingDirectories $path"
+//			    (procedure "GetMatchingDirectories" line 17)
+//			    invoked from within
+//			"GetMatchingDirectories $path"
+//			    (procedure "GetMatchingDirectories" line 17)
+//			    invoked from within
+//			"GetMatchingDirectories $path"
+//			    (procedure "GetMatchingDirectories" line 17)
+//			    invoked from within
+//			"GetMatchingDirectories [testsDirectory]"
+//			    (procedure "runAllTests" line 124)
 //			    invoked from within
 //			"runAllTests"
 //			    (file "all.tcl" line 21)
-//	cc 1 ccgo 1 build 1 run 1 ok 1 (100.00%) csmith 1 (387.628162ms)
-//	cc 2 ccgo 2 build 2 run 2 ok 2 (100.00%) csmith 2 (1.131841229s)
-//	cc 3 ccgo 3 build 3 run 3 ok 3 (100.00%) csmith 3 (1.463566375s)
-//	cc 4 ccgo 4 build 4 run 4 ok 4 (100.00%) csmith 4 (8.393599152s)
-//	cc 5 ccgo 5 build 5 run 5 ok 5 (100.00%) csmith 5 (8.991066109s)
-//	cc 6 ccgo 6 build 6 run 6 ok 6 (100.00%) csmith 6 (9.731711691s)
-//	cc 7 ccgo 7 build 7 run 7 ok 7 (100.00%) csmith 7 (16.606096138s)
-//	cc 8 ccgo 8 build 8 run 8 ok 8 (100.00%) csmith 8 (16.949035567s)
-//	cc 9 ccgo 9 build 9 run 9 ok 9 (100.00%) csmith 9 (17.578978177s)
-//	cc 10 ccgo 10 build 10 run 10 ok 10 (100.00%) csmith 10 (18.048452155s)
-//	cc 11 ccgo 11 build 11 run 11 ok 11 (100.00%) csmith 11 (18.652161015s)
-//	cc 12 ccgo 12 build 12 run 12 ok 12 (100.00%) csmith 12 (19.119004339s)
-//	cc 13 ccgo 13 build 13 run 13 ok 13 (100.00%) csmith 13 (20.236893378s)
-//	cc 14 ccgo 14 build 14 run 14 ok 14 (100.00%) csmith 14 (21.23137532s)
-//	cc 15 ccgo 15 build 15 run 15 ok 15 (100.00%) csmith 15 (22.323200031s)
-//	cc 16 ccgo 16 build 16 run 16 ok 16 (100.00%) csmith 16 (23.133609954s)
-//	cc 17 ccgo 17 build 17 run 17 ok 17 (100.00%) csmith 17 (24.149925574s)
-//	cc 18 ccgo 18 build 18 run 18 ok 18 (100.00%) csmith 18 (25.082482481s)
-//	cc 19 ccgo 19 build 19 run 19 ok 19 (100.00%) csmith 19 (32.419101506s)
-//	cc 20 ccgo 20 build 20 run 20 ok 20 (100.00%) csmith 20 (39.174316192s)
-//	cc 21 ccgo 21 build 21 run 21 ok 21 (100.00%) csmith 21 (39.923787351s)
-//	cc 22 ccgo 22 build 22 run 22 ok 22 (100.00%) csmith 22 (47.697836037s)
-//	cc 23 ccgo 23 build 23 run 23 ok 23 (100.00%) csmith 23 (48.629624992s)
-//	cc 24 ccgo 24 build 24 run 24 ok 24 (100.00%) csmith 24 (49.151410885s)
-//	cc 25 ccgo 25 build 25 run 25 ok 25 (100.00%) csmith 25 (49.556676275s)
-//	cc 26 ccgo 26 build 26 run 26 ok 26 (100.00%) csmith 26 (49.871004057s)
-//	cc 27 ccgo 27 build 27 run 27 ok 27 (100.00%) csmith 27 (50.847288459s)
-//	cc 28 ccgo 28 build 28 run 28 ok 28 (100.00%) csmith 28 (58.355333234s)
-//	cc 29 ccgo 29 build 29 run 29 ok 29 (100.00%) csmith 29 (59.740545879s)
-//	cc 30 ccgo 30 build 30 run 30 ok 30 (100.00%) csmith 30 (1m0.334634597s)
-//	CSmith	cc 30 ccgo 30 build 30 run 30 ok 30 (100.00%) csmith 30 (1m0.334648139s)
+//	--- FAIL: TestTCLSQLite (304.28s)
+//		all_test.go:1948: 
+//			Test cases:     7269
+//			Pass:           7240 (99.60%)
+//			Fail:             29 (0.40%)
+//			! altermalloc.test-closeallfiles expected: [0]
+//			! altermalloc.test-closeallfiles got:      [1]
+//			! attach-8.1 expected: [1 {file is not a database}]
+//			! attach-8.1 got:      [1 {unable to open database: test2.db}]
+//			! attach-8.2 expected: [26]
+//			! attach-8.2 got:      [14]
+//			! auth3-2.2 expected: [1]
+//			! auth3-2.2 got:      [0]
+//			! autovacuum-1.1.3 expected: [4]
+//			! autovacuum-1.1.3 got:      [16]
+//			... too many fails
+//		all_test.go:1956: 
+//			Test binary exit error: exit status 2
+//			Last completed test file: "Time: autovacuum.test 3553 ms"
+//			Last passed test: "autovacuum-ioerr2-3.1.3... Ok"
+//			Last line written to stdout: "autovacuum-ioerr2-4.1.1..."
+//			Blacklisted test files: 0
+//	cc 1 ccgo 1 build 1 run 1 ok 1 (100.00%) csmith 1 (2.719700388s)
+//	cc 2 ccgo 2 build 2 run 2 ok 2 (100.00%) csmith 2 (3.458719803s)
+//	cc 3 ccgo 3 build 3 run 3 ok 3 (100.00%) csmith 3 (4.518839034s)
+//	cc 4 ccgo 4 build 4 run 4 ok 4 (100.00%) csmith 4 (6.123481353s)
+//	cc 5 ccgo 5 build 5 run 5 ok 5 (100.00%) csmith 5 (7.543607008s)
+//	cc 6 ccgo 6 build 6 run 6 ok 6 (100.00%) csmith 6 (10.085409054s)
+//	cc 7 ccgo 7 build 7 run 7 ok 7 (100.00%) csmith 7 (10.839306378s)
+//	cc 8 ccgo 8 build 8 run 8 ok 8 (100.00%) csmith 8 (12.880724887s)
+//	cc 9 ccgo 9 build 9 run 9 ok 9 (100.00%) csmith 9 (27.508142336s)
+//	cc 10 ccgo 10 build 10 run 10 ok 10 (100.00%) csmith 10 (28.719847508s)
+//	cc 11 ccgo 11 build 11 run 11 ok 11 (100.00%) csmith 11 (30.551728806s)
+//	cc 12 ccgo 12 build 12 run 12 ok 12 (100.00%) csmith 12 (32.956272741s)
+//	cc 13 ccgo 13 build 13 run 13 ok 13 (100.00%) csmith 13 (33.698476947s)
+//	cc 14 ccgo 14 build 14 run 14 ok 14 (100.00%) csmith 14 (34.430417984s)
+//	cc 15 ccgo 15 build 15 run 15 ok 15 (100.00%) csmith 15 (36.103656049s)
+//	cc 16 ccgo 16 build 16 run 16 ok 16 (100.00%) csmith 16 (38.07908696s)
+//	cc 17 ccgo 17 build 17 run 17 ok 17 (100.00%) csmith 17 (38.783030992s)
+//	cc 18 ccgo 18 build 18 run 18 ok 18 (100.00%) csmith 18 (39.497262162s)
+//	cc 19 ccgo 19 build 19 run 19 ok 19 (100.00%) csmith 19 (40.922940847s)
+//	cc 20 ccgo 20 build 20 run 20 ok 20 (100.00%) csmith 20 (42.127474315s)
+//	cc 21 ccgo 21 build 21 run 21 ok 21 (100.00%) csmith 21 (43.760139334s)
+//	cc 22 ccgo 22 build 22 run 22 ok 22 (100.00%) csmith 22 (45.756475518s)
+//	cc 23 ccgo 23 build 23 run 23 ok 23 (100.00%) csmith 23 (47.403714969s)
+//	cc 24 ccgo 24 build 24 run 24 ok 24 (100.00%) csmith 24 (49.982889901s)
+//	cc 25 ccgo 25 build 25 run 25 ok 25 (100.00%) csmith 25 (51.690751062s)
+//	cc 26 ccgo 26 build 26 run 26 ok 26 (100.00%) csmith 26 (53.153685118s)
+//	cc 27 ccgo 27 build 27 run 27 ok 27 (100.00%) csmith 27 (55.411069982s)
+//	cc 29 ccgo 29 build 28 run 28 ok 28 (96.55%) csmith 29 (57.612737173s)
+//	cc 30 ccgo 30 build 29 run 29 ok 29 (96.67%) csmith 30 (59.12340364s)
+//	cc 31 ccgo 31 build 30 run 30 ok 30 (96.77%) csmith 31 (1m0.663895224s)
+//	CSmith	cc 31 ccgo 31 build 30 run 30 ok 30 (96.77%) csmith 31 (1m0.663931359s)
 //	FAIL
 //	exit status 1
-//	FAIL	github.com/cznic/sqlite2go/internal/ccgo	427.016s
+//	FAIL	github.com/cznic/sqlite2go/internal/ccgo	1300.110s
 
 import (
 	"bufio"
@@ -371,7 +385,6 @@ var (
 	oI          = flag.String("I", "", "")
 	oNoCmp      = flag.Bool("nocmp", false, "")
 	oRE         = flag.String("re", "", "")
-	oTCLRace    = flag.Bool("tclrace", false, "")
 	oTmp        = flag.String("tmp", "", "")
 	oTrace      = flag.Bool("trc", false, "")
 	re          *regexp.Regexp
@@ -820,15 +833,15 @@ import (
 		t.Fatal(err)
 	}
 
-	defer func() {
-		if err := os.Chdir(cwd); err != nil {
-			t.Fatal(err)
-		}
-	}()
-
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
+
+	defer func() {
+		if err := os.Chdir(cwd); err != nil {
+			t.Error(err)
+		}
+	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 
@@ -1040,7 +1053,6 @@ func TestGCC(t *testing.T) {
 		"pr64006.c":                    {}, //TODO undefined: "__builtin_mul_overflow"
 		"pr68381.c":                    {}, //TODO undefined: "__builtin_mul_overflow"
 		"pr77767.c":                    {}, //TODO VLA
-		"zerolen-2.c":                  {}, //TODO The Go translation makes the last zero items array to have size 1.
 	}
 
 	if s := *oRE; s != "" {
@@ -1065,12 +1077,15 @@ func TestGCC(t *testing.T) {
 
 	var cc, ccgo, build, run, ok int
 	for _, pth := range m {
-		if re != nil && !re.MatchString(filepath.Base(pth)) {
-			continue
-		}
-
-		if _, ok := blacklist[filepath.Base(pth)]; ok {
-			continue
+		switch {
+		case re != nil:
+			if !re.MatchString(filepath.Base(pth)) {
+				continue
+			}
+		default:
+			if _, ok := blacklist[filepath.Base(pth)]; ok {
+				continue
+			}
 		}
 
 		run0 := run
@@ -1117,16 +1132,19 @@ func TestSQLiteShell(t *testing.T) {
 		debug.FreeOSMemory()
 	}()
 
-	dir, err := ioutil.TempDir("", "test-ccgo-shell-")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	defer func() {
-		if err := os.RemoveAll(dir); err != nil {
+	dir := *oTmp
+	if dir == "" {
+		var err error
+		if dir, err = ioutil.TempDir("", "test-ccgo-sqliteshell-"); err != nil {
 			t.Fatal(err)
 		}
-	}()
+
+		defer func() {
+			if err := os.RemoveAll(dir); err != nil {
+				t.Fatal(err)
+			}
+		}()
+	}
 
 	var cc, ccgo, build, run, ok int
 	root := filepath.FromSlash("../../_sqlite/sqlite-amalgamation-3210000")
@@ -1174,6 +1192,7 @@ func TestTCL(t *testing.T) {
 		defs = `
 			// Output of gcc features.c && ./a.out in github.com/cznic/sqlite2go/internal/c99/headers on linux_amd64.
 			#define _DEFAULT_SOURCE 1
+			#define _LARGEFILE64_SOURCE 1
 			#define _POSIX_C_SOURCE 200809
 			#define _POSIX_SOURCE 1
 
@@ -1190,6 +1209,7 @@ func TestTCL(t *testing.T) {
 			#define CFG_RUNTIME_SCRDIR "library"
 			#define HAVE_SYS_TIME_H 1
 			#define HAVE_UNISTD_H 1
+			#define HAVE_USLEEP 1
 			#define TCL_CFGVAL_ENCODING "iso8859-1"
 			#define TCL_LIBRARY "library"
 			#define TCL_PACKAGE_PATH "library"
@@ -1390,6 +1410,10 @@ import (
 		t.Fatal(err)
 	}
 
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
 	defer func() {
 		if err := os.Chdir(cwd); err != nil {
 			t.Error(err)
@@ -1398,10 +1422,6 @@ import (
 
 	src, err := filepath.Abs(filepath.Join(cwd, filepath.FromSlash("../..")))
 	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1507,9 +1527,7 @@ func patch(b *[]byte, old, new []byte) error {
 		if len(s) > 100 {
 			s = append(s[:100], " ..."...)
 		}
-		dbg("patch failed: %q", s) //TODO-
-		return nil                 //TODO-
-		return fmt.Errorf("patch failed: %q", s)
+		panic(fmt.Errorf("patch failed: %q", s))
 	}
 
 	*b = bytes.Replace(*b, old, new, 1)
@@ -1540,10 +1558,12 @@ func TestTCLSQLite(t *testing.T) {
 		defs = `
 			// Output of gcc features.c && ./a.out in github.com/cznic/sqlite2go/internal/c99/headers on linux_amd64.
 			#define _DEFAULT_SOURCE 1
+			#define _LARGEFILE64_SOURCE 1
 			#define _POSIX_C_SOURCE 200809
 			#define _POSIX_SOURCE 1
 `
 		sqliteDefs = defs + `
+			#define HAVE_USLEEP 1
 			#define SQLITE_CORE 1 // Must be defined for TCL extensions to work.
 			#define SQLITE_DEBUG 1
 			#define SQLITE_ENABLE_RBU 1
@@ -1851,9 +1871,20 @@ import (
 		t.Fatal(err)
 	}
 
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	if err := os.Chdir(testdir); err != nil {
 		t.Fatal(err)
 	}
+
+	defer func() {
+		if err := os.Chdir(cwd); err != nil {
+			t.Error(err)
+		}
+	}()
 
 	if out, err := exec.Command("go", "build", "-o", "test", f.Name()).CombinedOutput(); err != nil {
 		t.Fatalf("%s\n%v", out, err)
@@ -1867,110 +1898,11 @@ import (
 		t.Fatal(err)
 	}
 
-	if err := cpDir(filepath.Join(dir, "test"), filepath.Join(root, filepath.FromSlash("_sqlite/test")), nil); err != nil {
+	if err := cpDir(testdir, filepath.Join(root, filepath.FromSlash("_sqlite/test")), nil); err != nil {
 		t.Fatal(err)
 	}
 
-	blacklist := []string{
-		"autovacuum_ioerr2.test", // crt.Xfstatfs
-		"backup5.test",           // crt.Xfstatfs
-		"boundary4.test",         // ??? manually passes
-		"btree01.test",           // ??? manually passes
-		"btree02.test",           // ??? manually passes
-		"btreefault.test",        // crt.Xfstatfs
-		"busy.test",              // ??? manually passes
-		"cache.test",             // ??? manually passes
-		"cacheflush.test",        // crt.Xfstatfs
-		"cffault.test",           // crt.Xfstatfs
-		"collate1.test",          // hangs
-		"collate2.test",          // hangs
-		"collate3.test",          // hangs
-		"collate4.test",          // hangs
-		"collate5.test",          // hangs
-		"collate6.test",          // hangs
-		"collate9.test",          // hangs
-		"corruptC.test",          // crt.Xfstatfs
-		"crash.test",             // hangs
-		"crash4.test",            // hangs
-		"crash7.test",            // crt.Xfstatfs
-		"date.test",              // crt.Xselect
-		"e_reindex.test",         // hangs
-		"e_walauto.test",         // hangs
-		"fuzz.test",              // memory corruption
-		"fuzzerfault.test",       // crt.Xfstatfs
-		"incrcorrupt.test",       // crt.Xftruncate
-		"journal3.test",          // crt.Xfchmod
-		"lock.test",              // hangs
-		"lock4.test",             // crt.Xselect
-		"lock5.test",             // crt.Xutimes
-		"misc1.test",             // hangs
-		"misc7.test",             // crt.Xatof
-		"mjournal.test",          // crt.Xfopen
-		"nan.test",               // hangs
-		"pager4.test",            // crt.Xrename
-		"pagerfault.test",        // crt.Xfstatfs
-		"pagerfault2.test",       // crt.Xfstatfs
-		"pagerfault3.test",       // crt.Xfstatfs
-		"pragma.test",            // crt.X__assert_fail
-		"printf.test",            // hangs
-		"quota2.test",            // crt.Xfopen
-		"rbu.test",               // crt.Xrename
-		"reindex.test",           // hangs
-		"select9.test",           // hangs
-		"shared9.test",           // hangs
-		"sharedA.test",           // crt.Xpthread_attr_init
-		"sort2.test",             // crt.Xpthread_create
-		"sort3.test",             // hangs
-		"sort4.test",             // crt.Xpthread_create
-		"sortfault.test",         // memory corruption
-		"statfault.test",         // crt.Xfstatfs
-		"symlink.test",           // crt.Xsymlink
-		"syscall.test",           // crt.Xfstatfs
-		"tempfault.test",         // memory corruption
-		"thread001.test",         // crt.Xpthread_attr_init
-		"thread002.test",         // crt.Xpthread_attr_init
-		"thread003.test",         // crt.Xpthread_attr_init
-		"thread004.test",         // crt.Xpthread_attr_init
-		"thread005.test",         // crt.Xpthread_attr_init
-		"thread1.test",           // crt.Xpthread_create
-		"thread2.test",           // crt.Xpthread_create
-		"tkt-fc62af4523.test",    // memory corruption
-		"tkt3997.test",           // hangs
-		"trans.test",             // couldn't open "test.tcl": permission denied
-		"unionvtabfault.test",    // crt.Xfstatfs
-		"vacuum2.test",           // hangs
-		"vtabH.test",             // crt.Xreaddir64_r
-		"wal.test",               // crt.Xfstatfs
-		"wal2.test",              // memory corruption
-		"wal3.test",              // crt.Xfstatfs
-		"wal4.test",              // crt.Xfstatfs
-		"walcrash2.test",         // memory corruption
-		"walcrash4.test",         // crt.Xfstatfs
-		"walslow.test",           // crt.Xfstatfs
-		"walthread.test",         // crt.Xpthread_attr_init
-		// "crash2.test", // Error: invalid command name "db"
-		// "crash3.test", // Error: invalid command name "db"
-		// "crash6.test", // couldn't open "crash.tcl": permission denied
-		// "e_createtable.test", // unknown switch: -error
-		// "e_delete.test", // unknown switch: -error
-		// "e_insert.test", // unknown switch: -error
-		// "e_select.test",  // unknown switch: -error
-		// "e_update.test", // unknown switch: -error
-		// "exists.test", // couldn't open "tf_main.tcl": permission denied
-		// "mmap1.test", // couldn't open "tf_main.tcl": permission denied
-		// "mmap4.test", // couldn't open "tf_main.tcl": permission denied
-		// "multiplex2.test", // couldn't open "tf_main.tcl": permission denied
-		// "pager1.test", // couldn't open "tf_main.tcl": permission denied
-		// "rowallock.test", // couldn't open "tf_main.tcl": permission denied
-		// "savepoint.test", // couldn't open "tf_main.tcl": permission denied
-		// "schema3.test", // couldn't open "tf_main.tcl": permission denied
-		// "shared2.test", // couldn't open "tf_main.tcl": permission denied
-		// "superlock.test", // couldn't open "tf_main.tcl": permission denied
-		// "tkt-5d863f876e.test", // couldn't open "tf_main.tcl": permission denied
-		// "unixexcl.test", // couldn't open "tf_main.tcl": permission denied
-		// "wal5.test",    // couldn't open "tf_main.tcl": permission denied
-		// "walro.test",     // couldn't open "tf_main.tcl": permission denied
-	}
+	blacklist := []string{} //TODO
 
 	for _, v := range blacklist {
 		if err := os.Remove(filepath.Join(testdir, v)); err != nil {
@@ -2097,7 +2029,7 @@ func TestCSmith(t *testing.T) {
 
 	defer func() {
 		if err := os.Chdir(cwd); err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 	}()
 

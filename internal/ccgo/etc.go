@@ -161,6 +161,7 @@ func (g *gen) typeComment(t c99.Type) (r string) {
 
 	switch x := t.(type) {
 	case *c99.NamedType:
+		g.enqueue(x)
 		return fmt.Sprintf("T%s = %s", dict.S(x.Name), g.typeComment(x.Type))
 	case *c99.PointerType:
 		n := 1
