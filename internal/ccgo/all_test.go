@@ -18,73 +18,76 @@ package ccgo
 //	Other	cc 19 ccgo 19 build 19 run 19 ok 19
 //	GCC	cc 1097 ccgo 1095 build 1095 run 1095 ok 1095
 //	Shell	cc 1 ccgo 1 build 1 run 1 ok 1
-//	--- FAIL: TestTCL (240.87s)
-//		all_test.go:1509: Tests running in interp:  /tmp/test-ccgo-tcl-566492288/tcl
-//			Tests located in:  /tmp/test-ccgo-tcl-566492288
-//			Tests running in:  /tmp/test-ccgo-tcl-566492288
-//			Temporary files stored in /tmp/test-ccgo-tcl-566492288
+//	--- FAIL: TestTCL (262.32s)
+//		all_test.go:1519: Tests running in interp:  /tmp/test-ccgo-tcl-419564539/tcl
+//			Tests located in:  /tmp/test-ccgo-tcl-419564539
+//			Tests running in:  /tmp/test-ccgo-tcl-419564539
+//			Temporary files stored in /tmp/test-ccgo-tcl-419564539
 //			Test files run in separate interpreters
 //			Running tests that match:  *
 //			Skipping test files that match:  l.*.test
 //			Only running test files that match:  *.test
-//			Tests began at Sat May 25 17:40:39 -463544 3918
+//			Tests began at Sun May 26 17:38:20 -463544 3918
 //			aaa_exit.test
-//			Test file error: panic: TODO
-//			
-//			goroutine 18 [running]:
-//			github.com/cznic/crt.Xpthread_cond_broadcast(0x7f1749bb8bf0, 0xad8d00, 0xc400000000)
-//				/home/jnml/src/github.com/cznic/crt/pthread_linux.go:1046 +0x83
-//			main._726NotifierThreadProc(0x7f1749bb8bf0, 0x0)
-//				/tmp/test-ccgo-tcl-566492288/main.go:275175 +0x26e
-//			github.com/cznic/crt.Xpthread_create.func2(0xc4201420c0, 0x893138, 0x7f1749bb8bf0, 0x0, 0xc4200d63a0, 0x2)
-//				/home/jnml/src/github.com/cznic/crt/pthread_linux.go:742 +0x4c
-//			created by github.com/cznic/crt.Xpthread_create
-//				/home/jnml/src/github.com/cznic/crt/pthread_linux.go:740 +0x1c2
-//			append.test
-//			
-//			
-//			==== append-1.1 append command FAILED
+//
+//
+//			==== exit-1.1 normal, quick exit FAILED
 //			==== Contents of test case:
-//			
-//			    unset -nocomplain x
-//			    list [append x 1 2 abc "long string"] $x
-//			
+//
+//			     set f [open "|[interpreter] << \"exec [interpreter] << {set ::env(TCL_FINALIZE_ON_EXIT) 0;exit}\"" r]
+//			     set aft [after 1000 {set done "Quick exit hangs !!!"}]
+//			     fileevent $f readable {after cancel $aft;set done OK}
+//			     vwait done
+//			     if {$done != "OK"} {
+//			     	fconfigure $f -blocking 0
+//				close $f
+//			     } else {
+//				if {[catch {close $f} err]} {
+//				    set done "Quick exit misbehaves: $err"
+//				}
+//			     }
+//			     set done
+//
 //			---- Result was:
-//			{12abclong string} {12abclong string}
+//			OK
 //			---- Result should have been (exact matching):
-//			{12abclong string} {12abclong string}
-//			==== append-1.1 FAILED
-//			
-//			
-//			
-//			==== append-1.2 append command FAILED
+//			OK
+//			==== exit-1.1 FAILED
+//
+//
+//
+//			==== exit-1.2 full-finalized exit FAILED
 //			==== Contents of test case:
-//			
-//			    set x ""
-//			    list [append x first] [append x second] [append x third] $x
-//			
-//			---- Result was:
-//			first firstsecond firstsecondthird firstsecondthird
-//			---- Result should have been (exact matching):
-//			first firstsecond firstsecondthird firstsecondthird
-//			==== append-1.2 FAILED
-//			
-//			
+//
+//			     set f [open "|[interpreter] << \"exec [interpreter] << {set ::env(TCL_FINALIZE_ON_EXIT) 1;exit}\"" r]
+//			     set aft [after 1000 {set done "Full-finalized exit hangs !!!"}]
+//			     fileevent $f readable {after cancel $aft;set done OK}
+//			     vwait done
+//			     if {$done != "OK"} {
+//			     	fconfigure $f -blocking 0
+//				close $f
+//			     } else {
+//				if {[catch {close $f} err]} {
+//				    set done "Full-finalized exit misbehaves: $err"
+//
 //			...
-//			
-//			Tests ended at Sat May 25 17:42:44 -463544 3918
-//			all.tcl:	Total	13783	Passed	998	Skipped	3453	Failed	9332
-//			Sourced 148 Test Files.
-//			Files with failing tests: append.test appendComp.test apply.test assemble.test autoMkindex.test basic.test case.test cmdMZ.test compExpr-old.test compExpr.test compile.test concat.test config.test coroutine.test dict.test env.test error.test eval.test execute.test expr.test for-old.test for.test get.test history.test if-old.test if.test incr-old.test init.test ioTrans.test join.test lindex.test linsert.test list.test listObj.test llength.test lmap.test load.test lrange.test lrepeat.test lsearch.test lsetComp.test mathop.test misc.test namespace-old.test namespace.test nre.test obj.test ooNext2.test package.test parse.test parseExpr.test parseOld.test pid.test proc-old.test proc.test pwd.test reg.test regexp.test regexpComp.test rename.test result.test scan.test security.test set-old.test set.test source.test split.test stack.test string.test stringComp.test subst.test switch.test tailcall.test tm.test unknown.test unload.test uplevel.test upvar.test util.test while-old.test while.test
+//
+//			Tests ended at Sun May 26 17:40:27 -463544 3918
+//			all.tcl:	Total	14493	Passed	1057	Skipped	3566	Failed	9870
+//			Sourced 143 Test Files.
+//			Files with failing tests: aaa_exit.test append.test appendComp.test apply.test assemble.test autoMkindex.test basic.test case.test cmdMZ.test compExpr-old.test compExpr.test compile.test concat.test config.test coroutine.test dict.test env.test error.test eval.test execute.test expr-old.test expr.test for-old.test for.test get.test history.test if-old.test if.test incr-old.test incr.test init.test ioTrans.test join.test lindex.test linsert.test list.test listObj.test llength.test lmap.test load.test lrange.test lrepeat.test lsearch.test lsetComp.test main.test misc.test msgcat.test namespace-old.test namespace.test nre.test obj.test oo.test ooNext2.test package.test parse.test parseExpr.test pid.test proc-old.test proc.test pwd.test reg.test regexp.test regexpComp.test rename.test result.test scan.test security.test set-old.test set.test source.test split.test stack.test string.test stringComp.test subst.test switch.test tailcall.test tm.test unknown.test unload.test uplevel.test upvar.test utf.test util.test var.test while-old.test while.test
 //			Number of tests skipped for each constraint:
-//				6	!ieeeFloatingPoint
+//				9	!ieeeFloatingPoint
+//				36	Tcltest
 //				5	bug-3057639
 //				49	dde
 //				30	emptyTest
+//				3	fullutf
+//				2	ieeeFloatingPoint&&testexprdouble
 //				20	knownBug
 //				17	longIs32bit
 //				14	macosxFileAttr
-//				59	memory
+//				71	memory
 //				4	nonPortable
 //				9	nt
 //				1	pcOnly
@@ -92,7 +95,7 @@ package ccgo
 //				20	pkguaRequired
 //				8	procbodytest
 //				12	testasync
-//				8	testbytestring
+//				24	testbytestring
 //				54	testchannel
 //				9	testcmdinfo
 //				6	testcmdtoken
@@ -107,22 +110,29 @@ package ccgo
 //				217	testevalex
 //				11	testevalobjv
 //				25	testevent
+//				7	testexprdouble
 //				5	testexprdoubleobj
 //				4	testexprdoubleobj&&ieeeFloatingPoint
+//				16	testexprlong
 //				17	testexprlongobj
 //				215	testexprparser
 //				1	testexprparser && !ieeeFloatingPoint
 //				1	testexprparser && ieeeFloatingPoint
+//				3	testexprstring
 //				7	testfindexecutable
+//				1	testfindfirst
+//				1	testfindlast
 //				1	testfork
 //				4	testgetassocdata
 //				15	testgetint
+//				3	testgetvarfullname
 //				299	testhashsystemhash
 //				32	testindexobj
 //				10	testinterpresolver
 //				28	testlink
-//				18	testmathfunctions
+//				21	testmathfunctions
 //				33	testnrelevels
+//				10	testnumutfchars
 //				232	testobj
 //				7	testparseargs
 //				117	testparser
@@ -134,129 +144,94 @@ package ccgo
 //				1	testset2
 //				4	testsetassocdata
 //				4	testseterrorcode
+//				12	testsetnoerr
 //				5	testsetobjerrorcode
 //				5	teststaticpkg
 //				5	teststaticpkg_8.x
-//				7	testupvar
+//				4	teststringobj
+//				9	testupvar
 //				1	testwinclock
-//				21	testwordend
 //				54	thread
 //				2	unthreaded
 //				318	win
 //				4	winVista
 //				65	zlib
-//			
-//			Test files exiting with errors:  
-//			
-//			  aaa_exit.test
-//			
+//
+//			Test files exiting with errors:
+//
 //			  binary.test
-//			
+//
 //			  chan.test
-//			
+//
 //			  chanio.test
-//			
+//
 //			  clock.test
-//			
+//
 //			  cmdAH.test
-//			
+//
 //			  cmdIL.test
-//			
+//
 //			  encoding.test
-//			
-//			  event.test
-//			
+//
 //			  exec.test
-//			
-//			  expr-old.test
-//			
+//
 //			  fCmd.test
-//			
+//
 //			  fileName.test
-//			
+//
 //			  fileSystem.test
-//			
+//
 //			  foreach.test
-//			
+//
 //			  format.test
-//			
-//			  http.test
-//			
-//			  http11.test
-//			
+//
 //			  httpold.test
-//			
-//			  incr.test
-//			
+//
 //			  info.test
-//			
-//			  interp.test
-//			
+//
 //			  io.test
-//			
+//
 //			  ioCmd.test
-//			
+//
 //			  lreplace.test
-//			
-//			  main.test
-//			
-//			  msgcat.test
-//			
-//			  oo.test
-//			
+//
+//			  mathop.test
+//
 //			  opt.test
-//			
+//
+//			  parseOld.test
+//
 //			  pkgMkIndex.test
-//			
+//
 //			  platform.test
-//			
+//
 //			  safe.test
-//			
+//
 //			  socket.test
-//			
+//
 //			  tcltest.test
-//			
-//			  timer.test
-//			
+//
 //			  trace.test
-//			
+//
 //			  unixFCmd.test
-//			
+//
 //			  unixInit.test
-//			
-//			  utf.test
-//			
-//			  var.test
-//			
+//
 //			  winPipe.test
-//		all_test.go:1511: Failed: exit status 1
-//			all.tcl:	Total	13783	Passed	998	Skipped	3453	Failed	9332
-//			couldn't read directory "/tmp/test-ccgo-tcl-566492288/library/tzdata/Canada/": bad file number
-//			    while executing
-//			"glob -directory $rootdir -types d -nocomplain --  $pattern"
-//			    (procedure "GetMatchingDirectories" line 15)
-//			    invoked from within
-//			"GetMatchingDirectories $path"
-//			    (procedure "GetMatchingDirectories" line 17)
-//			    invoked from within
-//			"GetMatchingDirectories $path"
-//			    (procedure "GetMatchingDirectories" line 17)
-//			    invoked from within
-//			"GetMatchingDirectories $path"
-//			    (procedure "GetMatchingDirectories" line 17)
-//			    invoked from within
-//			"GetMatchingDirectories [testsDirectory]"
-//			    (procedure "runAllTests" line 124)
-//			    invoked from within
-//			"runAllTests"
-//			    (file "all.tcl" line 21)
-//	--- FAIL: TestTCLSQLite (304.28s)
-//		all_test.go:1948: 
-//			Test cases:     7269
-//			Pass:           7240 (99.60%)
-//			Fail:             29 (0.40%)
-//			! altermalloc.test-closeallfiles expected: [0]
-//			! altermalloc.test-closeallfiles got:      [1]
+//		all_test.go:1521: Failed: <nil>
+//			all.tcl:	Total	14493	Passed	1057	Skipped	3566	Failed	9870
+//
+//			Blacklisted test files: 5
+//			event.test
+//			http.test
+//			http11.test
+//			interp.test
+//			timer.test
+//	--- FAIL: TestTCLSQLite (590.30s)
+//		all_test.go:1963:
+//			Test cases:    17915
+//			Pass:          17776 (99.22%)
+//			Fail:            139 (0.78%)
 //			! attach-8.1 expected: [1 {file is not a database}]
 //			! attach-8.1 got:      [1 {unable to open database: test2.db}]
 //			! attach-8.2 expected: [26]
@@ -265,47 +240,37 @@ package ccgo
 //			! auth3-2.2 got:      [0]
 //			! autovacuum-1.1.3 expected: [4]
 //			! autovacuum-1.1.3 got:      [16]
+//			! autovacuum-1.2.3 expected: [4]
+//			! autovacuum-1.2.3 got:      [16]
 //			... too many fails
-//		all_test.go:1956: 
+//		all_test.go:1971:
 //			Test binary exit error: exit status 2
-//			Last completed test file: "Time: autovacuum.test 3553 ms"
-//			Last passed test: "autovacuum-ioerr2-3.1.3... Ok"
-//			Last line written to stdout: "autovacuum-ioerr2-4.1.1..."
+//			Last completed test file: "Time: boundary3.test 3158 ms"
+//			Last passed test: "boundary3-2.66.le.5... Ok"
+//			Last line written to stdout: "Page-cache overflow:  now 0  max 2122264"
 //			Blacklisted test files: 0
-//	cc 1 ccgo 1 build 1 run 1 ok 1 (100.00%) csmith 1 (2.719700388s)
-//	cc 2 ccgo 2 build 2 run 2 ok 2 (100.00%) csmith 2 (3.458719803s)
-//	cc 3 ccgo 3 build 3 run 3 ok 3 (100.00%) csmith 3 (4.518839034s)
-//	cc 4 ccgo 4 build 4 run 4 ok 4 (100.00%) csmith 4 (6.123481353s)
-//	cc 5 ccgo 5 build 5 run 5 ok 5 (100.00%) csmith 5 (7.543607008s)
-//	cc 6 ccgo 6 build 6 run 6 ok 6 (100.00%) csmith 6 (10.085409054s)
-//	cc 7 ccgo 7 build 7 run 7 ok 7 (100.00%) csmith 7 (10.839306378s)
-//	cc 8 ccgo 8 build 8 run 8 ok 8 (100.00%) csmith 8 (12.880724887s)
-//	cc 9 ccgo 9 build 9 run 9 ok 9 (100.00%) csmith 9 (27.508142336s)
-//	cc 10 ccgo 10 build 10 run 10 ok 10 (100.00%) csmith 10 (28.719847508s)
-//	cc 11 ccgo 11 build 11 run 11 ok 11 (100.00%) csmith 11 (30.551728806s)
-//	cc 12 ccgo 12 build 12 run 12 ok 12 (100.00%) csmith 12 (32.956272741s)
-//	cc 13 ccgo 13 build 13 run 13 ok 13 (100.00%) csmith 13 (33.698476947s)
-//	cc 14 ccgo 14 build 14 run 14 ok 14 (100.00%) csmith 14 (34.430417984s)
-//	cc 15 ccgo 15 build 15 run 15 ok 15 (100.00%) csmith 15 (36.103656049s)
-//	cc 16 ccgo 16 build 16 run 16 ok 16 (100.00%) csmith 16 (38.07908696s)
-//	cc 17 ccgo 17 build 17 run 17 ok 17 (100.00%) csmith 17 (38.783030992s)
-//	cc 18 ccgo 18 build 18 run 18 ok 18 (100.00%) csmith 18 (39.497262162s)
-//	cc 19 ccgo 19 build 19 run 19 ok 19 (100.00%) csmith 19 (40.922940847s)
-//	cc 20 ccgo 20 build 20 run 20 ok 20 (100.00%) csmith 20 (42.127474315s)
-//	cc 21 ccgo 21 build 21 run 21 ok 21 (100.00%) csmith 21 (43.760139334s)
-//	cc 22 ccgo 22 build 22 run 22 ok 22 (100.00%) csmith 22 (45.756475518s)
-//	cc 23 ccgo 23 build 23 run 23 ok 23 (100.00%) csmith 23 (47.403714969s)
-//	cc 24 ccgo 24 build 24 run 24 ok 24 (100.00%) csmith 24 (49.982889901s)
-//	cc 25 ccgo 25 build 25 run 25 ok 25 (100.00%) csmith 25 (51.690751062s)
-//	cc 26 ccgo 26 build 26 run 26 ok 26 (100.00%) csmith 26 (53.153685118s)
-//	cc 27 ccgo 27 build 27 run 27 ok 27 (100.00%) csmith 27 (55.411069982s)
-//	cc 29 ccgo 29 build 28 run 28 ok 28 (96.55%) csmith 29 (57.612737173s)
-//	cc 30 ccgo 30 build 29 run 29 ok 29 (96.67%) csmith 30 (59.12340364s)
-//	cc 31 ccgo 31 build 30 run 30 ok 30 (96.77%) csmith 31 (1m0.663895224s)
-//	CSmith	cc 31 ccgo 31 build 30 run 30 ok 30 (96.77%) csmith 31 (1m0.663931359s)
+//	cc 1 ccgo 1 build 1 run 1 ok 1 (100.00%) csmith 1 (7.700396643s)
+//	cc 2 ccgo 2 build 2 run 2 ok 2 (100.00%) csmith 2 (8.970581109s)
+//	cc 3 ccgo 3 build 3 run 3 ok 3 (100.00%) csmith 3 (10.40007401s)
+//	cc 4 ccgo 4 build 4 run 4 ok 4 (100.00%) csmith 4 (11.122326627s)
+//	cc 5 ccgo 5 build 5 run 5 ok 5 (100.00%) csmith 5 (11.964303937s)
+//	cc 6 ccgo 6 build 6 run 6 ok 6 (100.00%) csmith 6 (13.521960555s)
+//	cc 7 ccgo 7 build 7 run 7 ok 7 (100.00%) csmith 7 (16.13279742s)
+//	cc 8 ccgo 8 build 8 run 8 ok 8 (100.00%) csmith 8 (18.497511969s)
+//	cc 9 ccgo 9 build 9 run 9 ok 9 (100.00%) csmith 9 (26.000856688s)
+//	cc 10 ccgo 10 build 10 run 10 ok 10 (100.00%) csmith 10 (27.396525957s)
+//	cc 11 ccgo 11 build 11 run 11 ok 11 (100.00%) csmith 11 (36.358122903s)
+//	cc 12 ccgo 12 build 12 run 12 ok 12 (100.00%) csmith 12 (37.531798392s)
+//	cc 13 ccgo 13 build 13 run 13 ok 13 (100.00%) csmith 13 (38.277068278s)
+//	cc 14 ccgo 14 build 14 run 14 ok 14 (100.00%) csmith 14 (39.760146514s)
+//	cc 15 ccgo 15 build 15 run 15 ok 15 (100.00%) csmith 15 (42.81600287s)
+//	cc 16 ccgo 16 build 16 run 16 ok 16 (100.00%) csmith 16 (44.111460408s)
+//	cc 17 ccgo 17 build 17 run 17 ok 17 (100.00%) csmith 17 (45.766357583s)
+//	cc 18 ccgo 18 build 18 run 18 ok 18 (100.00%) csmith 18 (48.703504742s)
+//	CSmith	cc 18 ccgo 18 build 18 run 18 ok 18 (100.00%) csmith 18 (1m2.95301167s)
 //	FAIL
 //	exit status 1
-//	FAIL	github.com/cznic/sqlite2go/internal/ccgo	1300.110s
+//	FAIL	github.com/cznic/sqlite2go/internal/ccgo	1595.819s
 
 import (
 	"bufio"
@@ -1429,6 +1394,20 @@ import (
 		t.Fatal(err)
 	}
 
+	blacklist := []string{
+		"event.test",  // hangs
+		"http.test",   // hangs
+		"http11.test", // hangs
+		"interp.test", // hangs
+		"timer.test",  // hangs
+	}
+
+	for _, v := range blacklist {
+		if err := os.Remove(filepath.Join(dir, v)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	if err := cpDir(filepath.Join(dir, "library"), filepath.Join(src, filepath.FromSlash("_tcl8.6.8/library")), nil); err != nil {
 		t.Fatal(err)
 	}
@@ -1516,8 +1495,13 @@ import (
 	err = cmd.Wait()
 	<-ch
 	t.Logf("%s", strings.Join(lines, "\n"))
-	if err != nil || !cmd.ProcessState.Success() || resultLine != "" {
-		t.Fatalf("Failed: %v\n%s\n%s", err, resultLine, strings.Join(errLines, "\n"))
+	if err != nil || !cmd.ProcessState.Success() || resultLine != "" || len(blacklist) != 0 {
+		t.Fatalf(`Failed: %v
+%s
+%s
+Blacklisted test files: %d
+%s
+`, err, resultLine, strings.Join(errLines, "\n"), len(blacklist), strings.Join(blacklist, "\n"))
 	}
 }
 
