@@ -478,28 +478,24 @@ func XTcl_WaitPid(tls crt.TLS, _pid uintptr /* TTcl_Pid = *STcl_Pid_ */, _statPt
 		_real_pid int32
 	)
 	_real_pid = int32(_pid)
-	cmdMu.Lock()
-	cmd := cmdMap[int(_real_pid)]
-	cmdMu.Unlock()
-	if cmd == nil {
-		panic(_real_pid)
-	}
 
-	cmd.Wait()
-	cmdMu.Lock()
-	delete(cmdMap, int(_real_pid))
-	cmdMu.Unlock()
-	switch st := cmd.ProcessState; {
-	case st.Success():
-		if p := _statPtr; p != 0 {
-			*(*int32)(unsafe.Pointer(p)) = 0
+	switch _options {
+	case 0:
+		cmdMu.Lock()
+		cmd := cmdMap[int(_real_pid)]
+		cmdMu.Unlock()
+		if cmd == nil {
+			panic(_real_pid)
 		}
+
+		cmd.Wait()
+		cmdMu.Lock()
+		delete(cmdMap, int(_real_pid))
+		cmdMu.Unlock()
+		return _pid
 	default:
-		if p := _statPtr; p != 0 {
-			*(*int32)(unsafe.Pointer(p)) = 1
-		}
+		panic(_options)
 	}
-	return _pid
 
 `,
 	}
@@ -628,28 +624,30 @@ func XTcl_WaitPid(tls crt.TLS, _pid uintptr /* TTcl_Pid = *STcl_Pid_ */, _statPt
 		_real_pid int32
 	)
 	_real_pid = int32(_pid)
+
+	switch _options {
+	case 0:
+		cmdMu.Lock()
+		cmd := cmdMap[int(_real_pid)]
+		cmdMu.Unlock()
+		if cmd == nil {
+			panic(_real_pid)
+		}
+
+		cmd.Wait()
+		cmdMu.Lock()
+		delete(cmdMap, int(_real_pid))
+		cmdMu.Unlock()
+		return _pid
+	default:
+		panic(_options)
+	}
 	cmdMu.Lock()
 	cmd := cmdMap[int(_real_pid)]
 	cmdMu.Unlock()
 	if cmd == nil {
 		panic(_real_pid)
 	}
-
-	cmd.Wait()
-	cmdMu.Lock()
-	delete(cmdMap, int(_real_pid))
-	cmdMu.Unlock()
-	switch st := cmd.ProcessState; {
-	case st.Success():
-		if p := _statPtr; p != 0 {
-			*(*int32)(unsafe.Pointer(p)) = 0
-		}
-	default:
-		if p := _statPtr; p != 0 {
-			*(*int32)(unsafe.Pointer(p)) = 1
-		}
-	}
-	return _pid
 
 `,
 	}
@@ -760,6 +758,7 @@ func test(t *testing.T, clean bool, cc, ccgo, build, run *int, def, imp string, 
 import (
 	"os"
 	"unsafe"
+
 	"github.com/cznic/crt"
 )
 `)
