@@ -195,6 +195,14 @@ func (d *DeclarationSpecifier) typ(ctx *context) Type {
 		return UShort
 	case d.is(TypeSpecifierShort, TypeSpecifierSigned):
 		return Short
+	// TODO: not sure if this is right
+	case d.is(TypeSpecifierStruct, TypeSpecifierName):
+		switch x := d.TypeSpecifiers[1].scope.LookupIdent(d.TypeSpecifiers[1].Token.Val).(type) {
+		case *Declarator:
+			return x.Type
+		default:
+			panic("TBI")
+		}
 	default:
 		panic(d.typeSpecifiers)
 	}
