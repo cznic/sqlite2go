@@ -52,12 +52,19 @@ const (
 	CRT0Source = `/* crt0.c */
 #include <stdio.h>
 #include <stdlib.h>
+
+#ifndef _WIN32
 #include <netinet/in.h>
+#else
+#include <ws2tcpip.h>
+#endif
 
 FILE __stdfiles[3];
+
 char **environ;
 int main();
 struct in6_addr in6addr_any = IN6ADDR_ANY_INIT;
+
 void *stdin = &__stdfiles[0], *stdout = &__stdfiles[1], *stderr = &__stdfiles[2];
 
 //TODO int daylight;
@@ -326,6 +333,9 @@ func Translate(tweaks *Tweaks, includePaths, sysIncludePaths []string, sources .
 	ctx.model = model
 	ctx.includePaths = append([]string(nil), includePaths...)
 	ctx.sysIncludePaths = append([]string(nil), sysIncludePaths...)
+	// make sure e.g. an #include "windows.h" also works
+	// (even though its not in the current path)
+	ctx.includePaths = append(ctx.includePaths, ctx.sysIncludePaths...)
 	if tu, err = ctx.parse(sources); err != nil {
 		return nil, err
 	}

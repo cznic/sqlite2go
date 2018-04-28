@@ -197,7 +197,7 @@ func main() {
 	if env("GOOS", runtime.GOOS) != "windows" {
 		additionalInject += "#define HAVE_LOCALTIME_R 1"
 	} else {
-		additionalInject += "#define SQLITE_SHELL_IS_UTF8 1"
+		additionalInject += "#define SQLITE_SHELL_IS_UTF8 1\n#define SQLITE_DISABLE_INTRINSIC 1"
 	}
 
 	predefSource := c99.NewStringSource(

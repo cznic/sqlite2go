@@ -21,6 +21,7 @@ import (
 	"go/token"
 	"io"
 	"os"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -48,7 +49,7 @@ func main() {
 		*(*uintptr)(unsafe.Pointer(p)) = %[1]sCString(v)
 		p += psz
 	}
-	*(*uintptr)(unsafe.Pointer(Xenviron)) = env
+	*(*uintptr)(unsafe.Pointer(%[2]s)) = env
 	X_start(%[1]sNewTLS(), int32(len(os.Args)), argv)
 }
 `
@@ -185,6 +186,14 @@ func (g *gen) enqueueNumbered(n *c99.Declarator) {
 	g.queue.PushBack(n)
 }
 
+func env(key, val string) string {
+	if s := os.Getenv(key); s != "" {
+		return s
+	}
+
+	return val
+}
+
 func (g *gen) gen(cmd bool, more ...func(*[]byte) error) (err error) {
 	if len(g.in) == 0 {
 		return fmt.Errorf("no translation unit passed")
@@ -214,8 +223,13 @@ const %s = uintptr(0)
 			todo("")
 			break
 		}
-
-		g.w(mainSrc, crt)
+		
+		// get some annoying windows mangling to work
+		environName := "Xenviron"
+		if env("GOOS", runtime.GOOS) == "windows" {
+			environName = "X_environ"
+		}
+		g.w(mainSrc, crt, environName)
 		g.define(sym)
 	default:
 		var a []string

@@ -36,7 +36,6 @@ var (
 
 	need = map[string][]string{ // "goos_goarch" or "goos" or "all": list of headers
 		"all": {
-			"alloca.h",
 			"assert.h",
 			"ctype.h",
 			"errno.h",
@@ -58,13 +57,12 @@ var (
 			"strings.h",
 			"sys/stat.h",
 			"sys/time.h",
-			"sys/wait.h",
 			"time.h",
 			"unistd.h",
 			"wchar.h",
-			"zlib.h",
 		},
 		"linux": {
+			"alloca.h",
 			"arpa/inet.h",
 			"dirent.h",
 			"dlfcn.h",
@@ -91,13 +89,18 @@ var (
 			"sys/uio.h",
 			"sys/un.h",
 			"sys/utsname.h",
+			"sys/wait.h",
 			"termios.h",
 			"utime.h",
+			"zlib.h",
 		},
 		"windows": {
+			"intrin.h",
 			"io.h",
 			"process.h",
 			"windows.h",
+			"ws2tcpip.h",
+			"in6addr.h",
 		},
 	}
 )
@@ -128,6 +131,8 @@ func main() {
 	tweaks := &c99.Tweaks{
 		EnableAnonymousStructFields: true,
 		EnableEmptyStructs:          true,
+		IgnorePragmas:               true,
+		InjectFinalNL:               true,
 		TrackIncludes: func(s string) {
 			if strings.HasSuffix(s, "builtin.h") || strings.HasSuffix(s, "predefined.h") {
 				return
@@ -144,11 +149,12 @@ func main() {
 			c99.NewStringSource("main.c", fmt.Sprintf(`
 #include "./%s/builtin.h"
 
+#ifndef _WIN32
 // Output of gcc features.c && ./a.out in github.com/cznic/sqlite2go/internal/c99/headers on linux_amd64.
 #define _POSIX_SOURCE 1
 #define _POSIX_C_SOURCE 200809
 #define _DEFAULT_SOURCE 1
-
+#endif
 
 #include "%v"
 `, osArch, v)),
@@ -168,7 +174,10 @@ func main() {
 			panic(c99.ErrString(err))
 		}
 
-		f := filepath.Join(osArch, v)
+		// On windows we could have volume names like "M:" in the path
+		// so we do some quick escaping
+		cleaned := strings.Replace(v, ":", "_", -1)
+		f := filepath.Join(osArch, cleaned)
 		mkdir(filepath.Dir(f))
 		if err := ioutil.WriteFile(f, b, 0644); err != nil {
 			panic(c99.ErrString(err))
@@ -219,7 +228,8 @@ func predefined() []string {
 	for _, v := range sys {
 		v := filepath.Clean(v)
 		if _, ok := m[v]; !ok {
-			fmt.Fprintf(b, "%s\n", v)
+			// also escape when writing to the paths file, but use correct paths while we run
+			fmt.Fprintf(b, "%s\n", strings.Replace(filepath.Clean(v), ":", "_", -1))
 			sys[w] = v
 			w++
 		}
