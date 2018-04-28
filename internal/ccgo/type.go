@@ -195,7 +195,7 @@ func (g *gen) ptyp(t c99.Type, ptr2uintptr bool, lvl int) (r string) {
 
 			if v.Bits != 0 {
 				if layout[i].Bitoff == 0 {
-					fmt.Fprintf(&buf, "F%d [0]%s;", layout[i].Offset, g.typ(layout[i].PackedType))
+					fmt.Fprintf(&buf, "F%d [0]%s;", i, g.typ(layout[i].PackedType))
 					if lvl == 0 {
 						fmt.Fprintf(&buf, "\n")
 					}

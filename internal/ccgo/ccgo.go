@@ -115,7 +115,6 @@ type gen struct {
 	ts                     int64
 	units                  map[*c99.Declarator]int
 
-	escAllTLDs bool
 	mainFn     bool
 	needAlloca bool
 	needNZ32   bool //TODO -> crt
@@ -391,7 +390,7 @@ func (g gen) escaped(n *c99.Declarator) bool {
 		return false
 	}
 
-	if n.AddressTaken || n.IsTLD() && g.escAllTLDs {
+	if n.AddressTaken {
 		return true
 	}
 
