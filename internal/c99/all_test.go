@@ -558,7 +558,7 @@ func TestCPPExpand(t *testing.T) {
 			t.Fatalf("unexpected success: %s", path)
 		default:
 			if c.error() != nil {
-				t.Fatal(ErrString(err))
+				t.Fatal(ErrString(c.error()))
 			}
 		}
 
