@@ -222,7 +222,7 @@ const %s = uintptr(0)
 			todo("")
 			break
 		}
-		
+
 		// get some annoying windows mangling to work
 		environName := "Xenviron"
 		if env("GOOS", runtime.GOOS) == "windows" {
