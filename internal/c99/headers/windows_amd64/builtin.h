@@ -37,7 +37,7 @@ typedef struct {
 
 // maybe: `#define __CRT__NO_INLINE` to remove some unnecessary stuff
 // Implementing __readgsqword as macro also prevents an anonymous union access 
-// (which isn't supported in C99 actually WTF)
+// (which isn't supported in C99 actually)
 #define __readfsdword(x) abort_stubbed("__readfsdword")
 #define __readgsqword(x) abort_stubbed("__readgsqword")
 
