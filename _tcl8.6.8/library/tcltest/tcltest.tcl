@@ -1677,7 +1677,11 @@ proc tcltest::CompareStrings {actual expected mode} {
     if {![info exists CustomMatch($mode)]} {
         return -code error "No matching command registered for `-match $mode'"
     }
-    set match [namespace eval :: $CustomMatch($mode) [list $expected $actual]]
+    if {$mode == "exact"} {
+        set match [string equal $expected $actual]
+    } else {
+        set match [namespace eval :: $CustomMatch($mode) [list $expected $actual]]
+    }
     if {[catch {expr {$match && $match}} result]} {
 	return -code error "Invalid result from `-match $mode' command: $result"
     }

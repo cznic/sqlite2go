@@ -18,99 +18,104 @@ package ccgo
 //	Other	cc 19 ccgo 19 build 19 run 19 ok 19
 //	GCC	cc 1097 ccgo 1095 build 1095 run 1095 ok 1095
 //	Shell	cc 1 ccgo 1 build 1 run 1 ok 1
-//	--- FAIL: TestTCL (86.66s)
-//		all_test.go:1496: Tests running in interp:  /tmp/test-ccgo-tcl-589874009/tcl
-//			Tests located in:  /tmp/test-ccgo-tcl-589874009
-//			Tests running in:  /tmp/test-ccgo-tcl-589874009
-//			Temporary files stored in /tmp/test-ccgo-tcl-589874009
+//	--- FAIL: TestTCL (81.88s)
+//		all_test.go:1490: Tests running in interp:  /tmp/test-ccgo-tcl-804613423/tcl
+//			Tests located in:  /tmp/test-ccgo-tcl-804613423
+//			Tests running in:  /tmp/test-ccgo-tcl-804613423
+//			Temporary files stored in /tmp/test-ccgo-tcl-804613423
 //			Test files run in separate interpreters
 //			Running tests that match:  *
 //			Skipping test files that match:  l.*.test
 //			Only running test files that match:  *.test
-//			Tests began at Tue May 28 19:21:18 -463544 3918
+//			Tests began at Thu May 30 12:09:04 -463544 3918
 //			aaa_exit.test
+//			append.test
+//			appendComp.test
+//			apply.test
+//			assemble.test
+//			assocd.test
+//			async.test
+//			autoMkindex.test
 //
 //
-//			==== exit-1.1 normal, quick exit FAILED
+//			==== autoMkindex-1.2 build tclIndex based on a test file FAILED
 //			==== Contents of test case:
 //
-//			     set f [open "|[interpreter] << \"exec [interpreter] << {set ::env(TCL_FINALIZE_ON_EXIT) 0;exit}\"" r]
-//			     set aft [after 1000 {set done "Quick exit hangs !!!"}]
-//			     fileevent $f readable {after cancel $aft;set done OK}
-//			     vwait done
-//			     if {$done != "OK"} {
-//			     	fconfigure $f -blocking 0
-//				close $f
-//			     } else {
-//				if {[catch {close $f} err]} {
-//				    set done "Quick exit misbehaves: $err"
-//				}
-//			     }
-//			     set done
+//			    auto_mkindex . autoMkindex.tcl
+//			    file exists tclIndex
 //
-//			---- Result was:
-//			OK
-//			---- Result should have been (exact matching):
-//			OK
-//			==== exit-1.1 FAILED
+//			---- Test generated error; Return code was: 1
+//			---- Return code should have been one of: 0 2
+//			---- errorInfo: couldn't open "autoMkindex.tcl": permission denied
+//			    while executing
+//			"open $file"
+//			    (procedure "auto_mkindex_parser::mkindex" line 10)
+//			    invoked from within
+//			"auto_mkindex_parser::mkindex $file"
+//			    (procedure "auto_mkindex" line 23)
+//			    invoked from within
+//			"auto_mkindex . autoMkindex.tcl"
+//			    ("uplevel" body line 2)
+//			    invoked from within
+//			"uplevel 1 $script"
+//			---- errorCode: POSIX EACCES {permission denied}
+//			==== autoMkindex-1.2 FAILED
 //
 //
 //
-//			==== exit-1.2 full-finalized exit FAILED
+//			==== autoMkindex-1.3 examine tclIndex FAILED
 //			==== Contents of test case:
 //
-//			     set f [open "|[interpreter] << \"exec [interpreter] << {set ::env(TCL_FINALIZE_ON_EXIT) 1;exit}\"" r]
-//			     set aft [after 1000 {set done "Full-finalized exit hangs !!!"}]
-//			     fileevent $f readable {after cancel $aft;set done OK}
-//			     vwait done
-//			     if {$done != "OK"} {
-//			     	fconfigure $f -blocking 0
-//				close $f
-//			     } else {
-//				if {[catch {close $f} err]} {
-//				    set done "Full-finalized exit misbehaves: $err"
+//			    auto_mkindex . autoMkindex.tcl
+//			    namespace eval tcl_autoMkindex_tmp {
+//			        set dir "."
 //
 //			...
 //
-//			Tests ended at Tue May 28 19:22:24 -463544 3918
-//			all.tcl:	Total	10525	Passed	953	Skipped	3386	Failed	6186
+//			Tests ended at Thu May 30 12:10:03 -463544 3918
+//			all.tcl:	Total	17222	Passed	13419	Skipped	3576	Failed	227
 //			Sourced 143 Test Files.
-//			Files with failing tests: aaa_exit.test append.test appendComp.test apply.test assemble.test autoMkindex.test basic.test case.test cmdMZ.test compExpr-old.test compExpr.test compile.test concat.test config.test coroutine.test dict.test env.test error.test eval.test execute.test expr-old.test for-old.test for.test get.test history.test if-old.test if.test incr-old.test init.test ioTrans.test join.test lindex.test linsert.test list.test listObj.test llength.test lmap.test load.test lrange.test lrepeat.test lsearch.test lsetComp.test mathop.test misc.test msgcat.test namespace-old.test namespace.test nre.test obj.test oo.test ooNext2.test opt.test package.test parse.test parseExpr.test parseOld.test pid.test proc-old.test proc.test pwd.test reg.test regexp.test regexpComp.test rename.test result.test security.test set-old.test source.test split.test stack.test string.test subst.test switch.test tailcall.test tm.test trace.test unknown.test unload.test uplevel.test upvar.test utf.test var.test while-old.test while.test
+//			Files with failing tests: autoMkindex.test basic.test case.test cmdMZ.test coroutine.test env.test execute.test for.test init.test ioTrans.test lmap.test msgcat.test nre.test opt.test parseOld.test pid.test regexp.test regexpComp.test scan.test source.test string.test stringComp.test subst.test switch.test trace.test
 //			Number of tests skipped for each constraint:
-//				4	!ieeeFloatingPoint
+//				9	!ieeeFloatingPoint
 //				5	bug-3057639
 //				49	dde
 //				31	emptyTest
 //				3	fullutf
+//				2	hasIsoLocale
 //				2	ieeeFloatingPoint&&testexprdouble
 //				20	knownBug
-//				9	longIs32bit
+//				17	longIs32bit
 //				14	macosxFileAttr
-//				73	memory
-//				3	nonPortable
+//				76	memory
+//				4	nonPortable
 //				9	nt
 //				1	pcOnly
 //				12	pkgaRequired
 //				20	pkguaRequired
 //				8	procbodytest
 //				12	testasync
-//				26	testbytestring
+//				27	testbytestring
 //				54	testchannel
 //				9	testcmdinfo
 //				6	testcmdtoken
 //				11	testcmdtrace
+//				1	testconcatobj
 //				2	testcreatecommand
 //				6	testdcall
 //				8	testdel
 //				3	testdelassocdata
+//				126	testdoubledigits
 //				1	testdoubleobj
-//				35	testdstring
+//				40	testdstring
 //				217	testevalex
 //				13	testevalobjv
 //				25	testevent
 //				7	testexprdouble
+//				5	testexprdoubleobj
+//				4	testexprdoubleobj&&ieeeFloatingPoint
 //				16	testexprlong
-//				1	testexprlongobj
+//				17	testexprlongobj
 //				215	testexprparser
 //				1	testexprparser && !ieeeFloatingPoint
 //				1	testexprparser && ieeeFloatingPoint
@@ -126,10 +131,10 @@ package ccgo
 //				32	testindexobj
 //				10	testinterpresolver
 //				28	testlink
-//				10	testmathfunctions
+//				21	testmathfunctions
 //				33	testnrelevels
 //				10	testnumutfchars
-//				232	testobj
+//				233	testobj
 //				7	testparseargs
 //				117	testparser
 //				5	testparsevar
@@ -137,6 +142,7 @@ package ccgo
 //				1098	testregexp
 //				2	testreturn
 //				11	testsaveresult
+//				1	testset2
 //				4	testsetassocdata
 //				4	testseterrorcode
 //				12	testsetnoerr
@@ -165,13 +171,9 @@ package ccgo
 //
 //			  cmdAH.test
 //
-//			  cmdIL.test
-//
 //			  encoding.test
 //
 //			  exec.test
-//
-//			  expr.test
 //
 //			  fCmd.test
 //
@@ -179,21 +181,15 @@ package ccgo
 //
 //			  fileSystem.test
 //
-//			  foreach.test
-//
 //			  format.test
 //
 //			  httpold.test
-//
-//			  incr.test
 //
 //			  info.test
 //
 //			  io.test
 //
 //			  ioCmd.test
-//
-//			  lreplace.test
 //
 //			  main.test
 //
@@ -203,13 +199,7 @@ package ccgo
 //
 //			  safe.test
 //
-//			  scan.test
-//
-//			  set.test
-//
 //			  socket.test
-//
-//			  stringComp.test
 //
 //			  tcltest.test
 //
@@ -217,11 +207,9 @@ package ccgo
 //
 //			  unixInit.test
 //
-//			  util.test
-//
 //			  winPipe.test
-//		all_test.go:1498: Failed: <nil>
-//			all.tcl:	Total	10525	Passed	953	Skipped	3386	Failed	6186
+//		all_test.go:1492: Failed: <nil>
+//			all.tcl:	Total	17222	Passed	13419	Skipped	3576	Failed	227
 //
 //			Blacklisted test files: 5
 //			event.test
