@@ -26,7 +26,7 @@
 //  [1]: https://github.com/cznic/cc
 package c99
 
-//TODO suport _REDIRECT (open vs open64)
+//TODO support _REDIRECT (open vs open64)
 
 import (
 	"bufio"

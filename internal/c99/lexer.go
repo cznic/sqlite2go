@@ -139,7 +139,8 @@ type lexer struct {
 	tc          *tokenPipe
 	currFn      int // [0]6.4.2.2
 
-	typedef bool // Prev token returned was TYPEDEF_NAME
+	noTypedefName bool // Do not consider next token a TYPEDEF_NAME
+	typedef       bool // Prev token returned was TYPEDEF_NAME
 
 	ungetBuffer
 }
@@ -181,12 +182,14 @@ func (l *lexer) Lex(lval *yySymType) (r int) {
 	lval.Token.Rune = l.toC(lval.Token.Rune, lval.Token.Val)
 	typedef := l.typedef
 	l.typedef = false
+	noTypedefName := l.noTypedefName
+	l.noTypedefName = false
 	switch lval.Token.Rune {
 	case NON_REPL:
 		lval.Token.Rune = IDENTIFIER
 		fallthrough
 	case IDENTIFIER:
-		if typedef || !followSetHasTypedefName[lval.yys] {
+		if noTypedefName || typedef || !followSetHasTypedefName[lval.yys] {
 			break
 		}
 
