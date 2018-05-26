@@ -158,39 +158,39 @@ package ccgo
 //			autoMkindex.test
 //			basic.test
 //			binary.test
-//			
-//			
+//
+//
 //			==== binary-5.8 Tcl_BinaryObjCmd: format FAILED
 //			==== Contents of test case:
-//			
+//
 //			    binary format b17 1
-//			
+//
 //			---- Result was:
 //			
 //			---- Result should have been (exact matching):
 //			\x00\x00
 //			==== binary-5.8 FAILED
-//			
-//			
-//			
+//
+//
+//
 //			==== binary-22.8 Tcl_BinaryObjCmd: scan FAILED
 //			==== Contents of test case:
-//			
+//
 //			    unset -nocomplain arg1
 //			    list [binary scan \x52\x53 b14 arg1] $arg1
-//			
+//
 //			---- Result was:
 //			1 0100
 //			---- Result should have been (exact matching):
 //			1 01001010110010
 //			==== binary-22.8 FAILED
-//			
-//			
-//			
+//
+//
+//
 //			==== binary-22.9 Tcl_BinaryObjCmd: scan FAILED
-//			
+//
 //			...
-//			
+//
 //			Tests ended at Tue May 01 19:15:19 +0200 2018
 //			all.tcl:	Total	18623	Passed	14676	Skipped	3764	Failed	183
 //			Sourced 148 Test Files.
@@ -282,51 +282,51 @@ package ccgo
 //				387	win
 //				4	winVista
 //				65	zlib
-//			
-//			Test files exiting with errors:  
-//			
+//
+//			Test files exiting with errors:
+//
 //			  chanio.test
-//			
+//
 //			  clock.test
-//			
+//
 //			  cmdAH.test
-//			
+//
 //			  event.test
-//			
+//
 //			  exec.test
-//			
+//
 //			  fCmd.test
-//			
+//
 //			  fileName.test
-//			
+//
 //			  fileSystem.test
-//			
+//
 //			  format.test
-//			
+//
 //			  http.test
-//			
+//
 //			  http11.test
-//			
+//
 //			  httpold.test
-//			
+//
 //			  info.test
-//			
+//
 //			  io.test
-//			
+//
 //			  ioCmd.test
-//			
+//
 //			  main.test
-//			
+//
 //			  platform.test
-//			
+//
 //			  socket.test
-//			
+//
 //			  tcltest.test
-//			
+//
 //			  timer.test
-//			
+//
 //			  unixFCmd.test
-//			
+//
 //			  unixInit.test
 //		all_test.go:1622: Failed: exit status 1
 //			all.tcl:	Total	18623	Passed	14676	Skipped	3764	Failed	183
@@ -782,15 +782,17 @@ func TestOpt(t *testing.T) {
 		{"var _ = ((a)(b))", "var _ = a(b)"},
 		{"var _ = *((*a)(b))", "var _ = *(*a)(b)"},
 	} {
-		in := bytes.NewBufferString(v.in)
-		var out bytes.Buffer
-		if err := newOpt().do(&out, in, "TestOp", 0); err != nil {
-			t.Fatal(err)
-		}
+		t.Run("", func(t *testing.T) {
+			in := bytes.NewBufferString(v.in)
+			var out bytes.Buffer
+			if err := newOpt().do(&out, in, "TestOp", 0); err != nil {
+				t.Fatal(err)
+			}
 
-		if g, e := bytes.TrimSpace(out.Bytes()), []byte(v.out); !bytes.Equal(g, e) {
-			t.Fatalf("got\n%s\nexp\n%s", g, e)
-		}
+			if g, e := bytes.TrimSpace(out.Bytes()), []byte(v.out); !bytes.Equal(g, e) {
+				t.Fatalf("got\n%s\nexp\n%s", g, e)
+			}
+		})
 	}
 }
 
@@ -965,50 +967,49 @@ func TestTCC(t *testing.T) {
 		}
 	}()
 
-	m, err := filepath.Glob(filepath.FromSlash("../c99/testdata/tcc-0.9.26/tests/tests2/*.c"))
+	const filePref = "../c99/testdata/tcc-0.9.26/tests/tests2/"
+	m, err := filepath.Glob(filepath.FromSlash(filePref + "*.c"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	var cc, ccgo, build, run, ok, n int
 	for _, pth := range m {
-		if re != nil && !re.MatchString(filepath.Base(pth)) {
-			continue
-		}
-
-		if _, ok := blacklist[filepath.Base(pth)]; ok {
-			continue
-		}
-
-		run0 := run
-		n++
-		out, err := test(t, false, &cc, &ccgo, &build, &run, "", "", nil, dir, []string{pth})
-		if err != nil {
-			t.Errorf("%v: %v", pth, err)
-			continue
-		}
-
-		if run == run0 {
-			continue
-		}
-
-		fn := pth[:len(pth)-len(filepath.Ext(pth))] + ".expect"
-		s, err := ioutil.ReadFile(fn)
-		if err != nil {
-			if os.IsNotExist(err) {
-				ok++
-				continue
+		t.Run(strings.TrimPrefix(pth, filePref), func(t *testing.T) {
+			if re != nil && !re.MatchString(filepath.Base(pth)) {
+				t.SkipNow()
+			} else if _, ok := blacklist[filepath.Base(pth)]; ok {
+				t.Skip("blacklisted")
 			}
-		}
 
-		out = trim(out)
-		s = trim(s)
-		if !bytes.Equal(out, s) {
-			t.Errorf("%s\ngot\n%s\nexp\n%s----\ngot\n%s\nexp\n%s", pth, hex.Dump(out), hex.Dump(s), out, s)
-			continue
-		}
+			run0 := run
+			n++
+			out, err := test(t, false, &cc, &ccgo, &build, &run, "", "", nil, dir, []string{pth})
+			if err != nil {
+				t.Fatalf("%v: %v", pth, err)
+			}
 
-		ok++
+			if run == run0 {
+				return
+			}
+
+			fn := pth[:len(pth)-len(filepath.Ext(pth))] + ".expect"
+			s, err := ioutil.ReadFile(fn)
+			if err != nil {
+				if os.IsNotExist(err) {
+					ok++
+					return
+				}
+			}
+
+			out = trim(out)
+			s = trim(s)
+			if !bytes.Equal(out, s) {
+				t.Fatalf("%s\ngot\n%s\nexp\n%s----\ngot\n%s\nexp\n%s", pth, hex.Dump(out), hex.Dump(s), out, s)
+			}
+
+			ok++
+		})
 	}
 	if cc != n || ccgo != n || build != n || run != n || ok != n {
 		t.Fatalf("cc %v ccgo %v build %v run %v ok %v", cc, ccgo, build, run, ok)
@@ -1040,46 +1041,47 @@ func TestOther(t *testing.T) {
 		}
 	}()
 
-	m, err := filepath.Glob(filepath.FromSlash("../c99/testdata/bug/*.c"))
+	const filePref = "../c99/testdata/bug/"
+	m, err := filepath.Glob(filepath.FromSlash(filePref + "*.c"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	var cc, ccgo, build, run, ok, n int
 	for _, pth := range m {
-		if b := filepath.Base(pth); b == "log.c" && *oRE != "log.c" || re != nil && !re.MatchString(b) {
-			continue
-		}
-
-		run0 := run
-		n++
-		out, err := test(t, false, &cc, &ccgo, &build, &run, "", "", strings.Split(*oI, ","), dir, []string{pth})
-		if err != nil {
-			t.Errorf("%v: %v", pth, err)
-			continue
-		}
-
-		if run == run0 {
-			continue
-		}
-
-		fn := pth[:len(pth)-len(filepath.Ext(pth))] + ".expect"
-		s, err := ioutil.ReadFile(fn)
-		if err != nil {
-			if os.IsNotExist(err) {
-				ok++
-				continue
+		t.Run(strings.TrimPrefix(pth, filePref), func(t *testing.T) {
+			if b := filepath.Base(pth); b == "log.c" && *oRE != "log.c" || re != nil && !re.MatchString(b) {
+				t.SkipNow()
 			}
-		}
 
-		out = trim(out)
-		s = trim(s)
-		if !bytes.Equal(out, s) {
-			t.Errorf("%s\ngot\n%s\nexp\n%s----\ngot\n%s\nexp\n%s", pth, hex.Dump(out), hex.Dump(s), out, s)
-			continue
-		}
+			run0 := run
+			n++
+			out, err := test(t, false, &cc, &ccgo, &build, &run, "", "", strings.Split(*oI, ","), dir, []string{pth})
+			if err != nil {
+				t.Fatalf("%v: %v", pth, err)
+			}
 
-		ok++
+			if run == run0 {
+				return
+			}
+
+			fn := pth[:len(pth)-len(filepath.Ext(pth))] + ".expect"
+			s, err := ioutil.ReadFile(fn)
+			if err != nil {
+				if os.IsNotExist(err) {
+					ok++
+					return
+				}
+			}
+
+			out = trim(out)
+			s = trim(s)
+			if !bytes.Equal(out, s) {
+				t.Fatalf("%s\ngot\n%s\nexp\n%s----\ngot\n%s\nexp\n%s", pth, hex.Dump(out), hex.Dump(s), out, s)
+			}
+
+			ok++
+		})
 	}
 	if cc != n || ccgo != n || build != n || run != n || ok != n {
 		t.Fatalf("cc %v ccgo %v build %v run %v ok %v", cc, ccgo, build, run, ok)
@@ -1150,52 +1152,48 @@ func TestGCC(t *testing.T) {
 		}
 	}()
 
-	m, err := filepath.Glob(filepath.FromSlash("../c99/testdata/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/*.c"))
+	const filePref = "../c99/testdata/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/"
+	m, err := filepath.Glob(filepath.FromSlash(filePref + "*.c"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	var cc, ccgo, build, run, ok int
 	for _, pth := range m {
-		switch {
-		case re != nil:
-			if !re.MatchString(filepath.Base(pth)) {
-				continue
+		t.Run(strings.TrimPrefix(pth, filePref), func(t *testing.T) {
+			if re != nil && !re.MatchString(filepath.Base(pth)) {
+				t.SkipNow()
+			} else if _, ok := blacklist[filepath.Base(pth)]; ok {
+				t.Skip("blacklisted")
 			}
-		default:
-			if _, ok := blacklist[filepath.Base(pth)]; ok {
-				continue
+
+			run0 := run
+			out, err := test(t, false, &cc, &ccgo, &build, &run, def, "", nil, dir, []string{pth})
+			if err != nil {
+				t.Fatalf("%v: %v", pth, err)
 			}
-		}
 
-		run0 := run
-		out, err := test(t, false, &cc, &ccgo, &build, &run, def, "", nil, dir, []string{pth})
-		if err != nil {
-			t.Errorf("%v: %v", pth, err)
-			continue
-		}
-
-		if run == run0 {
-			continue
-		}
-
-		fn := pth[:len(pth)-len(filepath.Ext(pth))] + ".expect"
-		s, err := ioutil.ReadFile(fn)
-		if err != nil {
-			if os.IsNotExist(err) {
-				ok++
-				continue
+			if run == run0 {
+				return
 			}
-		}
 
-		out = trim(out)
-		s = trim(s)
-		if !bytes.Equal(out, s) {
-			t.Errorf("%s\ngot\n%s\nexp\n%s----\ngot\n%s\nexp\n%s", pth, hex.Dump(out), hex.Dump(s), out, s)
-			continue
-		}
+			fn := pth[:len(pth)-len(filepath.Ext(pth))] + ".expect"
+			s, err := ioutil.ReadFile(fn)
+			if err != nil {
+				if os.IsNotExist(err) {
+					ok++
+					return
+				}
+			}
 
-		ok++
+			out = trim(out)
+			s = trim(s)
+			if !bytes.Equal(out, s) {
+				t.Fatalf("%s\ngot\n%s\nexp\n%s----\ngot\n%s\nexp\n%s", pth, hex.Dump(out), hex.Dump(s), out, s)
+			}
+
+			ok++
+		})
 	}
 	if run == 0 || run != build || ok != build {
 		t.Fatalf("cc %v ccgo %v build %v run %v ok %v", cc, ccgo, build, run, ok)
