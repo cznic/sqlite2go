@@ -458,18 +458,19 @@ const (
 )
 
 var (
-	oBuild      = flag.Bool("build", false, "full build errors")
-	oCC         = flag.Bool("cc", false, "full cc errors")
-	oCCGO       = flag.Bool("ccgo", false, "full ccgo errors")
-	oCSmith     = flag.Duration("csmith", time.Minute, "") // Use something like -timeout 25h -csmith 24h for real testing.
-	oEdit       = flag.Bool("edit", false, "")
-	oI          = flag.String("I", "", "")
-	oNoCmp      = flag.Bool("nocmp", false, "")
-	oRE         = flag.String("re", "", "")
-	oTmp        = flag.String("tmp", "", "")
-	oTrace      = flag.Bool("trc", false, "")
-	re          *regexp.Regexp
-	searchPaths []string
+	oBuild       = flag.Bool("build", false, "full build errors")
+	oCC          = flag.Bool("cc", false, "full cc errors")
+	oCCGO        = flag.Bool("ccgo", false, "full ccgo errors")
+	oCSmith      = flag.Duration("csmith", time.Minute, "") // Use something like -timeout 25h -csmith 24h for real testing.
+	oEdit        = flag.Bool("edit", false, "")
+	oI           = flag.String("I", "", "")
+	oNoCmp       = flag.Bool("nocmp", false, "")
+	oRE          = flag.String("re", "", "")
+	oTmp         = flag.String("tmp", "", "")
+	oTrace       = flag.Bool("trc", false, "")
+	oWriteExpect = flag.Bool("wexp", false, "write expected Go output")
+	re           *regexp.Regexp
+	searchPaths  []string
 
 	tclPatches = []string{
 		// ----
@@ -882,19 +883,39 @@ import (
 `)
 	w.WriteString(imp)
 	if err := Command(w, tus); err != nil {
+		w.Flush()
+		f.Close()
 		//dbg("ccgo: %v", errString(err)) //TODO-
 		if !*oCCGO {
 			err = nil
 		}
-		return nil, err
+		return nil, fmt.Errorf("ccgo: %v", err)
 	}
 
 	if err := w.Flush(); err != nil {
+		f.Close()
 		t.Fatal(err)
 	}
 
 	if err := f.Close(); err != nil {
 		t.Fatal(err)
+	}
+
+	if exp, err := ioutil.ReadFile(testFn + ".go"); err == nil {
+		got, err := ioutil.ReadFile(f.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(exp, got) {
+			t.Fatalf("%s\ngot\n%s\nexp\n%s----\ngot\n%s\nexp\n%s", pth, hex.Dump(got), hex.Dump(exp), got, exp)
+		}
+	} else if os.IsNotExist(err) && *oWriteExpect {
+		got, err := ioutil.ReadFile(f.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("written file: %v", testFn+".go")
+		ioutil.WriteFile(testFn+".go", got, 0644)
 	}
 
 	*ccgo++
