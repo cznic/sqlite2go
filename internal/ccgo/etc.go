@@ -24,7 +24,8 @@ import (
 
 const (
 	ap   = "ap"
-	crt  = "crt."
+	crtP = "crt"
+	crt  = crtP + "."
 	null = "null"
 )
 
