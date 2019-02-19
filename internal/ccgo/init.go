@@ -10,6 +10,7 @@ import (
 	"github.com/cznic/ir"
 	"github.com/cznic/sqlite2go/internal/c99"
 	"github.com/cznic/xc"
+	"go/ast"
 )
 
 func (g *gen) isZeroInitializer(n *c99.Initializer) bool {
@@ -144,6 +145,17 @@ func (g *gen) allocBSS(t c99.Type) int64 {
 	return r
 }
 
+func (g *gen) allocBSSExpr(t c99.Type) ast.Expr {
+	return addInt(ident("bss"), g.allocBSS(t))
+}
+
+func (g *gen) bssVarFor(n *c99.Declarator) ast.Decl {
+	return varDecl(
+		g.mangleDeclarator(n), nil,
+		g.allocBSSExpr(n.Type),
+	)
+}
+
 func (g *gen) allocDS(t c99.Type, n *c99.Initializer) int64 {
 	up := roundup(int64(len(g.ds)), int64(g.model.Alignof(t)))
 	if n := up - int64(len(g.ds)); n != 0 {
@@ -159,30 +171,37 @@ func (g *gen) allocDS(t c99.Type, n *c99.Initializer) int64 {
 	return int64(r)
 }
 
-func (g *gen) initializer(d *c99.Declarator) { // non TLD
+func (g *gen) initializer(d *c99.Declarator) []ast.Stmt { // non TLD
 	n := d.Initializer
 	if n.Case == c99.InitializerExpr { // Expr
+		var x ast.Expr
 		switch {
 		case g.escaped(d):
-			g.w("\n*(*%s)(unsafe.Pointer(%s))", g.typ(d.Type), g.mangleDeclarator(d))
+			x = unaddrUnsafe(g.typ(d.Type), g.mangleDeclaratorI(d))
 		default:
-			g.w("\n%s", g.mangleDeclarator(d))
+			x = g.mangleDeclaratorI(d)
 		}
-		g.w(" = ")
-		g.literal(d.Type, n)
-		return
+		return []ast.Stmt{assign(
+			x, g.literal(d.Type, n),
+		)}
 	}
 
 	if g.isConstInitializer(d.Type, n) {
 		b := make([]byte, g.model.Sizeof(d.Type))
 		g.renderInitializer(b, d.Type, n)
+		x := g.mangleDeclaratorI(d)
+		s := g.tsString(dict.ID(b), "")
 		switch {
 		case g.escaped(d):
-			g.w("\n%sCopy(%s, ts+%d, %d)", crt, g.mangleDeclarator(d), g.allocString(dict.ID(b)), len(b))
+			return []ast.Stmt{exprStmt(
+				callFunc(crtP, "Copy", x, s, intLit(int64(len(b)))),
+			)}
 		default:
-			g.w("\n%s = *(*%s)(unsafe.Pointer(ts+%d))", g.mangleDeclarator(d), g.typ(d.Type), g.allocString(dict.ID(b)))
+			return []ast.Stmt{assign(
+				x, unaddrUnsafe(g.typ(d.Type), s),
+			)}
 		}
-		return
+		return nil
 	}
 
 	switch {
@@ -194,6 +213,7 @@ func (g *gen) initializer(d *c99.Declarator) { // non TLD
 				layout := g.model.Layout(x)
 				fld := 0
 				fields := x.Fields
+				var out []ast.Stmt
 				for l := n.InitializerList; l != nil; l = l.InitializerList {
 					for layout[fld].Bits < 0 || layout[fld].Declarator == nil {
 						fld++
@@ -228,27 +248,28 @@ func (g *gen) initializer(d *c99.Declarator) { // non TLD
 							Expr2:   n.Expr,
 							Operand: c99.Operand{Type: fp.Declarator.Type},
 						}
-						g.w("\n")
-						g.void(e)
+						out = append(out, g.void(e)...)
 					}
 
 					fld++
 				}
+				return out
 			default:
 				todo("%v: %T", g.position0(n), x)
+				return nil
 			}
 		case c99.InitializerExpr: // Expr
 			todo("", g.position0(n))
 		}
+		return nil
 	default:
-		switch {
-		case g.escaped(d):
-			g.w("\n*(*%s)(unsafe.Pointer(%s))", g.typ(d.Type), g.mangleDeclarator(d))
-		default:
-			g.w("\n%s", g.mangleDeclarator(d))
+		var x ast.Expr = g.mangleDeclaratorI(d)
+		if g.escaped(d) {
+			x = unaddrUnsafe(g.typ(d.Type), x)
 		}
-		g.w(" = ")
-		g.literal(d.Type, n)
+		return []ast.Stmt{
+			assign(x, g.literal(d.Type, n)),
+		}
 	}
 }
 
@@ -320,7 +341,7 @@ func (g *gen) initializerHasBitFields(t c99.Type, n *c99.Initializer) bool {
 	panic("unreachable")
 }
 
-func (g *gen) literal(t c99.Type, n *c99.Initializer) {
+func (g *gen) literal(t c99.Type, n *c99.Initializer) ast.Expr {
 	switch x := c99.UnderlyingType(t).(type) {
 	case *c99.ArrayType:
 		if n.Expr != nil {
@@ -329,33 +350,32 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 				c99.Char,
 				c99.UChar:
 
-				g.w("*(*%s)(unsafe.Pointer(", g.typ(t))
+				var xe ast.Expr
 				switch n.Expr.Case {
 				case c99.ExprString:
 					s := dict.S(int(n.Expr.Operand.Value.(*ir.StringValue).StringID))
 					switch {
 					case x.Size.Value == nil:
-						g.w("ts+%d", g.allocString(dict.ID(s)))
+						xe = g.tsString(dict.ID(s), "")
 					default:
 						b := make([]byte, x.Size.Value.(*ir.Int64Value).Value)
 						copy(b, s)
 						if len(b) != 0 && b[len(b)-1] == 0 {
 							b = b[:len(b)-1]
 						}
-						g.w("ts+%d", g.allocString(dict.ID(b)))
+						xe = g.tsString(dict.ID(b), "")
 					}
 				default:
 					todo("", g.position0(n), n.Expr.Case)
 				}
-				g.w("))")
+				return unaddrUnsafe(g.typ(t), xe)
 			default:
 				todo("", g.position0(n), x.Item.Kind())
 			}
-			return
+			return nil
 		}
 
-		g.w("%s{", g.typ(t))
-		g.initializerListNL(n.InitializerList)
+		var elts []ast.Expr
 		if !g.isZeroInitializer(n) {
 			index := 0
 			for l := n.InitializerList; l != nil; l = l.InitializerList {
@@ -363,30 +383,27 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 					todo("", g.position0(n))
 				}
 				if !g.isZeroInitializer(l.Initializer) {
-					g.w("%d: ", index)
-					g.literal(x.Item, l.Initializer)
-					g.w(", ")
-					g.initializerListNL(n.InitializerList)
+					elts = append(elts, pair(
+						intLit(int64(index)),
+						g.literal(x.Item, l.Initializer),
+					))
 				}
 				index++
 			}
 		}
-		g.w("}")
+		return compositeLit(g.typ(t), elts...)
 	case *c99.PointerType:
 		if n.Expr.IsZero() || n.Expr.Operand.Value == c99.Null {
-			g.w("0")
-			return
+			return intLit(0)
 		}
 
-		g.value(n.Expr, false)
+		return g.value(n.Expr, false)
 	case *c99.StructType:
 		if n.Expr != nil {
-			g.value(n.Expr, false)
-			return
+			return g.value(n.Expr, false)
 		}
 
-		g.w("%s{", g.typ(t))
-		g.initializerListNL(n.InitializerList)
+		var elts []ast.Expr
 		if !g.isZeroInitializer(n) {
 			layout := g.model.Layout(t)
 			fld := 0
@@ -409,40 +426,41 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 				}
 				if !g.isZeroInitializer(l.Initializer) {
 					d := fields[fld]
-					g.w("%s: ", mangleIdent(d.Name, true))
-					g.literal(d.Type, l.Initializer)
-					g.w(", ")
-					g.initializerListNL(n.InitializerList)
+					elts = append(elts, pair(
+						ident(mangleIdent(d.Name, true)),
+						g.literal(d.Type, l.Initializer),
+					))
 				}
 				fld++
 			}
 		}
-		g.w("}")
+		return compositeLit(g.typ(t), elts...)
 	case *c99.EnumType:
 		switch n.Case {
 		case c99.InitializerExpr:
-			g.value(n.Expr, false)
+			return g.value(n.Expr, false)
 		default:
 			todo("", g.position0(n), n.Case)
+			return nil
 		}
 	case c99.TypeKind:
 		if x.IsArithmeticType() {
-			g.convert(n.Expr, t)
-			return
+			return g.convert(n.Expr, t)
 		}
 		todo("", g.position0(n), x)
+		return nil
 	case *c99.UnionType:
 		if n.Expr != nil {
-			g.value(n.Expr, false)
-			return
+			return g.value(n.Expr, false)
 		}
-
 		if g.isZeroInitializer(n) {
-			g.w("%s{}", g.typ(t))
-			return
+			return compositeLit(g.typ(t))
 		}
 
-		g.w("*(*%s)(unsafe.Pointer(&struct{", g.typ(t))
+		var (
+			flds []*ast.Field
+			elts []ast.Expr
+		)
 		if !g.isZeroInitializer(n) {
 			layout := g.model.Layout(t)
 			fld := 0
@@ -468,25 +486,27 @@ func (g *gen) literal(t c99.Type, n *c99.Initializer) {
 				}
 
 				d := fields[fld]
+				x := g.literal(d.Type, l.Initializer)
 				switch pad := g.model.Sizeof(t) - g.model.Sizeof(d.Type); {
 				case pad == 0:
-					g.w("%s}{", g.typ(d.Type))
+					flds = append(flds, field("", g.typI(d.Type), nil))
+					elts = append(elts, x)
 				default:
-					g.w("f %s; _[%d]byte}{f: ", g.typ(d.Type), pad)
+					flds = append(flds,
+						field("f", g.typI(d.Type), nil),
+						field("_", arrayTyp("byte", int(pad)), nil),
+					)
+					elts = append(elts, pair(ident("f"), x))
 				}
-				g.literal(d.Type, l.Initializer)
 				fld++
 			}
 		}
-		g.w("}))")
+		return unaddrUnsafe(g.typ(t), takeAddr(
+			compositeLitT(flds, elts...),
+		))
 	default:
 		todo("%v: %T", g.position0(n), x)
-	}
-}
-
-func (g *gen) initializerListNL(n *c99.InitializerList) {
-	if n.Len > 1 {
-		g.w("\n")
+		return nil
 	}
 }
 

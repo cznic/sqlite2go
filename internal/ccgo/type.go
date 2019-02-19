@@ -10,6 +10,7 @@ import (
 
 	"github.com/cznic/ir"
 	"github.com/cznic/sqlite2go/internal/c99"
+	"go/ast"
 )
 
 type tCacheKey struct {
@@ -22,7 +23,16 @@ func isVaList(t c99.Type) bool {
 	return ok && (x.Name == idVaList || x.Name == idBuiltinVaList)
 }
 
+func (g *gen) castVA(n *c99.Expr, t c99.Type) ast.Expr {
+	return cast(
+		g.value(n, false),
+		sel(ident(crtP), "VA"+g.typ(c99.UnderlyingType(t))),
+	)
+}
+
 func (g *gen) typ(t c99.Type) string { return g.ptyp(t, true, 0) }
+
+func (g *gen) typI(t c99.Type) *ast.Ident { return ident(g.typ(t)) }
 
 func (g *gen) ptyp(t c99.Type, ptr2uintptr bool, lvl int) (r string) {
 	k := tCacheKey{t, ptr2uintptr}

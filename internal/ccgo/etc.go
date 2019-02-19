@@ -24,7 +24,8 @@ import (
 
 const (
 	ap   = "ap"
-	crt  = "crt."
+	crtP = "crt"
+	crt  = crtP + "."
 	null = "null"
 )
 
@@ -44,7 +45,6 @@ var (
 	idVaList                 = dict.SID("va_list")
 	idVaStart                = dict.SID("__va_start")
 
-	testFn      string
 	traceOpt    bool
 	traceTODO   bool
 	traceWrites bool
