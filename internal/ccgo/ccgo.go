@@ -59,9 +59,9 @@ func main() {
 // Command outputs a Go program generated from in to w.
 //
 // No package or import clause is generated.
-func Command(w io.Writer, in []*c99.TranslationUnit) (err error) { return command(w, &in) }
+func Command(w io.Writer, in []*c99.TranslationUnit) (err error) { return command(w, "", &in) }
 
-func command(w io.Writer, in *[]*c99.TranslationUnit, more ...func(*[]byte) error) (err error) {
+func command(w io.Writer, fn string, in *[]*c99.TranslationUnit, more ...func(*[]byte) error) (err error) {
 	returned := false
 
 	defer func() {
@@ -70,7 +70,7 @@ func command(w io.Writer, in *[]*c99.TranslationUnit, more ...func(*[]byte) erro
 		}
 	}()
 
-	err = newGen(w, in).gen(true, more...)
+	err = newGen(w, in).gen(true, fn, more...)
 	returned = true
 	return err
 }
@@ -79,7 +79,7 @@ func command(w io.Writer, in *[]*c99.TranslationUnit, more ...func(*[]byte) erro
 //
 // No package or import clause is generated.
 func Package(w io.Writer, in []*c99.TranslationUnit) error {
-	return newGen(w, &in).gen(false)
+	return newGen(w, &in).gen(false, "")
 }
 
 type gen struct {
@@ -193,7 +193,7 @@ func env(key, val string) string {
 	return val
 }
 
-func (g *gen) gen(cmd bool, more ...func(*[]byte) error) (err error) {
+func (g *gen) gen(cmd bool, fn string, more ...func(*[]byte) error) (err error) {
 	if len(g.in) == 0 {
 		return fmt.Errorf("no translation unit passed")
 	}
@@ -308,7 +308,7 @@ const %s = uintptr(0)
 	}
 	g.w("\")\n)\n")
 	g.in = nil
-	return newOpt().do(g.out, &g.out0, testFn, g.needBool2int, more...)
+	return newOpt().do(g.out, &g.out0, fn, g.needBool2int, more...)
 }
 
 // dbg only

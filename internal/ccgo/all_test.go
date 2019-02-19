@@ -158,39 +158,39 @@ package ccgo
 //			autoMkindex.test
 //			basic.test
 //			binary.test
-//			
-//			
+//
+//
 //			==== binary-5.8 Tcl_BinaryObjCmd: format FAILED
 //			==== Contents of test case:
-//			
+//
 //			    binary format b17 1
-//			
+//
 //			---- Result was:
 //			
 //			---- Result should have been (exact matching):
 //			\x00\x00
 //			==== binary-5.8 FAILED
-//			
-//			
-//			
+//
+//
+//
 //			==== binary-22.8 Tcl_BinaryObjCmd: scan FAILED
 //			==== Contents of test case:
-//			
+//
 //			    unset -nocomplain arg1
 //			    list [binary scan \x52\x53 b14 arg1] $arg1
-//			
+//
 //			---- Result was:
 //			1 0100
 //			---- Result should have been (exact matching):
 //			1 01001010110010
 //			==== binary-22.8 FAILED
-//			
-//			
-//			
+//
+//
+//
 //			==== binary-22.9 Tcl_BinaryObjCmd: scan FAILED
-//			
+//
 //			...
-//			
+//
 //			Tests ended at Tue May 01 19:15:19 +0200 2018
 //			all.tcl:	Total	18623	Passed	14676	Skipped	3764	Failed	183
 //			Sourced 148 Test Files.
@@ -282,51 +282,51 @@ package ccgo
 //				387	win
 //				4	winVista
 //				65	zlib
-//			
-//			Test files exiting with errors:  
-//			
+//
+//			Test files exiting with errors:
+//
 //			  chanio.test
-//			
+//
 //			  clock.test
-//			
+//
 //			  cmdAH.test
-//			
+//
 //			  event.test
-//			
+//
 //			  exec.test
-//			
+//
 //			  fCmd.test
-//			
+//
 //			  fileName.test
-//			
+//
 //			  fileSystem.test
-//			
+//
 //			  format.test
-//			
+//
 //			  http.test
-//			
+//
 //			  http11.test
-//			
+//
 //			  httpold.test
-//			
+//
 //			  info.test
-//			
+//
 //			  io.test
-//			
+//
 //			  ioCmd.test
-//			
+//
 //			  main.test
-//			
+//
 //			  platform.test
-//			
+//
 //			  socket.test
-//			
+//
 //			  tcltest.test
-//			
+//
 //			  timer.test
-//			
+//
 //			  unixFCmd.test
-//			
+//
 //			  unixInit.test
 //		all_test.go:1622: Failed: exit status 1
 //			all.tcl:	Total	18623	Passed	14676	Skipped	3764	Failed	183
@@ -405,6 +405,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -468,6 +469,7 @@ var (
 	oRE         = flag.String("re", "", "")
 	oTmp        = flag.String("tmp", "", "")
 	oTrace      = flag.Bool("trc", false, "")
+	oCheckSrc   = flag.Bool("check-src", false, "check generated Go source file")
 	re          *regexp.Regexp
 	searchPaths []string
 
@@ -782,15 +784,17 @@ func TestOpt(t *testing.T) {
 		{"var _ = ((a)(b))", "var _ = a(b)"},
 		{"var _ = *((*a)(b))", "var _ = *(*a)(b)"},
 	} {
-		in := bytes.NewBufferString(v.in)
-		var out bytes.Buffer
-		if err := newOpt().do(&out, in, "TestOp", 0); err != nil {
-			t.Fatal(err)
-		}
+		t.Run("", func(t *testing.T) {
+			in := bytes.NewBufferString(v.in)
+			var out bytes.Buffer
+			if err := newOpt().do(&out, in, "TestOp", 0); err != nil {
+				t.Fatal(err)
+			}
 
-		if g, e := bytes.TrimSpace(out.Bytes()), []byte(v.out); !bytes.Equal(g, e) {
-			t.Fatalf("got\n%s\nexp\n%s", g, e)
-		}
+			if g, e := bytes.TrimSpace(out.Bytes()), []byte(v.out); !bytes.Equal(g, e) {
+				t.Fatalf("got\n%s\nexp\n%s", g, e)
+			}
+		})
 	}
 }
 
@@ -814,8 +818,8 @@ func translate(tweaks *c99.Tweaks, includePaths, sysIncludePaths []string, def s
 	return c99.Translate(tweaks, includePaths, sysIncludePaths, in...)
 }
 
-func test(t *testing.T, clean bool, cc, ccgo, build, run *int, def, imp string, inc2 []string, dir string, pth []string, args ...string) ([]byte, error) {
-	testFn = pth[len(pth)-1]
+func test(t *testing.T, clean bool, cc, ccgo, build, run *int32, def, imp string, inc2 []string, dir string, pth []string, args ...string) ([]byte, bool, error) {
+	testFn := pth[len(pth)-1]
 	if clean {
 		m, err := filepath.Glob(filepath.Join(dir, "*.*"))
 		if err != nil {
@@ -845,7 +849,7 @@ func test(t *testing.T, clean bool, cc, ccgo, build, run *int, def, imp string, 
 
 	crt0, err := c99.Translate(tweaks, inc, searchPaths, c99.MustBuiltin(), c99.MustCrt0())
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	tus := []*c99.TranslationUnit{crt0}
@@ -856,13 +860,13 @@ func test(t *testing.T, clean bool, cc, ccgo, build, run *int, def, imp string, 
 			if !*oCC {
 				err = nil
 			}
-			return nil, err
+			return nil, false, err
 		}
 
 		tus = append(tus, tu)
 	}
 
-	*cc++
+	atomic.AddInt32(cc, 1)
 	f, err := os.Create(filepath.Join(dir, "main.go"))
 	if err != nil {
 		t.Fatal(err)
@@ -879,15 +883,35 @@ import (
 )
 `)
 	w.WriteString(imp)
-	if err := Command(w, tus); err != nil {
+
+	writeGo := func(suffix string) {
+		got, err := ioutil.ReadFile(f.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) == 0 {
+			return
+		}
+		t.Logf("written file: %v", testFn+suffix)
+		ioutil.WriteFile(testFn+suffix, got, 0644)
+	}
+
+	const gotSuffix = ".got.go"
+	if err := command(w, testFn, &tus); err != nil {
+		w.Flush()
+		f.Close()
 		//dbg("ccgo: %v", errString(err)) //TODO-
 		if !*oCCGO {
 			err = nil
 		}
-		return nil, err
+		if *oCheckSrc {
+			writeGo(gotSuffix)
+		}
+		return nil, false, fmt.Errorf("ccgo: %v", err)
 	}
 
 	if err := w.Flush(); err != nil {
+		f.Close()
 		t.Fatal(err)
 	}
 
@@ -895,314 +919,200 @@ import (
 		t.Fatal(err)
 	}
 
-	*ccgo++
+	if *oCheckSrc {
+		if exp, err := ioutil.ReadFile(testFn + ".go"); err == nil {
+			got, err := ioutil.ReadFile(f.Name())
+			if err != nil {
+				t.Fatal(err)
+			}
+			gotFile := testFn + gotSuffix
+			if !bytes.Equal(exp, got) {
+				ioutil.WriteFile(gotFile, got, 0644)
+				t.Errorf("%s\nunexpected Go output", pth)
+			} else {
+				os.Remove(gotFile)
+			}
+		} else if os.IsNotExist(err) {
+			writeGo(".go")
+		}
+	}
+
+	atomic.AddInt32(ccgo, 1)
 
 	if out, err := exec.Command("go", "build", "-o", filepath.Join(dir, "main"), f.Name()).CombinedOutput(); err != nil {
 		// dbg("build: %v", errString(err)) //TODO-
 		if !*oBuild {
-			return nil, nil
+			return nil, false, nil
 		}
 
-		return nil, fmt.Errorf("%v: %s", err, out)
+		return nil, false, fmt.Errorf("%v: %s", err, out)
 	}
 
-	*build++
-
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-
-	defer func() {
-		if err := os.Chdir(cwd); err != nil {
-			t.Error(err)
-		}
-	}()
+	atomic.AddInt32(build, 1)
 
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 
 	defer cancel()
 
-	out, err := exec.CommandContext(ctx, filepath.Join(dir, "main"), args...).CombinedOutput()
+	cmd := exec.CommandContext(ctx, filepath.Join(dir, "main"), args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	ok := false
 	switch {
 	case err != nil:
 		//dbg("run: %v", errString(err)) //TODO-
 	default:
-		*run++
+		atomic.AddInt32(run, 1)
+		ok = true
 	}
-	return out, err
+	return out, ok, err
 }
 
-func TestTCC(t *testing.T) {
-	defer func() {
-		c99.FlushCache()
-		debug.FreeOSMemory()
-	}()
+const testdata = "../c99/testdata"
 
-	blacklist := map[string]struct{}{
-		"13_integer_literals.c": {}, // 9:12: ExprInt strconv.ParseUint: parsing "0b010101010101": invalid syntax
-		"31_args.c":             {},
-		"34_array_assignment.c": {}, // gcc: main.c:16:6: error: incompatible types when assigning to type ‘int[4]’ from type ‘int *’
-		"46_grep.c":             {}, // incompatible forward declaration type
-	}
+var suitesXCC = []struct {
+	name      string
+	def       string
+	dir       string
+	blacklist map[string]struct{}
+}{
+	{
+		name: "TCC",
+		dir:  testdata + "/tcc-0.9.26/tests/tests2/",
+		blacklist: map[string]struct{}{
+			"13_integer_literals.c": {}, // 9:12: ExprInt strconv.ParseUint: parsing "0b010101010101": invalid syntax
+			"31_args.c":             {},
+			"34_array_assignment.c": {}, // gcc: main.c:16:6: error: incompatible types when assigning to type ‘int[4]’ from type ‘int *’
+			"46_grep.c":             {}, // incompatible forward declaration type
+		},
+	},
+	{
+		name: "GCC",
+		dir:  testdata + "/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/",
+		blacklist: map[string]struct{}{
+			"20010904-1.c":    {}, // __attribute__((aligned(32)))
+			"20010904-2.c":    {}, // __attribute__((aligned(32)))
+			"20021127-1.c":    {}, // non standard GCC behavior
+			"pr23467.c":       {}, // __attribute__ ((aligned (8)))
+			"pr67037.c":       {}, // void f(); f(); f(42)
+			"pushpop_macro.c": {}, // #pragma push_macro("_")
+			"pr17377.c":       {}, // undefined: "__builtin_return_address"
 
-	if s := *oRE; s != "" {
-		re = regexp.MustCompile(s)
-	}
-
-	dir, err := ioutil.TempDir("", "test-ccgo-tcc-")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	defer func() {
-		if err := os.RemoveAll(dir); err != nil {
-			t.Fatal(err)
-		}
-	}()
-
-	m, err := filepath.Glob(filepath.FromSlash("../c99/testdata/tcc-0.9.26/tests/tests2/*.c"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var cc, ccgo, build, run, ok, n int
-	for _, pth := range m {
-		if re != nil && !re.MatchString(filepath.Base(pth)) {
-			continue
-		}
-
-		if _, ok := blacklist[filepath.Base(pth)]; ok {
-			continue
-		}
-
-		run0 := run
-		n++
-		out, err := test(t, false, &cc, &ccgo, &build, &run, "", "", nil, dir, []string{pth})
-		if err != nil {
-			t.Errorf("%v: %v", pth, err)
-			continue
-		}
-
-		if run == run0 {
-			continue
-		}
-
-		fn := pth[:len(pth)-len(filepath.Ext(pth))] + ".expect"
-		s, err := ioutil.ReadFile(fn)
-		if err != nil {
-			if os.IsNotExist(err) {
-				ok++
-				continue
-			}
-		}
-
-		out = trim(out)
-		s = trim(s)
-		if !bytes.Equal(out, s) {
-			t.Errorf("%s\ngot\n%s\nexp\n%s----\ngot\n%s\nexp\n%s", pth, hex.Dump(out), hex.Dump(s), out, s)
-			continue
-		}
-
-		ok++
-	}
-	if cc != n || ccgo != n || build != n || run != n || ok != n {
-		t.Fatalf("cc %v ccgo %v build %v run %v ok %v", cc, ccgo, build, run, ok)
-	}
-
-	if *oEdit {
-		fmt.Printf("TCC\tcc %v ccgo %v build %v run %v ok %v\n", cc, ccgo, build, run, ok)
-	}
-}
-
-func TestOther(t *testing.T) {
-	defer func() {
-		c99.FlushCache()
-		debug.FreeOSMemory()
-	}()
-
-	if s := *oRE; s != "" {
-		re = regexp.MustCompile(s)
-	}
-
-	dir, err := ioutil.TempDir("", "test-ccgo-other-")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	defer func() {
-		if err := os.RemoveAll(dir); err != nil {
-			t.Fatal(err)
-		}
-	}()
-
-	m, err := filepath.Glob(filepath.FromSlash("../c99/testdata/bug/*.c"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var cc, ccgo, build, run, ok, n int
-	for _, pth := range m {
-		if b := filepath.Base(pth); b == "log.c" && *oRE != "log.c" || re != nil && !re.MatchString(b) {
-			continue
-		}
-
-		run0 := run
-		n++
-		out, err := test(t, false, &cc, &ccgo, &build, &run, "", "", strings.Split(*oI, ","), dir, []string{pth})
-		if err != nil {
-			t.Errorf("%v: %v", pth, err)
-			continue
-		}
-
-		if run == run0 {
-			continue
-		}
-
-		fn := pth[:len(pth)-len(filepath.Ext(pth))] + ".expect"
-		s, err := ioutil.ReadFile(fn)
-		if err != nil {
-			if os.IsNotExist(err) {
-				ok++
-				continue
-			}
-		}
-
-		out = trim(out)
-		s = trim(s)
-		if !bytes.Equal(out, s) {
-			t.Errorf("%s\ngot\n%s\nexp\n%s----\ngot\n%s\nexp\n%s", pth, hex.Dump(out), hex.Dump(s), out, s)
-			continue
-		}
-
-		ok++
-	}
-	if cc != n || ccgo != n || build != n || run != n || ok != n {
-		t.Fatalf("cc %v ccgo %v build %v run %v ok %v", cc, ccgo, build, run, ok)
-	}
-
-	if *oEdit {
-		fmt.Printf("Other\tcc %v ccgo %v build %v run %v ok %v\n", cc, ccgo, build, run, ok)
-	}
-}
-
-func TestGCC(t *testing.T) {
-	defer func() {
-		c99.FlushCache()
-		debug.FreeOSMemory()
-	}()
-
-	const def = `
+			"20000703-1.c":                 {}, //TODO statement expression
+			"20040411-1.c":                 {}, //TODO VLA
+			"20040423-1.c":                 {}, //TODO VLA
+			"20040629-1.c":                 {}, //TODO bits, arithmetic precision
+			"20040705-1.c":                 {}, //TODO bits, arithmetic precision
+			"20040705-2.c":                 {}, //TODO bits, arithmetic precision
+			"20041218-2.c":                 {}, //TODO VLA
+			"20101011-1.c":                 {}, //TODO Needs sigfpe on int division by zero
+			"921016-1.c":                   {}, //TODO bits, arithmetic precision
+			"970217-1.c":                   {}, //TODO VLA
+			"alias-4.c":                    {}, //TODO __attribute__ ((alias ("a")))
+			"bitfld-1.c":                   {}, //TODO bits, arithmetic precision
+			"bitfld-3.c":                   {}, //TODO bits, arithmetic precision
+			"built-in-setjmp.c":            {}, //TODO undefined: "__builtin_setjmp"
+			"builtin-constant.c":           {}, //TODO undefined: "__builtin_constant_p"
+			"builtin-types-compatible-p.c": {}, //TODO must track type qualifiers
+			"pr19449.c":                    {}, //TODO undefined: "__builtin_constant_p"
+			"pr32244-1.c":                  {}, //TODO bits, arithmetic precision
+			"pr34971.c":                    {}, //TODO bits, arithmetic precision
+			"pr37780.c":                    {}, //TODO undefined: "__builtin_ctz"
+			"pr47237.c":                    {}, //TODO undefined: "__builtin_apply"
+			"pr60003.c":                    {}, //TODO undefined: "__builtin_setjmp"
+			"pr64006.c":                    {}, //TODO undefined: "__builtin_mul_overflow"
+			"pr68381.c":                    {}, //TODO undefined: "__builtin_mul_overflow"
+			"pr77767.c":                    {}, //TODO VLA
+			"pr71554.c":                    {}, //TODO undefined: "__builtin_mul_overflow"
+			"pr78622.c":                    {}, //TODO undefined: "__builtin_snprintf"
+		},
+		def: `
 #define SIGNAL_SUPPRESS // gcc.c-torture/execute/20101011-1.c
-`
-	blacklist := map[string]struct{}{
-		"20010904-1.c":    {}, // __attribute__((aligned(32)))
-		"20010904-2.c":    {}, // __attribute__((aligned(32)))
-		"20021127-1.c":    {}, // non standard GCC behavior
-		"pr23467.c":       {}, // __attribute__ ((aligned (8)))
-		"pr67037.c":       {}, // void f(); f(); f(42)
-		"pushpop_macro.c": {}, // #pragma push_macro("_")
-		"pr17377.c":       {}, // undefined: "__builtin_return_address"
+`,
+	},
+	{
+		name: "other",
+		dir:  testdata + "/bug/",
+		blacklist: map[string]struct{}{
+			"log.c": {},
+		},
+	},
+}
 
-		"20000703-1.c":                 {}, //TODO statement expression
-		"20040411-1.c":                 {}, //TODO VLA
-		"20040423-1.c":                 {}, //TODO VLA
-		"20040629-1.c":                 {}, //TODO bits, arithmetic precision
-		"20040705-1.c":                 {}, //TODO bits, arithmetic precision
-		"20040705-2.c":                 {}, //TODO bits, arithmetic precision
-		"20041218-2.c":                 {}, //TODO VLA
-		"20101011-1.c":                 {}, //TODO Needs sigfpe on int division by zero
-		"921016-1.c":                   {}, //TODO bits, arithmetic precision
-		"970217-1.c":                   {}, //TODO VLA
-		"alias-4.c":                    {}, //TODO __attribute__ ((alias ("a")))
-		"bitfld-1.c":                   {}, //TODO bits, arithmetic precision
-		"bitfld-3.c":                   {}, //TODO bits, arithmetic precision
-		"built-in-setjmp.c":            {}, //TODO undefined: "__builtin_setjmp"
-		"builtin-constant.c":           {}, //TODO undefined: "__builtin_constant_p"
-		"builtin-types-compatible-p.c": {}, //TODO must track type qualifiers
-		"pr19449.c":                    {}, //TODO undefined: "__builtin_constant_p"
-		"pr32244-1.c":                  {}, //TODO bits, arithmetic precision
-		"pr34971.c":                    {}, //TODO bits, arithmetic precision
-		"pr37780.c":                    {}, //TODO undefined: "__builtin_ctz"
-		"pr47237.c":                    {}, //TODO undefined: "__builtin_apply"
-		"pr60003.c":                    {}, //TODO undefined: "__builtin_setjmp"
-		"pr64006.c":                    {}, //TODO undefined: "__builtin_mul_overflow"
-		"pr68381.c":                    {}, //TODO undefined: "__builtin_mul_overflow"
-		"pr77767.c":                    {}, //TODO VLA
+func TestCC(t *testing.T) {
+	for _, s := range suitesXCC {
+		s := s
+		t.Run(strings.ToLower(s.name), func(t *testing.T) {
+			testCC(t, s.name, s.blacklist, s.def, s.dir)
+		})
+		c99.FlushCache()
+		debug.FreeOSMemory()
 	}
+}
 
+func testCC(t *testing.T, cname string, blacklist map[string]struct{}, def, filePref string) {
 	if s := *oRE; s != "" {
 		re = regexp.MustCompile(s)
 	}
-
-	dir, err := ioutil.TempDir("", "test-ccgo-gcc-")
+	m, err := filepath.Glob(filepath.FromSlash(filePref + "*.c"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	defer func() {
-		if err := os.RemoveAll(dir); err != nil {
-			t.Fatal(err)
-		}
-	}()
-
-	m, err := filepath.Glob(filepath.FromSlash("../c99/testdata/github.com/gcc-mirror/gcc/gcc/testsuite/gcc.c-torture/execute/*.c"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var cc, ccgo, build, run, ok int
+	var cc, ccgo, build, run, ok, n int32
 	for _, pth := range m {
-		switch {
-		case re != nil:
-			if !re.MatchString(filepath.Base(pth)) {
-				continue
+		pth := pth
+		t.Run(strings.TrimPrefix(pth, filePref), func(t *testing.T) {
+			if re != nil && !re.MatchString(filepath.Base(pth)) {
+				t.SkipNow()
+			} else if _, ok := blacklist[filepath.Base(pth)]; ok {
+				t.Skip("blacklisted")
 			}
-		default:
-			if _, ok := blacklist[filepath.Base(pth)]; ok {
-				continue
+			t.Parallel()
+
+			atomic.AddInt32(&n, 1)
+
+			dir, err := ioutil.TempDir("", "test-ccgo-"+strings.ToLower(cname)+"-")
+			if err != nil {
+				t.Fatal(err)
 			}
-		}
+			defer func() {
+				if err := os.RemoveAll(dir); err != nil {
+					t.Fatal(err)
+				}
+			}()
 
-		run0 := run
-		out, err := test(t, false, &cc, &ccgo, &build, &run, def, "", nil, dir, []string{pth})
-		if err != nil {
-			t.Errorf("%v: %v", pth, err)
-			continue
-		}
-
-		if run == run0 {
-			continue
-		}
-
-		fn := pth[:len(pth)-len(filepath.Ext(pth))] + ".expect"
-		s, err := ioutil.ReadFile(fn)
-		if err != nil {
-			if os.IsNotExist(err) {
-				ok++
-				continue
+			out, full, err := test(t, false, &cc, &ccgo, &build, &run, def, "", nil, dir, []string{pth})
+			if err != nil {
+				t.Fatalf("%v: %v", pth, err)
+			} else if !full {
+				return
 			}
-		}
 
-		out = trim(out)
-		s = trim(s)
-		if !bytes.Equal(out, s) {
-			t.Errorf("%s\ngot\n%s\nexp\n%s----\ngot\n%s\nexp\n%s", pth, hex.Dump(out), hex.Dump(s), out, s)
-			continue
-		}
+			fn := pth[:len(pth)-len(filepath.Ext(pth))] + ".expect"
+			s, err := ioutil.ReadFile(fn)
+			if err != nil {
+				if os.IsNotExist(err) {
+					ok++
+					return
+				}
+			}
 
-		ok++
+			out = trim(out)
+			s = trim(s)
+			if !bytes.Equal(out, s) {
+				t.Fatalf("%s\ngot\n%s\nexp\n%s----\ngot\n%s\nexp\n%s", pth, hex.Dump(out), hex.Dump(s), out, s)
+			}
+
+			ok++
+		})
 	}
-	if run == 0 || run != build || ok != build {
+	if cc != n || ccgo != n || build != n || run != n || ok != n {
 		t.Fatalf("cc %v ccgo %v build %v run %v ok %v", cc, ccgo, build, run, ok)
 	}
 
 	if *oEdit {
-		fmt.Printf("GCC\tcc %v ccgo %v build %v run %v ok %v\n", cc, ccgo, build, run, ok)
+		fmt.Printf("%s\tcc %v ccgo %v build %v run %v ok %v\n", cname, cc, ccgo, build, run, ok)
 	}
 }
 
@@ -1226,9 +1136,9 @@ func TestSQLiteShell(t *testing.T) {
 		}()
 	}
 
-	var cc, ccgo, build, run, ok int
+	var cc, ccgo, build, run, ok int32
 	root := filepath.FromSlash("../../_sqlite/sqlite-amalgamation-3210000")
-	if out, err := test(t, false, &cc, &ccgo, &build, &run, `
+	if out, _, err := test(t, false, &cc, &ccgo, &build, &run, `
 		#define HAVE_FDATASYNC 1
 		#define HAVE_ISNAN 1
 		#define HAVE_LOCALTIME_R 1
@@ -1466,7 +1376,7 @@ import (
 	"github.com/cznic/crt"
 )
 `)
-	if err := command(w, &tus, patches(tclPatches)...); err != nil {
+	if err := command(w, "", &tus, patches(tclPatches)...); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1485,22 +1395,7 @@ import (
 		t.Fatalf("%s\n%v", out, err)
 	}
 
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-
-	defer func() {
-		if err := os.Chdir(cwd); err != nil {
-			t.Error(err)
-		}
-	}()
-
-	src, err := filepath.Abs(filepath.Join(cwd, filepath.FromSlash("../..")))
+	src, err := filepath.Abs(filepath.FromSlash("../.."))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1535,7 +1430,9 @@ import (
 	if len(blacklist) != 0 {
 		args = append(args, "-skip", strings.Join(blacklist, " "))
 	}
+
 	cmd := exec.Command("./tcl", args...)
+	cmd.Dir = dir
 	errPipe, err := cmd.StderrPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -1964,7 +1861,7 @@ import (
 	"github.com/cznic/crt"
 )
 `)
-	if err := command(w, &tus, patches(tclsqlitePatches)...); err != nil {
+	if err := command(w, "", &tus, patches(tclsqlitePatches)...); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1979,22 +1876,9 @@ import (
 		t.Fatal(err)
 	}
 
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := os.Chdir(testdir); err != nil {
-		t.Fatal(err)
-	}
-
-	defer func() {
-		if err := os.Chdir(cwd); err != nil {
-			t.Error(err)
-		}
-	}()
-
-	if out, err := exec.Command("go", "build", "-o", "test", f.Name()).CombinedOutput(); err != nil {
+	cmd := exec.Command("go", "build", "-o", "test", f.Name())
+	cmd.Dir = testdir
+	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("%s\n%v", out, err)
 	}
 
@@ -2010,7 +1894,7 @@ import (
 		t.Fatal(err)
 	}
 
-	blacklist := []string{} //TODO
+	var blacklist []string //TODO
 
 	for _, v := range blacklist {
 		if err := os.Remove(filepath.Join(testdir, v)); err != nil {
@@ -2018,7 +1902,8 @@ import (
 		}
 	}
 
-	cmd := exec.Command("./test", "all.test")
+	cmd = exec.Command("./test", "all.test")
+	cmd.Dir = testdir
 	pipe, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -2126,28 +2011,13 @@ func TestCSmith(t *testing.T) {
 		}
 	}()
 
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-
-	defer func() {
-		if err := os.Chdir(cwd); err != nil {
-			t.Error(err)
-		}
-	}()
-
 	const (
 		gccBin = "gcc"
 		mainC  = "main.c"
 	)
 
 	ch := time.After(*oCSmith)
-	var cs, cc, ccgo, build, run, ok int
+	var cs, cc, ccgo, build, run, ok int32
 	t0 := time.Now()
 out:
 	for {
@@ -2157,7 +2027,7 @@ out:
 		default:
 		}
 
-		out, err := exec.Command(
+		cmd := exec.Command(
 			csmith,
 			"-o", mainC,
 			"--bitfields",            // --bitfields | --no-bitfields: enable | disable full-bitfields structs (disabled by default).
@@ -2167,12 +2037,16 @@ out:
 			"--no-volatile-pointers", // --volatile-pointers | --no-volatile-pointers: enable | disable volatile pointers (enabled by default).
 			"--no-volatiles",         // --volatiles | --no-volatiles: enable | disable volatiles (enabled by default).
 			"--paranoid",             // --paranoid | --no-paranoid: enable | disable pointer-related assertions (disabled by default).
-		).Output()
+		)
+		cmd.Dir = dir
+		out, err := cmd.Output()
 		if err != nil {
 			t.Fatalf("%v\n%s", err, out)
 		}
 
-		if out, err := exec.Command(gcc, "-w", "-o", gccBin, mainC).CombinedOutput(); err != nil {
+		cmd = exec.Command(gcc, "-w", "-o", gccBin, mainC)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("%v\n%s", err, out)
 		}
 
@@ -2185,7 +2059,9 @@ out:
 			defer cancel()
 
 			gccT0 = time.Now()
-			gccOut, err = exec.CommandContext(ctx, filepath.Join(dir, gccBin)).CombinedOutput()
+			cmd := exec.CommandContext(ctx, filepath.Join(dir, gccBin))
+			cmd.Dir = dir
+			gccOut, err = cmd.CombinedOutput()
 			gccT = time.Since(gccT0)
 		}()
 		if err != nil {
@@ -2193,15 +2069,14 @@ out:
 		}
 
 		cs++
-		build0 := build
 		os.Remove("main.go")
-		ccgoOut, err := test(t, false, &cc, &ccgo, &build, &run, "", "", []string{inc}, dir, []string{mainC})
+		ccgoOut, full, err := test(t, false, &cc, &ccgo, &build, &run, "", "", []string{inc}, dir, []string{mainC})
 		if err != nil {
 			t.Log(err)
 			csmithFatal(t, mainC, gccOut, ccgoOut, cc, ccgo, build, run, ok, cs, gccT)
 		}
 
-		if build == build0 {
+		if !full {
 			continue
 		}
 
@@ -2226,7 +2101,7 @@ out:
 	}
 }
 
-func csmithFatal(t *testing.T, mainC string, gccOut, ccgoOut []byte, cc, ccgo, build, run, ok, cs int, gccT time.Duration) {
+func csmithFatal(t *testing.T, mainC string, gccOut, ccgoOut []byte, cc, ccgo, build, run, ok, cs int32, gccT time.Duration) {
 	b, err := ioutil.ReadFile(mainC)
 	if err != nil {
 		t.Fatal(err)
